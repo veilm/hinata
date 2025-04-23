@@ -4,6 +4,7 @@
 #include <curl/curl.h> // Requires libcurl development library
 #include <jansson.h>   // Requires jansson development library
 #include <errno.h>     // For errno
+#include <unistd.h>    // For isatty() and STDIN_FILENO
 
 // Define the API endpoint
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
@@ -223,14 +224,17 @@ int main(void) {
   // Initialization moved to struct definition above.
 
   // --- 2. Read content from stdin ---
-  fprintf(stderr, "Reading prompt from stdin...\n"); // Inform user
+  // Inform user only if stdin is a terminal
+  if (isatty(STDIN_FILENO)) {
+      fprintf(stderr, "Reading prompt from stdin...\n");
+  }
   stdin_content = read_stdin_all(&stdin_len);
   if (stdin_content == NULL) {
       fprintf(stderr, "Error reading from stdin.\n");
       free(stream_data.buffer); // Free stream buffer if allocated
       return 1;
   }
-   fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
+   // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
 
 
   // --- 3. Get API Key from environment variable ---
