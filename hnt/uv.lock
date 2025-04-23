@@ -470,10 +470,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "litellm" },
+    { name = "openai" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "litellm", specifier = ">=1.67.1" }]
+requires-dist = [
+    { name = "litellm", specifier = ">=1.67.1" },
+    { name = "openai", specifier = ">=1.75.0" },
+]
 
 [[package]]
 name = "litellm"
