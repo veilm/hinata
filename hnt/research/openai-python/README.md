@@ -75,7 +75,7 @@ apple
 (1.11 + 1.22 + 1.14 + 1.11 + 1.03 + 1.25 + 1.21) / 7 => Average: round down to
 1.15 s
 
-# C direct request
+# C direct request (libcurl)
 ```
 $ gcc minimal.c -lcurl -ljansson
 $ export OPENAI_API_KEY=$(msk_pass get openai_api_key_1411_main)
@@ -109,6 +109,56 @@ apple
 0inputs+0outputs (0major+999minor)pagefaults 0swaps
 ```
 
-(0.64 + 0.35 + 0.4 + 0.38 + 0.39 + 0.39 + 0.42)/7 => Average: Round down to 0.42
+- (0.64 + 0.35 + 0.4 + 0.38 + 0.39 + 0.39 + 0.42)/7 => Average: Round down to 0.42
 s
-~0.73 s faster
+- ~0.73 s faster
+
+# Python direct request (httpx)
+```
+$ export OPENAI_API_KEY=$(msk_pass get openai_api_key_1411_main)
+$ env time uv run minimal.py
+apple
+0.18user 0.02system 0:00.62elapsed 33%CPU (0avgtext+0avgdata 38836maxresident)k
+0inputs+0outputs (0major+7585minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.21user 0.01system 0:00.55elapsed 42%CPU (0avgtext+0avgdata 38832maxresident)k
+0inputs+0outputs (0major+7580minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.19user 0.03system 0:00.87elapsed 25%CPU (0avgtext+0avgdata 38784maxresident)k
+0inputs+0outputs (0major+7584minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.18user 0.02system 0:00.52elapsed 39%CPU (0avgtext+0avgdata 38712maxresident)k
+0inputs+0outputs (0major+7576minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.18user 0.01system 0:00.72elapsed 28%CPU (0avgtext+0avgdata 38716maxresident)k
+0inputs+0outputs (0major+7573minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.19user 0.03system 0:00.61elapsed 36%CPU (0avgtext+0avgdata 38716maxresident)k
+0inputs+0outputs (0major+7585minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.18user 0.02system 0:00.82elapsed 25%CPU (0avgtext+0avgdata 38840maxresident)k
+0inputs+0outputs (0major+7575minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.18user 0.02system 0:00.52elapsed 39%CPU (0avgtext+0avgdata 38840maxresident)k
+0inputs+0outputs (0major+7588minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.18user 0.02system 0:00.52elapsed 39%CPU (0avgtext+0avgdata 38700maxresident)k
+0inputs+0outputs (0major+7569minor)pagefaults 0swaps
+$ env time uv run minimal.py
+apple
+0.18user 0.02system 0:00.60elapsed 35%CPU (0avgtext+0avgdata 38832maxresident)k
+0inputs+0outputs (0major+7584minor)pagefaults 0swaps
+```
+
+- (0.62 + 0.55 + 0.87 + 0.52 + 0.72 + 0.61 + 0.82 + 0.52 + 0.52 + 0.6)/10 =>
+Average: round up to 0.64 s
+- ~0.51 s faster than openai
+- ~0.22 s slower than C libcurl
