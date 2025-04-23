@@ -155,17 +155,18 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
     char *message_end;
     while ((message_end = strstr(message_start, "\n\n")) != NULL) {
         // Found a potential message boundary
-        size_t message_len = message_end - message_start;
+        // size_t message_len = message_end - message_start; // Unused variable
 
         // Process lines within this message block
         char *line_start = message_start;
         char *line_end;
         while (line_start < message_end && (line_end = memchr(line_start, '\n', message_end - line_start)) != NULL) {
              // Check if the line starts with "data: "
-            if ((line_end - line_start > prefix_len) && memcmp(line_start, data_prefix, prefix_len) == 0) {
+             // Cast pointer difference to size_t for comparison
+            if (((size_t)(line_end - line_start) > prefix_len) && memcmp(line_start, data_prefix, prefix_len) == 0) {
                 // Extract the JSON payload part
                 char *json_start = line_start + prefix_len;
-                size_t json_len = line_end - json_start;
+                // size_t json_len = line_end - json_start; // Unused variable
 
                 // Temporarily null-terminate the JSON string for processing
                 char original_char = *line_end;
@@ -178,9 +179,10 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
         }
          // Check the last part of the message block if it didn't end with \n
         if (line_start < message_end) {
-             if ((message_end - line_start > prefix_len) && memcmp(line_start, data_prefix, prefix_len) == 0) {
+             // Cast pointer difference to size_t for comparison
+             if (((size_t)(message_end - line_start) > prefix_len) && memcmp(line_start, data_prefix, prefix_len) == 0) {
                 char *json_start = line_start + prefix_len;
-                size_t json_len = message_end - json_start;
+                // size_t json_len = message_end - json_start; // Unused variable
                 char original_char = *message_end;
                 *message_end = '\0';
                 process_sse_data(json_start);
@@ -207,7 +209,7 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
 
 int main(void) {
   CURL *curl_handle;
-  CURLcode res;
+  CURLcode res = CURLE_OK; // Initialize res
   struct StreamData stream_data = {NULL, 0, 0}; // Initialize stream data struct
   struct curl_slist *headers = NULL;
   char *api_key = NULL;
