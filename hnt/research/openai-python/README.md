@@ -74,3 +74,41 @@ apple
 
 (1.11 + 1.22 + 1.14 + 1.11 + 1.03 + 1.25 + 1.21) / 7 => Average: round down to
 1.15 s
+
+# C direct request
+```
+$ gcc minimal.c -lcurl -ljansson
+$ export OPENAI_API_KEY=$(msk_pass get openai_api_key_1411_main)
+$ env time ./a.out
+apple
+0.01user 0.00system 0:00.64elapsed 3%CPU (0avgtext+0avgdata 12280maxresident)k
+0inputs+0outputs (0major+1002minor)pagefaults 0swaps
+$ env time ./a.out
+apple
+0.01user 0.00system 0:00.35elapsed 7%CPU (0avgtext+0avgdata 12340maxresident)k
+0inputs+0outputs (0major+1000minor)pagefaults 0swaps
+$ env time ./a.out
+apple
+0.02user 0.01system 0:00.40elapsed 8%CPU (0avgtext+0avgdata 12296maxresident)k
+0inputs+0outputs (0major+1001minor)pagefaults 0swaps
+$ env time ./a.out
+apple
+0.02user 0.00system 0:00.38elapsed 7%CPU (0avgtext+0avgdata 12544maxresident)k
+0inputs+0outputs (0major+1002minor)pagefaults 0swaps
+$ env time ./a.out
+apple
+0.02user 0.00system 0:00.39elapsed 8%CPU (0avgtext+0avgdata 12408maxresident)k
+0inputs+0outputs (0major+1000minor)pagefaults 0swaps
+$ env time ./a.out
+apple
+0.02user 0.00system 0:00.39elapsed 6%CPU (0avgtext+0avgdata 12132maxresident)k
+0inputs+0outputs (0major+995minor)pagefaults 0swaps
+$ env time ./a.out
+apple
+0.02user 0.00system 0:00.42elapsed 8%CPU (0avgtext+0avgdata 12224maxresident)k
+0inputs+0outputs (0major+999minor)pagefaults 0swaps
+```
+
+(0.64 + 0.35 + 0.4 + 0.38 + 0.39 + 0.39 + 0.42)/7 => Average: Round down to 0.42
+s
+~0.73 s faster
