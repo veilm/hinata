@@ -162,3 +162,13 @@ apple
 Average: round up to 0.64 s
 - ~0.51 s faster than openai
 - ~0.22 s slower than C libcurl
+
+# streaming vs [simonw/llm](https://github.com/simonw/llm) (which uses openai)
+Here I set 4o-mini because I guess his doesn't support gpt-4.1-nano. The
+streaming wouldn't matter here but you can confirm with other prompts that
+minimal-streaming.c supports it
+
+CBA to write everything again but minimal-streaming.c's average was around 0.50s
+while llm's around 1.65s
+
+X: 1915145828559212689
