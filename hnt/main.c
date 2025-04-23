@@ -300,22 +300,6 @@ int main(int argc, char *argv[]) {
 
 
   // --- 3. Initialize stream data buffer ---
-  // Initialization moved to struct definition above.
-
-  // --- 2. Read content from stdin ---
-  // Inform user only if stdin is a terminal
-  if (isatty(STDIN_FILENO)) {
-      fprintf(stderr, "Reading prompt from stdin...\n");
-  }
-  stdin_content = read_stdin_all(&stdin_len);
-  if (stdin_content == NULL) {
-      fprintf(stderr, "Error reading from stdin.\n");
-      free(stream_data.buffer); // Free stream buffer if allocated
-      return 1;
-  }
-   // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
-
-
   // --- 4. Get API Key from environment variable ---
   api_key = getenv(api_key_env_var); // Use the selected environment variable
   if (api_key == NULL) {
@@ -324,6 +308,22 @@ int main(int argc, char *argv[]) {
     free(stream_data.buffer);
     return 1; // Keep exit code 1 for consistency
   }
+  // API key is valid, now read from stdin
+
+  // --- 4a. Read content from stdin ---
+  // Inform user only if stdin is a terminal
+  if (isatty(STDIN_FILENO)) {
+      fprintf(stderr, "Reading prompt from stdin...\n");
+  }
+  stdin_content = read_stdin_all(&stdin_len);
+  if (stdin_content == NULL) {
+      fprintf(stderr, "Error reading from stdin.\n");
+      free(stream_data.buffer); // Free stream buffer if allocated
+      // No need to free api_key, it's from getenv
+      return 1;
+  }
+   // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
+
   snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
 
   // --- 5. Initialize libcurl ---
