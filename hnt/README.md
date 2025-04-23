@@ -7,4 +7,5 @@ For now
 ./build
 export OPENAI_API_KEY="my api key"
 echo hello | ./hnt
+echo hello | ./hnt -m "gpt-4o-mini"
 ```

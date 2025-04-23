@@ -5,6 +5,7 @@
 #include <jansson.h>   // Requires jansson development library
 #include <errno.h>     // For errno
 #include <unistd.h>    // For isatty() and STDIN_FILENO
+#include <getopt.h>    // For getopt_long
 
 // Define the API endpoint
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
@@ -208,7 +209,7 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
 }
 
 
-int main(void) {
+int main(int argc, char *argv[]) {
   CURL *curl_handle;
   CURLcode res = CURLE_OK; // Initialize res
   struct StreamData stream_data = {NULL, 0, 0}; // Initialize stream data struct
@@ -219,8 +220,39 @@ int main(void) {
   size_t stdin_len = 0;
   json_t *root_payload = NULL;
   char *post_data_dynamic = NULL;
+  const char *model_name = "gpt-4.1-nano"; // Default model
 
-  // --- 1. Initialize stream data buffer ---
+  // --- 1. Parse Command Line Arguments ---
+  int opt;
+  // Define long options
+  static struct option long_options[] = {
+      {"model", required_argument, 0, 'm'},
+      {0, 0, 0, 0} // End of options marker
+  };
+
+  while ((opt = getopt_long(argc, argv, "m:", long_options, NULL)) != -1) {
+      switch (opt) {
+          case 'm':
+              model_name = optarg;
+              break;
+          case '?':
+              // getopt_long already printed an error message.
+              fprintf(stderr, "Usage: %s [-m model_name | --model model_name]\n", argv[0]);
+              return 1;
+          default:
+              abort(); // Should not happen
+      }
+  }
+
+  // Check for non-option arguments (currently none expected)
+  if (optind < argc) {
+      fprintf(stderr, "Error: Unexpected non-option arguments found.\n");
+      fprintf(stderr, "Usage: %s [-m model_name | --model model_name]\n", argv[0]);
+      return 1;
+  }
+
+
+  // --- 2. Initialize stream data buffer ---
   // Initialization moved to struct definition above.
 
   // --- 2. Read content from stdin ---
@@ -265,9 +297,9 @@ int main(void) {
       goto cleanup; // Use goto for centralized cleanup
   }
 
-  // Add model
-  if (json_object_set_new(root_payload, "model", json_string("gpt-4.1-nano")) != 0) {
-      fprintf(stderr, "Error: Failed to set model in JSON.\n");
+  // Add model (using the potentially overridden model_name)
+  if (json_object_set_new(root_payload, "model", json_string(model_name)) != 0) {
+      fprintf(stderr, "Error: Failed to set model '%s' in JSON.\n", model_name);
       goto cleanup;
   }
 
