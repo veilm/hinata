@@ -7,8 +7,9 @@
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
 
-// Define the API endpoint
+// Define API endpoints
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
+#define OPENROUTER_API_URL "https://openrouter.ai/api/v1/chat/completions"
 #define READ_CHUNK_SIZE 4096 // Size for reading stdin chunks
 
 // Structure to hold unprocessed stream data
@@ -220,7 +221,10 @@ int main(int argc, char *argv[]) {
   size_t stdin_len = 0;
   json_t *root_payload = NULL;
   char *post_data_dynamic = NULL;
-  const char *model_name = "gpt-4.1-nano"; // Default model
+  const char *model_arg = "openrouter/deepseek/deepseek-chat-v3-0324:free"; // Default model argument
+  const char *api_url = NULL;
+  const char *api_key_env_var = NULL;
+  const char *model_name_to_send = NULL;
 
   // --- 1. Parse Command Line Arguments ---
   int opt;
@@ -230,13 +234,16 @@ int main(int argc, char *argv[]) {
       {0, 0, 0, 0} // End of options marker
   };
 
+  // Use model_arg to store the argument value, default or from -m
   while ((opt = getopt_long(argc, argv, "m:", long_options, NULL)) != -1) {
       switch (opt) {
           case 'm':
-              model_name = optarg;
+              model_arg = optarg;
               break;
           case '?':
               // getopt_long already printed an error message.
+              // Add specific usage instructions for model format
+              fprintf(stderr, "Model format: provider/model_name (e.g., openai/gpt-4o, openrouter/some/model)\n");
               fprintf(stderr, "Usage: %s [-m model_name | --model model_name]\n", argv[0]);
               return 1;
           default:
@@ -247,12 +254,52 @@ int main(int argc, char *argv[]) {
   // Check for non-option arguments (currently none expected)
   if (optind < argc) {
       fprintf(stderr, "Error: Unexpected non-option arguments found.\n");
-      fprintf(stderr, "Usage: %s [-m model_name | --model model_name]\n", argv[0]);
+      // Add specific usage instructions for model format
+      fprintf(stderr, "Model format: provider/model_name (e.g., openai/gpt-4o, openrouter/some/model)\n");
+      fprintf(stderr, "Usage: %s [-m provider/model_name | --model provider/model_name]\n", argv[0]);
       return 1;
   }
 
+  // --- 2. Parse Model Argument and Select API/Key ---
+  const char *separator = strchr(model_arg, '/');
+  if (separator == NULL) {
+      fprintf(stderr, "Error: Invalid model format. Expected 'provider/model_name', got '%s'\n", model_arg);
+      return 1;
+  }
 
-  // --- 2. Initialize stream data buffer ---
+  size_t provider_len = separator - model_arg;
+  model_name_to_send = separator + 1; // Point to the character after '/'
+
+  if (strncmp(model_arg, "openai/", provider_len + 1) == 0) { // Compare "openai/"
+      api_url = OPENAI_API_URL;
+      api_key_env_var = "OPENAI_API_KEY";
+  } else if (strncmp(model_arg, "openrouter/", provider_len + 1) == 0) { // Compare "openrouter/"
+      api_url = OPENROUTER_API_URL;
+      api_key_env_var = "OPENROUTER_API_KEY";
+      // Add OpenRouter specific headers if needed in the future
+      // headers = curl_slist_append(headers, "HTTP-Referer: YOUR_SITE_URL"); // Example
+      // headers = curl_slist_append(headers, "X-Title: YOUR_APP_NAME"); // Example
+  } else {
+      // Allocate buffer for provider string for error message
+      char *provider_str = malloc(provider_len + 1);
+      if (!provider_str) {
+           fprintf(stderr, "Error: Memory allocation failed for provider string.\n");
+           return 1; // Allocation error
+      }
+      strncpy(provider_str, model_arg, provider_len);
+      provider_str[provider_len] = '\0';
+      fprintf(stderr, "Error: Unsupported provider '%s' in model '%s'. Use 'openai' or 'openrouter'.\n", provider_str, model_arg);
+      free(provider_str);
+      return 1;
+  }
+
+  if (*model_name_to_send == '\0') { // Check if model name part is empty
+       fprintf(stderr, "Error: Missing model name after '/' in '%s'.\n", model_arg);
+       return 1;
+  }
+
+
+  // --- 3. Initialize stream data buffer ---
   // Initialization moved to struct definition above.
 
   // --- 2. Read content from stdin ---
@@ -269,17 +316,17 @@ int main(int argc, char *argv[]) {
    // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
 
 
-  // --- 3. Get API Key from environment variable ---
-  api_key = getenv("OPENAI_API_KEY");
+  // --- 4. Get API Key from environment variable ---
+  api_key = getenv(api_key_env_var); // Use the selected environment variable
   if (api_key == NULL) {
-    fprintf(stderr, "Error: OPENAI_API_KEY environment variable not set.\n");
+    fprintf(stderr, "Error: %s environment variable not set.\n", api_key_env_var);
     free(stdin_content);
     free(stream_data.buffer);
-    return 1;
+    return 1; // Keep exit code 1 for consistency
   }
   snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
 
-  // --- 4. Initialize libcurl ---
+  // --- 5. Initialize libcurl ---
   curl_global_init(CURL_GLOBAL_ALL);
   curl_handle = curl_easy_init();
   if (!curl_handle) {
@@ -290,16 +337,16 @@ int main(int argc, char *argv[]) {
       return 1;
   }
 
-  // --- 5. Prepare JSON Payload using Jansson ---
+  // --- 6. Prepare JSON Payload using Jansson ---
   root_payload = json_object();
   if (!root_payload) {
       fprintf(stderr, "Error: Failed to create root JSON object.\n");
       goto cleanup; // Use goto for centralized cleanup
   }
 
-  // Add model (using the potentially overridden model_name)
-  if (json_object_set_new(root_payload, "model", json_string(model_name)) != 0) {
-      fprintf(stderr, "Error: Failed to set model '%s' in JSON.\n", model_name);
+  // Add model (using the parsed model_name_to_send)
+  if (json_object_set_new(root_payload, "model", json_string(model_name_to_send)) != 0) {
+      fprintf(stderr, "Error: Failed to set model '%s' in JSON.\n", model_name_to_send);
       goto cleanup;
   }
 
@@ -355,9 +402,9 @@ int main(int argc, char *argv[]) {
       goto cleanup;
   }
 
-  // --- 6. Set libcurl options ---
-  // Set URL
-  curl_easy_setopt(curl_handle, CURLOPT_URL, OPENAI_API_URL);
+  // --- 7. Set libcurl options ---
+  // Set URL (using the selected api_url)
+  curl_easy_setopt(curl_handle, CURLOPT_URL, api_url);
 
   // Set POST data (using the dynamically generated string)
   curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, post_data_dynamic);
@@ -380,19 +427,26 @@ int main(int argc, char *argv[]) {
   // Optional: Enable verbose output for debugging curl issues
   // curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
 
-  // --- 7. Perform the request ---
+  // --- 8. Perform the request ---
   res = curl_easy_perform(curl_handle);
 
-  // --- 8. Check for errors ---
+  // --- 9. Check for errors ---
   if(res != CURLE_OK) {
-    fprintf(stderr, "\ncurl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+    // Avoid printing extra newline if stream already printed one before error
+    if (stream_data.data_len == 0) printf("\n"); // Add newline only if nothing was printed
+    fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
   } else {
-    // --- 9. Processing is done in the callback ---
+    // --- 10. Processing is done in the callback ---
     // Ensure a final newline after streaming is complete
+    // Check if the last character printed by the callback was a newline
+    // This is tricky as the callback doesn't track this easily.
+    // A simple approach is to always print a newline if the curl call succeeded.
+    // If the stream ended cleanly, it might result in a double newline,
+    // but it guarantees one newline after successful completion.
     printf("\n");
   }
 
-  // --- 10. Cleanup ---
+  // --- 11. Cleanup ---
 cleanup: // Label for centralized cleanup
   if (post_data_dynamic) free(post_data_dynamic); // Free dynamically generated JSON string
   if (root_payload) json_decref(root_payload);     // Free jansson object structure

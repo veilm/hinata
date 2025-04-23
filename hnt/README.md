@@ -2,10 +2,32 @@
 This might be deleted at any time if I decide on a different design or realize
 the Unix philosophy is poisonous or something
 
-For now
+# build
 ```
+git clone https://github.com/michaelskyba/hinata
+cd hinata/hnt
 ./build
-export OPENAI_API_KEY="my api key"
-echo hello | ./hnt
-echo hello | ./hnt -m "gpt-4o-mini"
 ```
+
+# basic usage
+```
+export OPENROUTER_API_KEY="my api key"
+echo hello | ./hnt
+```
+(defaults to `openrouter/deepseek/deepseek-chat-v3-0324:free` as the model)
+
+# supported models
+## [OpenAI](https://platform.openai.com/settings/organization/api-keys)
+```
+export OPENAI_API_KEY="my api key"
+echo hello | ./hnt -m openai/gpt-4o
+```
+
+## [OpenRouter](https://openrouter.ai/settings/keys)
+```
+export OPENROUTER_API_KEY="my api key"
+echo hello | ./hnt -m openrouter/qwen/qwen2.5-coder-7b-instruct
+```
+
+## local
+no support yet. I'm an ill  homeless peasant with no GPU
