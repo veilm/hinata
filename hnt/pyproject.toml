@@ -1,0 +1,9 @@
+[project]
+name = "kom"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "litellm>=1.67.1",
+]
