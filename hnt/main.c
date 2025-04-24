@@ -201,7 +201,37 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
     // --- 2. Process complete SSE messages in the buffer ---
     char *message_start = stream_data->buffer;
     char *message_end;
-    while ((message_end = strstr(message_start, "\n\n")) != NULL) {
+
+    // --- Add hex dump ---
+    if (debug_mode && stream_data->data_len > 0) {
+        fprintf(stderr, "DEBUG: Checking last bytes of buffer (max 10): ");
+        size_t start_idx = (stream_data->data_len > 10) ? stream_data->data_len - 10 : 0;
+        for (size_t i = start_idx; i < stream_data->data_len; ++i) {
+            fprintf(stderr, "%02X ", (unsigned char)stream_data->buffer[i]);
+        }
+        fprintf(stderr, "\n");
+    }
+    // --- End hex dump ---
+
+    while (1) { // Loop indefinitely until break
+        char *separator_rn = strstr(message_start, "\r\n\r\n");
+        char *separator_n = strstr(message_start, "\n\n");
+        size_t separator_len = 0;
+
+        // Determine which separator comes first, or if none found
+        if (separator_rn && (!separator_n || separator_rn < separator_n)) {
+            message_end = separator_rn;
+            separator_len = 4; // "\r\n\r\n"
+            if (debug_mode) fprintf(stderr, "DEBUG: Found '\\r\\n\\r\\n' separator. Processing message block.\n");
+        } else if (separator_n) {
+            message_end = separator_n;
+            separator_len = 2; // "\n\n"
+            if (debug_mode) fprintf(stderr, "DEBUG: Found '\\n\\n' separator. Processing message block.\n");
+        } else {
+            // No complete message separator found in the current buffer
+            break; // Exit the while loop
+        }
+
         // Found a potential message boundary
         // size_t message_len = message_end - message_start; // Unused variable
 
@@ -239,8 +269,8 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
         }
 
 
-        // Move past the processed message (including the "\n\n")
-        message_start = message_end + 2; // Move past "\n\n"
+        // Move past the processed message (including the separator)
+        message_start = message_end + separator_len; // Use determined separator length
     }
 
     // --- 3. Remove processed data from the buffer ---

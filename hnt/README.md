@@ -43,7 +43,7 @@ echo hello | ./hnt -m openai/gpt-4o
 ### [Google](https://aistudio.google.com/apikey)
 ```
 export GEMINI_API_KEY="my api key"
-echo hello | ./hnt -m google/gemini-1.5-flash-latest
+echo hello | ./hnt -m google/gemini-2.5-flash-preview-04-17
 ```
 
 ### local
