@@ -226,26 +226,31 @@ int main(int argc, char *argv[]) {
   const char *api_url = NULL;
   const char *api_key_env_var = NULL;
   const char *model_name_to_send = NULL;
+  const char *system_prompt = NULL; // Variable to store the system prompt
 
   // --- 1. Parse Command Line Arguments ---
   int opt;
   // Define long options
   static struct option long_options[] = {
-      {"model", required_argument, 0, 'm'},
+      {"model",  required_argument, 0, 'm'},
+      {"system", required_argument, 0, 's'}, // Added system prompt option
       {0, 0, 0, 0} // End of options marker
   };
 
   // Use model_arg to store the argument value, default or from -m
-  while ((opt = getopt_long(argc, argv, "m:", long_options, NULL)) != -1) {
+  // Use system_prompt to store the system prompt argument
+  while ((opt = getopt_long(argc, argv, "m:s:", long_options, NULL)) != -1) { // Added 's:' to short options
       switch (opt) {
           case 'm':
               model_arg = optarg;
               break;
+          case 's': // Handle system prompt argument
+              system_prompt = optarg;
+              break;
           case '?':
               // getopt_long already printed an error message.
-              // Add specific usage instructions for model format
               fprintf(stderr, "Model format: provider/model_name (e.g., openai/gpt-4o, openrouter/some/model)\n");
-              fprintf(stderr, "Usage: %s [-m model_name | --model model_name]\n", argv[0]);
+              fprintf(stderr, "Usage: %s [-m provider/model_name] [-s system_prompt]\n", argv[0]);
               return 1;
           default:
               abort(); // Should not happen
@@ -255,9 +260,8 @@ int main(int argc, char *argv[]) {
   // Check for non-option arguments (currently none expected)
   if (optind < argc) {
       fprintf(stderr, "Error: Unexpected non-option arguments found.\n");
-      // Add specific usage instructions for model format
       fprintf(stderr, "Model format: provider/model_name (e.g., openai/gpt-4o, openrouter/some/model)\n");
-      fprintf(stderr, "Usage: %s [-m provider/model_name | --model provider/model_name]\n", argv[0]);
+      fprintf(stderr, "Usage: %s [-m provider/model_name] [-s system_prompt]\n", argv[0]);
       return 1;
   }
 
@@ -366,29 +370,52 @@ int main(int argc, char *argv[]) {
       goto cleanup;
   }
 
+  // Add system message if provided
+  if (system_prompt != NULL) {
+      json_t *system_message_obj = json_object();
+      if (!system_message_obj) {
+          fprintf(stderr, "Error: Failed to create system message JSON object.\n");
+          goto cleanup;
+      }
+      if (json_object_set_new(system_message_obj, "role", json_string("system")) != 0) {
+          fprintf(stderr, "Error: Failed to set role in system message JSON.\n");
+          json_decref(system_message_obj);
+          goto cleanup;
+      }
+      if (json_object_set_new(system_message_obj, "content", json_string(system_prompt)) != 0) {
+          fprintf(stderr, "Error: Failed to set content in system message JSON.\n");
+          json_decref(system_message_obj);
+          goto cleanup;
+      }
+      if (json_array_append_new(messages_array, system_message_obj) != 0) { // system_message_obj ref is stolen
+          fprintf(stderr, "Error: Failed to append system message to messages array.\n");
+          // system_message_obj is attached or failed, root_payload cleanup handles it
+          goto cleanup;
+      }
+  }
 
   // Create the user message object
-  json_t *message_obj = json_object();
-   if (!message_obj) {
-      fprintf(stderr, "Error: Failed to create message JSON object.\n");
+  json_t *user_message_obj = json_object(); // Renamed from message_obj for clarity
+   if (!user_message_obj) {
+      fprintf(stderr, "Error: Failed to create user message JSON object.\n");
       goto cleanup;
   }
-  if (json_object_set_new(message_obj, "role", json_string("user")) != 0) {
-       fprintf(stderr, "Error: Failed to set role in message JSON.\n");
-       json_decref(message_obj); // Clean up the message object itself
+  if (json_object_set_new(user_message_obj, "role", json_string("user")) != 0) {
+       fprintf(stderr, "Error: Failed to set role in user message JSON.\n");
+       json_decref(user_message_obj); // Clean up the user message object itself
        goto cleanup;
   }
   // Add stdin content (jansson handles escaping)
-  if (json_object_set_new(message_obj, "content", json_string(stdin_content)) != 0) {
-       fprintf(stderr, "Error: Failed to set content in message JSON.\n");
-       json_decref(message_obj); // Clean up the message object itself
+  if (json_object_set_new(user_message_obj, "content", json_string(stdin_content)) != 0) {
+       fprintf(stderr, "Error: Failed to set content in user message JSON.\n");
+       json_decref(user_message_obj); // Clean up the user message object itself
        goto cleanup;
   }
 
-  // Append message object to messages array
-  if (json_array_append_new(messages_array, message_obj) != 0) { // message_obj ref is stolen
-      fprintf(stderr, "Error: Failed to append message to messages array.\n");
-      // Note: message_obj is already attached or failed, root_payload cleanup handles it
+  // Append user message object to messages array
+  if (json_array_append_new(messages_array, user_message_obj) != 0) { // user_message_obj ref is stolen
+      fprintf(stderr, "Error: Failed to append user message to messages array.\n");
+      // Note: user_message_obj is attached or failed, root_payload cleanup handles it
       goto cleanup;
   }
 
