@@ -40,5 +40,11 @@ export OPENAI_API_KEY="my api key"
 echo hello | ./hnt -m openai/gpt-4o
 ```
 
+### [Google](https://aistudio.google.com/apikey)
+```
+export GEMINI_API_KEY="my api key"
+echo hello | ./hnt -m google/gemini-1.5-flash-latest
+```
+
 ### local
 no support yet. I'm an ill , homeless peasant with no GPU

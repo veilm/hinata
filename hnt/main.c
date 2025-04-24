@@ -7,10 +7,19 @@
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
 
+// API Providers Enum
+enum ApiProvider {
+    PROVIDER_OPENAI,
+    PROVIDER_OPENROUTER,
+    PROVIDER_DEEPSEEK,
+    PROVIDER_GOOGLE
+};
+
 // Define API endpoints
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
 #define OPENROUTER_API_URL "https://openrouter.ai/api/v1/chat/completions"
-#define DEEPSEEK_API_URL "https://api.deepseek.com/chat/completions" // Added DeepSeek URL
+#define DEEPSEEK_API_URL "https://api.deepseek.com/chat/completions"
+#define GOOGLE_API_URL_FORMAT "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?key=%s" // Google Gemini URL Format
 #define READ_CHUNK_SIZE 4096 // Size for reading stdin chunks
 
 // Structure to hold unprocessed stream data
@@ -20,7 +29,7 @@ struct StreamData {
     size_t data_len;
 };
 
-// Function to process a single SSE data payload (JSON string)
+// Function to process a single SSE data payload (JSON string) - handles different provider formats
 static void process_sse_data(const char *json_data) {
     json_t *root_resp = NULL;
     json_error_t error;
@@ -38,9 +47,10 @@ static void process_sse_data(const char *json_data) {
         return; // Skip this chunk
     }
 
-    // Navigate the JSON structure: root -> choices (array) -> 0 (object) -> delta (object) -> content (string)
+    // Try parsing as OpenAI/OpenRouter/DeepSeek format first
     json_t *choices_array = json_object_get(root_resp, "choices");
-    if (json_is_array(choices_array) && json_array_size(choices_array) > 0) {
+    if (choices_array && json_is_array(choices_array) && json_array_size(choices_array) > 0) {
+        // --- OpenAI/OpenRouter/DeepSeek Format ---
         json_t *first_choice = json_array_get(choices_array, 0);
         if (json_is_object(first_choice)) {
             json_t *delta_obj = json_object_get(first_choice, "delta");
@@ -48,30 +58,55 @@ static void process_sse_data(const char *json_data) {
                 json_t *content_str = json_object_get(delta_obj, "content");
                 if (json_is_string(content_str)) {
                     const char *content = json_string_value(content_str);
-                    // Print the content chunk immediately
                     printf("%s", content);
-                    fflush(stdout); // Ensure it's visible immediately
+                    fflush(stdout);
                 }
-                // We don't treat absence of 'content' as an error here,
-                // as some chunks might only contain role or finish_reason.
-                 json_t *finish_reason = json_object_get(first_choice, "finish_reason");
-                 if (json_is_string(finish_reason)) {
-                     // Optionally handle finish reason if needed
-                     // const char *reason = json_string_value(finish_reason);
-                     // printf("\n[Finish Reason: %s]\n", reason);
-                 }
             }
+            // Check for finish reason (optional)
+            // json_t *finish_reason = json_object_get(first_choice, "finish_reason");
+            // if (json_is_string(finish_reason)) { ... }
         }
     } else {
-        // It's possible to receive chunks without 'choices', e.g., error messages
-        // Check for top-level error object
-        json_t *error_obj = json_object_get(root_resp, "error");
-        if (json_is_object(error_obj)) {
-            json_t *message_str = json_object_get(error_obj, "message");
-            if (json_is_string(message_str)) {
-                fprintf(stderr, "\nAPI Error: %s\n", json_string_value(message_str));
+        // Try parsing as Google Gemini format
+        json_t *candidates_array = json_object_get(root_resp, "candidates");
+        if (candidates_array && json_is_array(candidates_array) && json_array_size(candidates_array) > 0) {
+            // --- Google Gemini Format ---
+            json_t *first_candidate = json_array_get(candidates_array, 0);
+            if (json_is_object(first_candidate)) {
+                json_t *content_obj = json_object_get(first_candidate, "content");
+                if (json_is_object(content_obj)) {
+                    json_t *parts_array = json_object_get(content_obj, "parts");
+                    if (json_is_array(parts_array) && json_array_size(parts_array) > 0) {
+                        json_t *first_part = json_array_get(parts_array, 0);
+                        if (json_is_object(first_part)) {
+                            json_t *text_str = json_object_get(first_part, "text");
+                            if (json_is_string(text_str)) {
+                                const char *text = json_string_value(text_str);
+                                printf("%s", text);
+                                fflush(stdout);
+                            }
+                        }
+                    }
+                }
+                // Check for finish reason (optional)
+                // json_t *finish_reason = json_object_get(first_candidate, "finishReason");
+                // if (json_is_string(finish_reason)) { ... }
+            }
+        } else {
+            // --- Handle potential errors or unknown formats ---
+            json_t *error_obj = json_object_get(root_resp, "error");
+            if (json_is_object(error_obj)) {
+                json_t *message_str = json_object_get(error_obj, "message");
+                if (json_is_string(message_str)) {
+                    fprintf(stderr, "\nAPI Error: %s\n", json_string_value(message_str));
+                } else {
+                    fprintf(stderr, "\nAPI Error: (Could not parse error message)\n");
+                }
             } else {
-                fprintf(stderr, "\nAPI Error: (Could not parse error message)\n");
+                 // Only print unknown format error if it wasn't the [DONE] marker
+                 if (strcmp(json_data, "[DONE]") != 0) {
+                    fprintf(stderr, "\nWarning: Received chunk in unknown format or without content/choices/candidates.\nData: %s\n", json_data);
+                 }
             }
         }
     }
@@ -212,7 +247,7 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
 
 
 int main(int argc, char *argv[]) {
-  CURL *curl_handle;
+  CURL *curl_handle = NULL; // Initialize curl_handle to NULL
   CURLcode res = CURLE_OK; // Initialize res
   struct StreamData stream_data = {NULL, 0, 0}; // Initialize stream data struct
   struct curl_slist *headers = NULL;
@@ -223,9 +258,11 @@ int main(int argc, char *argv[]) {
   json_t *root_payload = NULL;
   char *post_data_dynamic = NULL;
   const char *model_arg = "openrouter/deepseek/deepseek-chat-v3-0324:free"; // Default model argument
-  const char *api_url = NULL;
+  const char *api_url_base = NULL; // Base URL or format string
+  char final_api_url[1024]; // Buffer for the final formatted URL
   const char *api_key_env_var = NULL;
   const char *model_name_to_send = NULL;
+  enum ApiProvider current_provider; // Variable to store the detected provider
   const char *system_prompt = NULL; // Variable to store the system prompt
 
   // --- 1. Parse Command Line Arguments ---
@@ -275,18 +312,25 @@ int main(int argc, char *argv[]) {
   size_t provider_len = separator - model_arg;
   model_name_to_send = separator + 1; // Point to the character after '/'
 
-  if (strncmp(model_arg, "openai/", provider_len + 1) == 0) { // Compare "openai/"
-      api_url = OPENAI_API_URL;
+  if (strncmp(model_arg, "openai/", provider_len + 1) == 0) {
+      current_provider = PROVIDER_OPENAI;
+      api_url_base = OPENAI_API_URL;
       api_key_env_var = "OPENAI_API_KEY";
-  } else if (strncmp(model_arg, "openrouter/", provider_len + 1) == 0) { // Compare "openrouter/"
-      api_url = OPENROUTER_API_URL;
+  } else if (strncmp(model_arg, "openrouter/", provider_len + 1) == 0) {
+      current_provider = PROVIDER_OPENROUTER;
+      api_url_base = OPENROUTER_API_URL;
       api_key_env_var = "OPENROUTER_API_KEY";
-      // Add OpenRouter specific headers if needed in the future
-      // headers = curl_slist_append(headers, "HTTP-Referer: YOUR_SITE_URL"); // Example
-      // headers = curl_slist_append(headers, "X-Title: YOUR_APP_NAME"); // Example
-  } else if (strncmp(model_arg, "deepseek/", provider_len + 1) == 0) { // Compare "deepseek/"
-        api_url = DEEPSEEK_API_URL;
-        api_key_env_var = "DEEPSEEK_API_KEY";
+      // OpenRouter specific headers (optional)
+      // headers = curl_slist_append(headers, "HTTP-Referer: YOUR_SITE_URL");
+      // headers = curl_slist_append(headers, "X-Title: YOUR_APP_NAME");
+  } else if (strncmp(model_arg, "deepseek/", provider_len + 1) == 0) {
+      current_provider = PROVIDER_DEEPSEEK;
+      api_url_base = DEEPSEEK_API_URL;
+      api_key_env_var = "DEEPSEEK_API_KEY";
+  } else if (strncmp(model_arg, "google/", provider_len + 1) == 0) {
+      current_provider = PROVIDER_GOOGLE;
+      api_url_base = GOOGLE_API_URL_FORMAT; // Use the format string
+      api_key_env_var = "GEMINI_API_KEY";
   } else {
       // Allocate buffer for provider string for error message
       char *provider_str = malloc(provider_len + 1);
@@ -294,9 +338,13 @@ int main(int argc, char *argv[]) {
            fprintf(stderr, "Error: Memory allocation failed for provider string.\n");
            return 1; // Allocation error
       }
+      if (!provider_str) {
+           fprintf(stderr, "Error: Memory allocation failed for provider string.\n");
+           return 1; // Allocation error
+      }
       strncpy(provider_str, model_arg, provider_len);
       provider_str[provider_len] = '\0';
-      fprintf(stderr, "Error: Unsupported provider '%s' in model '%s'. Use 'openai', 'openrouter', or 'deepseek'.\n", provider_str, model_arg);
+      fprintf(stderr, "Error: Unsupported provider '%s' in model '%s'. Use 'openai', 'openrouter', 'deepseek', or 'google'.\n", provider_str, model_arg);
       free(provider_str);
       return 1;
   }
@@ -332,9 +380,24 @@ int main(int argc, char *argv[]) {
   }
    // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
 
-  snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
+  // --- 5. Construct Final API URL ---
+  if (current_provider == PROVIDER_GOOGLE) {
+      // Google: Format URL with model name and API key
+      int chars_written = snprintf(final_api_url, sizeof(final_api_url), api_url_base, model_name_to_send, api_key);
+      if (chars_written < 0 || (size_t)chars_written >= sizeof(final_api_url)) {
+          fprintf(stderr, "Error: Failed to format Google API URL (buffer too small or encoding error).\n");
+          goto cleanup; // Use goto for centralized cleanup
+      }
+  } else {
+      // Other providers: URL is fixed, API key goes in header
+      strncpy(final_api_url, api_url_base, sizeof(final_api_url) - 1);
+      final_api_url[sizeof(final_api_url) - 1] = '\0'; // Ensure null termination
+      // Prepare Authorization header for non-Google providers
+      snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
+  }
 
-  // --- 5. Initialize libcurl ---
+
+  // --- 6. Initialize libcurl ---
   curl_global_init(CURL_GLOBAL_ALL);
   curl_handle = curl_easy_init();
   if (!curl_handle) {
@@ -345,104 +408,208 @@ int main(int argc, char *argv[]) {
       return 1;
   }
 
-  // --- 6. Prepare JSON Payload using Jansson ---
+  // --- 7. Prepare JSON Payload using Jansson ---
   root_payload = json_object();
   if (!root_payload) {
       fprintf(stderr, "Error: Failed to create root JSON object.\n");
       goto cleanup; // Use goto for centralized cleanup
   }
 
-  // Add model (using the parsed model_name_to_send)
-  if (json_object_set_new(root_payload, "model", json_string(model_name_to_send)) != 0) {
-      fprintf(stderr, "Error: Failed to set model '%s' in JSON.\n", model_name_to_send);
-      goto cleanup;
-  }
+  if (current_provider == PROVIDER_GOOGLE) {
+      // --- Google Gemini Payload Structure ---
 
-  // Create messages array
-  json_t *messages_array = json_array();
-  if (!messages_array) {
-      fprintf(stderr, "Error: Failed to create messages JSON array.\n");
-      goto cleanup;
-  }
-  if (json_object_set_new(root_payload, "messages", messages_array) != 0) { // messages_array ref is stolen
-      fprintf(stderr, "Error: Failed to add messages array to root JSON.\n");
-      // Note: messages_array is already attached or failed, root_payload cleanup handles it
-      goto cleanup;
-  }
-
-  // Add system message if provided
-  if (system_prompt != NULL) {
-      json_t *system_message_obj = json_object();
-      if (!system_message_obj) {
-          fprintf(stderr, "Error: Failed to create system message JSON object.\n");
+      // Create "contents" array
+      json_t *contents_array = json_array();
+      if (!contents_array) {
+          fprintf(stderr, "Error: Failed to create Google contents JSON array.\n");
           goto cleanup;
       }
-      if (json_object_set_new(system_message_obj, "role", json_string("system")) != 0) {
-          fprintf(stderr, "Error: Failed to set role in system message JSON.\n");
-          json_decref(system_message_obj);
+      if (json_object_set_new(root_payload, "contents", contents_array) != 0) {
+          fprintf(stderr, "Error: Failed to add Google contents array to root JSON.\n");
           goto cleanup;
       }
-      if (json_object_set_new(system_message_obj, "content", json_string(system_prompt)) != 0) {
-          fprintf(stderr, "Error: Failed to set content in system message JSON.\n");
-          json_decref(system_message_obj);
+
+      // Create user message object within "contents"
+      json_t *user_content_obj = json_object();
+      if (!user_content_obj) {
+          fprintf(stderr, "Error: Failed to create Google user content JSON object.\n");
           goto cleanup;
       }
-      if (json_array_append_new(messages_array, system_message_obj) != 0) { // system_message_obj ref is stolen
-          fprintf(stderr, "Error: Failed to append system message to messages array.\n");
-          // system_message_obj is attached or failed, root_payload cleanup handles it
+      if (json_object_set_new(user_content_obj, "role", json_string("user")) != 0) {
+          fprintf(stderr, "Error: Failed to set role in Google user content JSON.\n");
+          json_decref(user_content_obj);
+          goto cleanup;
+      }
+
+      // Create "parts" array for user message
+      json_t *user_parts_array = json_array();
+      if (!user_parts_array) {
+          fprintf(stderr, "Error: Failed to create Google user parts JSON array.\n");
+          json_decref(user_content_obj);
+          goto cleanup;
+      }
+      if (json_object_set_new(user_content_obj, "parts", user_parts_array) != 0) {
+          fprintf(stderr, "Error: Failed to add Google user parts array to user content JSON.\n");
+          json_decref(user_content_obj); // user_parts_array is cleaned up with user_content_obj
+          goto cleanup;
+      }
+
+      // Create text part for user message
+      json_t *user_text_part = json_object();
+      if (!user_text_part) {
+          fprintf(stderr, "Error: Failed to create Google user text part JSON object.\n");
+          json_decref(user_content_obj);
+          goto cleanup;
+      }
+      if (json_object_set_new(user_text_part, "text", json_string(stdin_content)) != 0) {
+          fprintf(stderr, "Error: Failed to set text in Google user text part JSON.\n");
+          json_decref(user_text_part);
+          json_decref(user_content_obj);
+          goto cleanup;
+      }
+      if (json_array_append_new(user_parts_array, user_text_part) != 0) {
+          fprintf(stderr, "Error: Failed to append Google user text part to parts array.\n");
+          // user_text_part is cleaned up with user_content_obj
+          json_decref(user_content_obj);
+          goto cleanup;
+      }
+
+      // Append user content object to contents array
+      if (json_array_append_new(contents_array, user_content_obj) != 0) {
+          fprintf(stderr, "Error: Failed to append Google user content to contents array.\n");
+          // user_content_obj is cleaned up with root_payload
+          goto cleanup;
+      }
+
+      // Add system instruction if provided
+      if (system_prompt != NULL) {
+          json_t *system_instruction_obj = json_object();
+          if (!system_instruction_obj) {
+              fprintf(stderr, "Error: Failed to create Google system instruction JSON object.\n");
+              goto cleanup;
+          }
+
+          json_t *system_parts_array = json_array();
+          if (!system_parts_array) {
+              fprintf(stderr, "Error: Failed to create Google system parts JSON array.\n");
+              json_decref(system_instruction_obj);
+              goto cleanup;
+          }
+          if (json_object_set_new(system_instruction_obj, "parts", system_parts_array) != 0) {
+               fprintf(stderr, "Error: Failed to add Google system parts array to system instruction JSON.\n");
+               json_decref(system_instruction_obj);
+               goto cleanup;
+          }
+
+          json_t *system_text_part = json_object();
+           if (!system_text_part) {
+              fprintf(stderr, "Error: Failed to create Google system text part JSON object.\n");
+              json_decref(system_instruction_obj);
+              goto cleanup;
+          }
+          if (json_object_set_new(system_text_part, "text", json_string(system_prompt)) != 0) {
+              fprintf(stderr, "Error: Failed to set text in Google system text part JSON.\n");
+              json_decref(system_text_part);
+              json_decref(system_instruction_obj);
+              goto cleanup;
+          }
+          if (json_array_append_new(system_parts_array, system_text_part) != 0) {
+              fprintf(stderr, "Error: Failed to append Google system text part to parts array.\n");
+              json_decref(system_instruction_obj);
+              goto cleanup;
+          }
+
+          if (json_object_set_new(root_payload, "systemInstruction", system_instruction_obj) != 0) {
+              fprintf(stderr, "Error: Failed to add Google system instruction to root JSON.\n");
+              // system_instruction_obj is cleaned up with root_payload
+              goto cleanup;
+          }
+      }
+      // Note: Google's streamGenerateContent implies streaming, no explicit "stream": true needed in payload.
+
+  } else {
+      // --- OpenAI/OpenRouter/DeepSeek Payload Structure ---
+
+      // Add model
+      if (json_object_set_new(root_payload, "model", json_string(model_name_to_send)) != 0) {
+          fprintf(stderr, "Error: Failed to set model '%s' in JSON.\n", model_name_to_send);
+          goto cleanup;
+      }
+
+      // Create messages array
+      json_t *messages_array = json_array();
+      if (!messages_array) {
+          fprintf(stderr, "Error: Failed to create messages JSON array.\n");
+          goto cleanup;
+      }
+      if (json_object_set_new(root_payload, "messages", messages_array) != 0) {
+          fprintf(stderr, "Error: Failed to add messages array to root JSON.\n");
+          goto cleanup;
+      }
+
+      // Add system message if provided
+      if (system_prompt != NULL) {
+          json_t *system_message_obj = json_object();
+          if (!system_message_obj) {
+              fprintf(stderr, "Error: Failed to create system message JSON object.\n");
+              goto cleanup;
+          }
+          if (json_object_set_new(system_message_obj, "role", json_string("system")) != 0 ||
+              json_object_set_new(system_message_obj, "content", json_string(system_prompt)) != 0) {
+              fprintf(stderr, "Error: Failed to set system message properties in JSON.\n");
+              json_decref(system_message_obj);
+              goto cleanup;
+          }
+          if (json_array_append_new(messages_array, system_message_obj) != 0) {
+              fprintf(stderr, "Error: Failed to append system message to messages array.\n");
+              goto cleanup;
+          }
+      }
+
+      // Create user message object
+      json_t *user_message_obj = json_object();
+      if (!user_message_obj) {
+          fprintf(stderr, "Error: Failed to create user message JSON object.\n");
+          goto cleanup;
+      }
+      if (json_object_set_new(user_message_obj, "role", json_string("user")) != 0 ||
+          json_object_set_new(user_message_obj, "content", json_string(stdin_content)) != 0) {
+          fprintf(stderr, "Error: Failed to set user message properties in JSON.\n");
+          json_decref(user_message_obj);
+          goto cleanup;
+      }
+      if (json_array_append_new(messages_array, user_message_obj) != 0) {
+          fprintf(stderr, "Error: Failed to append user message to messages array.\n");
+          goto cleanup;
+      }
+
+      // Add stream parameter
+      if (json_object_set_new(root_payload, "stream", json_true()) != 0) {
+          fprintf(stderr, "Error: Failed to set stream parameter in JSON.\n");
           goto cleanup;
       }
   }
 
-  // Create the user message object
-  json_t *user_message_obj = json_object(); // Renamed from message_obj for clarity
-   if (!user_message_obj) {
-      fprintf(stderr, "Error: Failed to create user message JSON object.\n");
-      goto cleanup;
-  }
-  if (json_object_set_new(user_message_obj, "role", json_string("user")) != 0) {
-       fprintf(stderr, "Error: Failed to set role in user message JSON.\n");
-       json_decref(user_message_obj); // Clean up the user message object itself
-       goto cleanup;
-  }
-  // Add stdin content (jansson handles escaping)
-  if (json_object_set_new(user_message_obj, "content", json_string(stdin_content)) != 0) {
-       fprintf(stderr, "Error: Failed to set content in user message JSON.\n");
-       json_decref(user_message_obj); // Clean up the user message object itself
-       goto cleanup;
-  }
-
-  // Append user message object to messages array
-  if (json_array_append_new(messages_array, user_message_obj) != 0) { // user_message_obj ref is stolen
-      fprintf(stderr, "Error: Failed to append user message to messages array.\n");
-      // Note: user_message_obj is attached or failed, root_payload cleanup handles it
-      goto cleanup;
-  }
-
-
-  // Add stream parameter
-  if (json_object_set_new(root_payload, "stream", json_true()) != 0) {
-      fprintf(stderr, "Error: Failed to set stream parameter in JSON.\n");
-      goto cleanup;
-  }
-
-  // Dump the JSON object to a string
+   // Dump the JSON object to a string
   post_data_dynamic = json_dumps(root_payload, JSON_COMPACT);
   if (!post_data_dynamic) {
       fprintf(stderr, "Error: Failed to dump JSON to string.\n");
       goto cleanup;
   }
+  // fprintf(stderr, "Payload: %s\n", post_data_dynamic); // Debug: Print payload
 
-  // --- 7. Set libcurl options ---
-  // Set URL (using the selected api_url)
-  curl_easy_setopt(curl_handle, CURLOPT_URL, api_url);
+  // --- 8. Set libcurl options ---
+  // Set URL (using the final constructed URL)
+  curl_easy_setopt(curl_handle, CURLOPT_URL, final_api_url);
 
   // Set POST data (using the dynamically generated string)
   curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, post_data_dynamic);
 
-  // Set Headers
+  // Set Headers (conditionally add Authorization)
   headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, auth_header); // Add Authorization header
+  if (current_provider != PROVIDER_GOOGLE) {
+      headers = curl_slist_append(headers, auth_header); // Add Authorization header only if needed
+  }
   curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
   // Set callback function to handle stream response
@@ -458,16 +625,16 @@ int main(int argc, char *argv[]) {
   // Optional: Enable verbose output for debugging curl issues
   // curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
 
-  // --- 8. Perform the request ---
+  // --- 9. Perform the request ---
   res = curl_easy_perform(curl_handle);
 
-  // --- 9. Check for errors ---
+  // --- 10. Check for errors ---
   if(res != CURLE_OK) {
     // Avoid printing extra newline if stream already printed one before error
     if (stream_data.data_len == 0) printf("\n"); // Add newline only if nothing was printed
     fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
   } else {
-    // --- 10. Processing is done in the callback ---
+    // --- 11. Processing is done in the callback ---
     // Ensure a final newline after streaming is complete
     // Check if the last character printed by the callback was a newline
     // This is tricky as the callback doesn't track this easily.
@@ -477,7 +644,7 @@ int main(int argc, char *argv[]) {
     printf("\n");
   }
 
-  // --- 11. Cleanup ---
+  // --- 12. Cleanup ---
 cleanup: // Label for centralized cleanup
   if (post_data_dynamic) free(post_data_dynamic); // Free dynamically generated JSON string
   if (root_payload) json_decref(root_payload);     // Free jansson object structure
