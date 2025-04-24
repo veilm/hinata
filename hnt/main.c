@@ -7,6 +7,9 @@
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
 
+// Global flag for debug mode
+static int debug_mode = 0;
+
 // API Providers Enum
 enum ApiProvider {
     PROVIDER_OPENAI,
@@ -171,6 +174,12 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
     const char *data_prefix = "data: ";
     size_t prefix_len = strlen(data_prefix);
 
+    if (debug_mode) {
+        fprintf(stderr, "DEBUG: Raw incoming chunk (%zu bytes):\n", realsize);
+        fwrite(contents, 1, realsize, stderr);
+        fprintf(stderr, "\n");
+    }
+
     // --- 1. Append new data to buffer ---
     size_t needed_size = stream_data->data_len + realsize + 1; // +1 for null terminator
     if (stream_data->buffer == NULL || needed_size > stream_data->buffer_size) {
@@ -269,17 +278,22 @@ int main(int argc, char *argv[]) {
   int opt;
   // Define long options
   static struct option long_options[] = {
-      {"model",  required_argument, 0, 'm'},
-      {"system", required_argument, 0, 's'}, // Added system prompt option
+      {"model",        required_argument, 0, 'm'},
+      {"system",       required_argument, 0, 's'},
+      {"debug-unsafe", no_argument,       0, 'd'}, // Added debug flag (using 'd' internally)
       {0, 0, 0, 0} // End of options marker
   };
 
   // Use model_arg to store the argument value, default or from -m
   // Use system_prompt to store the system prompt argument
-  while ((opt = getopt_long(argc, argv, "m:s:", long_options, NULL)) != -1) { // Added 's:' to short options
+  // Use 'd' internally for the debug flag, no short option exposed to user
+  while ((opt = getopt_long(argc, argv, "m:s:", long_options, NULL)) != -1) {
       switch (opt) {
           case 'm':
               model_arg = optarg;
+              break;
+          case 'd': // Handle debug flag
+              debug_mode = 1;
               break;
           case 's': // Handle system prompt argument
               system_prompt = optarg;
@@ -396,6 +410,9 @@ int main(int argc, char *argv[]) {
       snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", api_key);
   }
 
+  if (debug_mode) {
+      fprintf(stderr, "DEBUG: Request URL: %s\n", final_api_url);
+  }
 
   // --- 6. Initialize libcurl ---
   curl_global_init(CURL_GLOBAL_ALL);
@@ -596,6 +613,9 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "Error: Failed to dump JSON to string.\n");
       goto cleanup;
   }
+  if (debug_mode) {
+      fprintf(stderr, "DEBUG: Request Payload: %s\n", post_data_dynamic);
+  }
   // fprintf(stderr, "Payload: %s\n", post_data_dynamic); // Debug: Print payload
 
   // --- 8. Set libcurl options ---
@@ -611,6 +631,15 @@ int main(int argc, char *argv[]) {
       headers = curl_slist_append(headers, auth_header); // Add Authorization header only if needed
   }
   curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+
+  if (debug_mode) {
+      struct curl_slist *hdr = headers;
+      fprintf(stderr, "DEBUG: Request Headers:\n");
+      while (hdr) {
+          fprintf(stderr, "  %s\n", hdr->data);
+          hdr = hdr->next;
+      }
+  }
 
   // Set callback function to handle stream response
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteStreamCallback);

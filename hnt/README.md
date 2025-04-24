@@ -48,3 +48,10 @@ echo hello | ./hnt -m google/gemini-1.5-flash-latest
 
 ### local
 no support yet. I'm an ill , homeless peasant with no GPU
+
+## debugging
+you can use the `--debug-unsafe` flag to examine the raw LLM request/response
+for your query. **This will include your API key in the output.**
+```
+echo test | ./hnt --debug-unsafe
+```
