@@ -22,7 +22,7 @@ enum ApiProvider {
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
 #define OPENROUTER_API_URL "https://openrouter.ai/api/v1/chat/completions"
 #define DEEPSEEK_API_URL "https://api.deepseek.com/chat/completions"
-#define GOOGLE_API_URL_FORMAT "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?key=%s" // Google Gemini URL Format
+#define GOOGLE_API_URL_FORMAT "https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse&key=%s" // Google Gemini URL Format
 #define READ_CHUNK_SIZE 4096 // Size for reading stdin chunks
 
 // Structure to hold unprocessed stream data
