@@ -17,16 +17,22 @@ echo hello | ./hnt
 (defaults to `openrouter/deepseek/deepseek-chat-v3-0324:free` as the model)
 
 ## supported model providers
-### [OpenAI](https://platform.openai.com/settings/organization/api-keys)
-```
-export OPENAI_API_KEY="my api key"
-echo hello | ./hnt -m openai/gpt-4o
-```
-
 ### [OpenRouter](https://openrouter.ai/settings/keys)
 ```
 export OPENROUTER_API_KEY="my api key"
 echo hello | ./hnt -m openrouter/qwen/qwen2.5-coder-7b-instruct
+```
+
+### [DeepSeek](https://platform.deepseek.com/api_keys)
+```
+export DEEPSEEK_API_KEY="my api key"
+echo hello | ./hnt -m deepseek/deepseek-chat
+```
+
+### [OpenAI](https://platform.openai.com/settings/organization/api-keys)
+```
+export OPENAI_API_KEY="my api key"
+echo hello | ./hnt -m openai/gpt-4o
 ```
 
 ### local

@@ -10,6 +10,7 @@
 // Define API endpoints
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
 #define OPENROUTER_API_URL "https://openrouter.ai/api/v1/chat/completions"
+#define DEEPSEEK_API_URL "https://api.deepseek.com/chat/completions" // Added DeepSeek URL
 #define READ_CHUNK_SIZE 4096 // Size for reading stdin chunks
 
 // Structure to hold unprocessed stream data
@@ -279,6 +280,9 @@ int main(int argc, char *argv[]) {
       // Add OpenRouter specific headers if needed in the future
       // headers = curl_slist_append(headers, "HTTP-Referer: YOUR_SITE_URL"); // Example
       // headers = curl_slist_append(headers, "X-Title: YOUR_APP_NAME"); // Example
+  } else if (strncmp(model_arg, "deepseek/", provider_len + 1) == 0) { // Compare "deepseek/"
+        api_url = DEEPSEEK_API_URL;
+        api_key_env_var = "DEEPSEEK_API_KEY";
   } else {
       // Allocate buffer for provider string for error message
       char *provider_str = malloc(provider_len + 1);
@@ -288,7 +292,7 @@ int main(int argc, char *argv[]) {
       }
       strncpy(provider_str, model_arg, provider_len);
       provider_str[provider_len] = '\0';
-      fprintf(stderr, "Error: Unsupported provider '%s' in model '%s'. Use 'openai' or 'openrouter'.\n", provider_str, model_arg);
+      fprintf(stderr, "Error: Unsupported provider '%s' in model '%s'. Use 'openai', 'openrouter', or 'deepseek'.\n", provider_str, model_arg);
       free(provider_str);
       return 1;
   }
