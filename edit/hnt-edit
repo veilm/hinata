@@ -44,7 +44,7 @@ def get_user_instruction(message_arg):
 text editor. Leave the file unchanged or empty to abort."""
 
     try:
-        with tempfile.NamedTemporaryFile(mode='w+', suffix=".txt", delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(mode='w+', prefix="hnt-edit-", suffix=".txt", delete=False) as tmpfile:
             tmpfile.write(initial_text)
             tmpfile.flush()
             tmp_path = tmpfile.name
@@ -135,6 +135,12 @@ def main():
 
     # 4. Prepare input for hnt
     hnt_input = f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
+
+    # Show user query if it came from EDITOR
+    if not args.message:
+        print("-" * 40)
+        print(instruction)
+        print("-" * 40 + "\n")
 
     # 5. Run hnt -s, stream and capture output
     hnt_cmd = ['hnt', '-s', system_message]
