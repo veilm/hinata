@@ -52,6 +52,7 @@ int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <file1> [file2] ...\n", argv[0]);
         fprintf(stderr, "Reads LLM patch format from stdin and applies changes to files.\n");
+        fprintf(stderr, "Learn more at https://github.com/michaelskyba/hinata/tree/main/edit\n");
         return EXIT_FAILURE;
     }
 

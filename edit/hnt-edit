@@ -40,7 +40,8 @@ def get_user_instruction(message_arg):
         return message_arg
 
     editor = os.environ.get('EDITOR', 'vi')
-    initial_text = "Replace this text with your instructions. Then write to this file and exit your text editor."
+    initial_text = """Replace this text with your instructions. Then write to this file and exit your
+text editor. Leave the file unchanged or empty to abort."""
 
     try:
         with tempfile.NamedTemporaryFile(mode='w+', suffix=".txt", delete=False) as tmpfile:
@@ -58,9 +59,11 @@ def get_user_instruction(message_arg):
         # Clean up the temp file
         os.unlink(tmp_path)
 
-        if not instruction or instruction == initial_text:
-            print("Error: No instruction provided.", file=sys.stderr)
-            sys.exit(1)
+        # Remove any whitespace for checking empty/unchanged
+        stripped_instruction = instruction.strip()
+        if not stripped_instruction or stripped_instruction == initial_text.strip():
+            print("Aborted: No changes were made.", file=sys.stderr)
+            sys.exit(0)
         return instruction
 
     except Exception as e:
