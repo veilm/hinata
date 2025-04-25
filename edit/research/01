@@ -7,6 +7,7 @@ source_files="test/main.py test/docs/README.md"
 # pre-determined =================================================
 system_f=./01.md
 user_f=$(mktemp -u)
+gen_f=$(mktemp -u)
 
 echo "User request:
 $inst
@@ -15,6 +16,8 @@ Source reference:" >> "$user_f"
 llm-pack $source_files >> "$user_f"
 
 system=$(cat "$system_f")
-hnt -s "$system" < "$user_f"
+hnt -s "$system" < "$user_f" | tee "$gen_f"
 
-rm "$user_f"
+hnt-apply $source_files < "$gen_f"
+
+rm "$user_f" "$gen_f"
