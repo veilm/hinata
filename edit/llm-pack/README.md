@@ -29,6 +29,7 @@ test-dir/year.txt
 # in your LLM packing tool. that's not me so we'll continue using fd but spread
 # its output as args to llm-pack, leveraging a subshell
 $ llm-pack $(fd . --type f -E "*.js" test-dir)
+`‎``
 <file_paths>
 dir1/file1.txt
 god.txt
@@ -46,8 +47,7 @@ nvda --> EL
 <year.txt>
 2027
 </year.txt>
-
-# (llm-pack would also output the code fences for you. not shown here)
+`‎``
 ```
 
 simple as. Is this really worth 15k GitHub stars?
