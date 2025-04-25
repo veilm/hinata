@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# user config =================================================
+inst="Please update the favourite number to 5. And please add a second print statement to print the number one higher than my favourite number. Then please update the README"
+source_files="test/main.py test/docs/README.md"
+
+# pre-determined =================================================
+system_f=./01.md
+user_f=$(mktemp -u)
+
+echo "User request:" >> "$user_f"
+echo "$inst" >> "$user_f"
+echo "\nSource reference:" >> "$user_f"
+llm-pack $source_files >> "$user_f"
+
+system=$(cat "$system_f")
+hnt -s "$system" < "$user_f"
