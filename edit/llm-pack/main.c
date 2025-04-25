@@ -1,0 +1,263 @@
+// Define required for realpath on some systems
+#define _XOPEN_SOURCE 500
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <libgen.h> // For dirname
+#include <limits.h> // For PATH_MAX
+#include <errno.h>  // For errno
+#include <unistd.h> // For realpath (sometimes in stdlib.h)
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096 // Define PATH_MAX if not available
+#endif
+
+// Function to find the longest common directory prefix of two absolute paths
+static void find_common_prefix(char *prefix, const char *path2_dir) {
+    int len1 = strlen(prefix);
+    int len2 = strlen(path2_dir);
+    int min_len = len1 < len2 ? len1 : len2;
+    int diff_idx = -1;
+
+    for (int i = 0; i < min_len; ++i) {
+        if (prefix[i] != path2_dir[i]) {
+            diff_idx = i;
+            break;
+        }
+    }
+
+    // If one path is exactly the prefix of the other (e.g., /a/b and /a/b/c)
+    // the common directory is the shorter one.
+    if (diff_idx == -1 && len1 != len2) {
+         if (len1 < len2 && (len1 == 1 || prefix[len1] == '/')) { // prefix is shorter dir
+             // prefix is already correct (e.g. "/" or "/a/b")
+         } else if (len2 < len1 && (len2 == 1 || path2_dir[len2] == '/')) { // path2_dir is shorter
+             prefix[len2] = '\0';
+         } else {
+             // This case might mean paths like /a/b and /a/bc - difference after common part
+             diff_idx = min_len;
+         }
+    }
+
+
+    if (diff_idx != -1) {
+        // Backtrack to the last '/' before or at the difference point
+        int last_slash = -1;
+        // Start search from diff_idx - 1
+        for (int i = diff_idx - 1; i >= 0; --i) {
+            if (prefix[i] == '/') {
+                last_slash = i;
+                break;
+            }
+        }
+
+        if (last_slash == 0) { // Common root is "/"
+            prefix[1] = '\0';
+        } else if (last_slash > 0) {
+            prefix[last_slash] = '\0'; // Truncate
+        } else {
+             // Should only happen if paths don't start with '/' or have no common root '/'
+             // Since we use realpath, paths should be absolute.
+             // If paths are "/foo" and "/bar", common root is "/"
+             if (prefix[0] == '/') {
+                 prefix[1] = '\0';
+             } else {
+                 // This indicates an unexpected state, maybe non-POSIX paths?
+                 fprintf(stderr, "Error: Cannot determine common root directory.\n");
+                 exit(EXIT_FAILURE);
+             }
+        }
+    }
+    // Ensure common_root doesn't end with '/' unless it's just "/"
+    int root_len = strlen(prefix);
+    if (root_len > 1 && prefix[root_len - 1] == '/') {
+        prefix[root_len - 1] = '\0';
+    }
+}
+
+
+// Function to print the content of a file to stdout
+static void print_file_content(const char *path) {
+    FILE *file = fopen(path, "rb"); // Use binary mode for arbitrary file content
+    if (!file) {
+        fprintf(stderr, "Warning: Could not open file %s: %s. Skipping content.\n", path, strerror(errno));
+        printf("<!-- Error reading file %s: %s -->", path, strerror(errno));
+        return;
+    }
+
+    char buffer[4096];
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        // Write exactly the bytes read to stdout
+        if (fwrite(buffer, 1, bytes_read, stdout) != bytes_read) {
+             fprintf(stderr, "Warning: Error writing content of file %s to output: %s.\n", path, strerror(errno));
+             printf("<!-- Error writing file %s -->", path);
+             fclose(file);
+             return; // Stop processing this file on write error
+        }
+    }
+
+    if (ferror(file)) {
+        fprintf(stderr, "Warning: Error reading file %s: %s.\n", path, strerror(errno));
+        printf("<!-- Error during reading file %s -->", path);
+    }
+
+    fclose(file);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <file1> [file2] ...\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    int num_files = argc - 1;
+    char **abs_paths = malloc(num_files * sizeof(char *));
+    char **rel_paths = malloc(num_files * sizeof(char *));
+    char common_root[PATH_MAX] = "";
+    char path_copy[PATH_MAX]; // For dirname manipulation
+    char dir_buffer[PATH_MAX]; // For dirname result
+
+    if (!abs_paths || !rel_paths) {
+        perror("Failed to allocate memory for paths");
+        free(abs_paths);
+        free(rel_paths);
+        return EXIT_FAILURE;
+    }
+
+    // Allocate space for each path string
+    for (int i = 0; i < num_files; ++i) {
+        abs_paths[i] = malloc(PATH_MAX);
+        rel_paths[i] = malloc(PATH_MAX);
+        if (!abs_paths[i] || !rel_paths[i]) {
+            perror("Failed to allocate memory for path string");
+            // Free already allocated memory before exiting
+            for (int j = 0; j <= i; ++j) {
+                free(abs_paths[j]);
+                free(rel_paths[j]);
+            }
+            free(abs_paths);
+            free(rel_paths);
+            return EXIT_FAILURE;
+        }
+    }
+
+    // 1. Get absolute paths and find common root directory
+    for (int i = 0; i < num_files; ++i) {
+        if (realpath(argv[i + 1], abs_paths[i]) == NULL) {
+            fprintf(stderr, "Error resolving path %s: %s\n", argv[i + 1], strerror(errno));
+            // Cleanup allocated memory
+             for (int j = 0; j < num_files; ++j) {
+                free(abs_paths[j]);
+                free(rel_paths[j]);
+            }
+            free(abs_paths);
+            free(rel_paths);
+            return EXIT_FAILURE;
+        }
+
+        // Use dirname on a copy to find the directory
+        strncpy(path_copy, abs_paths[i], PATH_MAX - 1);
+        path_copy[PATH_MAX - 1] = '\0'; // Ensure null termination
+        char *current_dir = dirname(path_copy);
+        strncpy(dir_buffer, current_dir, PATH_MAX -1); // Copy result of dirname
+        dir_buffer[PATH_MAX - 1] = '\0';
+
+
+        if (i == 0) {
+            // Initialize common_root with the directory of the first file
+            strncpy(common_root, dir_buffer, PATH_MAX -1);
+            common_root[PATH_MAX - 1] = '\0';
+             // Ensure common_root doesn't end with '/' unless it's just "/"
+            int root_len = strlen(common_root);
+            if (root_len > 1 && common_root[root_len - 1] == '/') {
+                common_root[root_len - 1] = '\0';
+            }
+        } else {
+            // Update common_root by finding common prefix with the current file's directory
+            find_common_prefix(common_root, dir_buffer);
+        }
+    }
+
+    // 2. Calculate relative paths
+    size_t root_len = strlen(common_root); // Use size_t for length
+    // Offset is 1 character after the root path string, unless root is "/"
+    // Cast root_len to int for arithmetic if needed, or ensure offset calculation is safe
+    int offset = (int)root_len + (strcmp(common_root, "/") == 0 ? 0 : 1);
+
+    for (int i = 0; i < num_files; ++i) {
+        if (strlen(abs_paths[i]) > root_len) { // Now comparing size_t with size_t
+             // Check if abs_path actually starts with common_root + '/'
+             // Use root_len (size_t) directly with strncmp
+             if (strncmp(abs_paths[i], common_root, root_len) == 0 &&
+                 (root_len == 1 || abs_paths[i][root_len] == '/')) // root_len is size_t here
+             {
+                 // Ensure offset is not out of bounds, though realpath should guarantee structure
+                 // if common_root logic is correct.
+                 strcpy(rel_paths[i], abs_paths[i] + offset);
+             } else {
+                 // This might happen if common root calculation is imperfect or paths are strange
+                 // As a fallback, maybe just use the filename? Or the full absolute path?
+                 // Let's use the absolute path minus the leading '/' for now if root is '/'
+                 // Or just the filename as a simpler fallback.
+                 fprintf(stderr, "Warning: Path %s does not seem to be under calculated root %s. Using filename only.\n", abs_paths[i], common_root);
+                 strncpy(path_copy, abs_paths[i], PATH_MAX - 1);
+                 path_copy[PATH_MAX - 1] = '\0';
+                 strcpy(rel_paths[i], basename(path_copy));
+             }
+
+        } else if (strcmp(abs_paths[i], common_root) == 0) {
+             // Path is the common root itself? Unlikely for files. Use basename.
+             fprintf(stderr, "Warning: Path %s is the same as the calculated root %s. Using filename only.\n", abs_paths[i], common_root);
+             strncpy(path_copy, abs_paths[i], PATH_MAX - 1);
+             path_copy[PATH_MAX - 1] = '\0';
+             strcpy(rel_paths[i], basename(path_copy));
+        } else {
+             // Absolute path is shorter than root? Should not happen.
+             fprintf(stderr, "Error: Absolute path %s is shorter than calculated root %s.\n", abs_paths[i], common_root);
+             // Cleanup allocated memory
+             for (int j = 0; j < num_files; ++j) {
+                free(abs_paths[j]);
+                free(rel_paths[j]);
+            }
+            free(abs_paths);
+            free(rel_paths);
+            return EXIT_FAILURE;
+        }
+    }
+
+
+    // 3. Print XML structure
+    printf("<file_paths>\n");
+    for (int i = 0; i < num_files; ++i) {
+        printf("%s\n", rel_paths[i]);
+    }
+    printf("</file_paths>\n");
+
+    // Separator between blocks
+    printf("\n"); // Only one newline before the first content block per example
+
+    for (int i = 0; i < num_files; ++i) {
+        printf("\n<%s>\n", rel_paths[i]); // Separator + Opening tag
+        print_file_content(argv[i + 1]); // Use original path to open file
+        printf("\n</%s>", rel_paths[i]); // Closing tag (no leading newline needed)
+
+        // Separator between file content blocks
+        if (i < num_files - 1) {
+            printf("\n"); // Example shows one newline between </tag> and <next_tag>
+        }
+    }
+    printf("\n"); // Final newline at the end of output
+
+
+    // 4. Free memory
+    for (int i = 0; i < num_files; ++i) {
+        free(abs_paths[i]);
+        free(rel_paths[i]);
+    }
+    free(abs_paths);
+    free(rel_paths);
+
+    return EXIT_SUCCESS;
+}

@@ -1,0 +1,9 @@
+#!/bin/sh -e
+
+# gcc -lcurl -ljansson main.c -o ./hnt
+gcc \
+	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
+	-lcurl -ljansson \
+	main.c -o ./llm-pack
+
+sudo cp ./llm-pack /usr/local/bin/
