@@ -20,6 +20,7 @@ static void find_common_prefix(char *prefix, const char *path2_dir) {
     int min_len = len1 < len2 ? len1 : len2;
     int diff_idx = -1;
 
+    // Find the first differing character index
     for (int i = 0; i < min_len; ++i) {
         if (prefix[i] != path2_dir[i]) {
             diff_idx = i;
@@ -27,24 +28,36 @@ static void find_common_prefix(char *prefix, const char *path2_dir) {
         }
     }
 
-    // If one path is exactly the prefix of the other (e.g., /a/b and /a/b/c)
-    // the common directory is the shorter one.
+    // Handle cases where one path is a prefix of the other directory path
     if (diff_idx == -1 && len1 != len2) {
-         if (len1 < len2 && (len1 == 1 || prefix[len1] == '/')) { // prefix is shorter dir
-             // prefix is already correct (e.g. "/" or "/a/b")
-         } else if (len2 < len1 && (len2 == 1 || path2_dir[len2] == '/')) { // path2_dir is shorter
-             prefix[len2] = '\0';
-         } else {
-             // This case might mean paths like /a/b and /a/bc - difference after common part
-             diff_idx = min_len;
-         }
+        if (len1 < len2) { // prefix is shorter, e.g., /a/b vs /a/b/c
+            // Check character in path2_dir immediately after the common part
+            if (path2_dir[len1] != '/') {
+                // Not a directory boundary, e.g. /a/b vs /a/bc
+                // Difference starts after the common part; backtrack needed
+                diff_idx = len1;
+            }
+            // If it is '/', prefix is already the correct common directory path.
+            // No change needed to prefix.
+        } else { // len2 < len1, path2_dir is shorter, e.g., /a/b/c vs /a/b
+            // Check character in prefix immediately after the common part
+            if (prefix[len2] != '/') {
+                // Not a directory boundary, e.g. /a/bc vs /a/b
+                // Difference starts after the common part; backtrack needed
+                diff_idx = len2;
+            } else {
+                // path2_dir is the common directory path. Truncate prefix.
+                // e.g. prefix=/a/b/c, path2_dir=/a/b -> prefix becomes /a/b
+                prefix[len2] = '\0';
+            }
+        }
     }
 
-
+    // If a difference was found (either initially or because paths diverged after common string)
     if (diff_idx != -1) {
-        // Backtrack to the last '/' before or at the difference point
+        // Backtrack in prefix to the last '/' before or at the difference point
         int last_slash = -1;
-        // Start search from diff_idx - 1
+        // Start search from diff_idx - 1, as diff_idx is the first differing char index
         for (int i = diff_idx - 1; i >= 0; --i) {
             if (prefix[i] == '/') {
                 last_slash = i;
@@ -52,28 +65,29 @@ static void find_common_prefix(char *prefix, const char *path2_dir) {
             }
         }
 
+        // Determine the common root based on the last slash found
         if (last_slash == 0) { // Common root is "/"
             prefix[1] = '\0';
         } else if (last_slash > 0) {
-            prefix[last_slash] = '\0'; // Truncate
+            // Truncate prefix at the last slash found before the difference
+            prefix[last_slash] = '\0';
         } else {
-             // Should only happen if paths don't start with '/' or have no common root '/'
-             // Since we use realpath, paths should be absolute.
-             // If paths are "/foo" and "/bar", common root is "/"
+             // No '/' found before the difference.
+             // This implies paths like "foo" and "bar" (shouldn't happen with realpath)
+             // or "/foo" and "/bar". The common root should be "/".
              if (prefix[0] == '/') {
-                 prefix[1] = '\0';
+                 prefix[1] = '\0'; // Set to "/"
              } else {
-                 // This indicates an unexpected state, maybe non-POSIX paths?
-                 fprintf(stderr, "Error: Cannot determine common root directory.\n");
-                 exit(EXIT_FAILURE);
+                 // Should not happen with absolute paths from realpath
+                 fprintf(stderr, "Error: Cannot determine common root directory for non-absolute-like paths.\n");
+                 // Set prefix to empty string or handle error appropriately?
+                 prefix[0] = '\0'; // Indicate no common root found?
+                 // Consider exiting or returning an error code if this state is critical
+                 // exit(EXIT_FAILURE);
              }
         }
     }
-    // Ensure common_root doesn't end with '/' unless it's just "/"
-    int root_len = strlen(prefix);
-    if (root_len > 1 && prefix[root_len - 1] == '/') {
-        prefix[root_len - 1] = '\0';
-    }
+    // No need for final '/' cleanup, the logic above should handle it.
 }
 
 
