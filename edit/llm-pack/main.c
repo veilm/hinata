@@ -254,8 +254,8 @@ int main(int argc, char *argv[]) {
     }
 
 
-    // 3. Print XML structure
-    printf("<file_paths>\n");
+    // 3. Print XML structure with code fences
+    printf("```\n<file_paths>\n");
     for (int i = 0; i < num_files; ++i) {
         printf("%s\n", rel_paths[i]);
     }
@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
             printf("\n\n");
         }
     }
-    printf("\n"); // Final newline at the end of output
+    printf("\n```\n"); // Final code fence at the end of output
 
 
     // 4. Free memory
