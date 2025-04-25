@@ -52,6 +52,9 @@ nvda --> EL
 
 simple as. Is this really worth 15k GitHub stars?
 
+# non-default options
+- `-n`: [n]o code fences
+
 # philosophy
 - an initial file_paths list tells the LLM what to expect
 - XML tags are unambiguous and generally unlikely to clash with content within the file

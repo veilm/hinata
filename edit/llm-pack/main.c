@@ -7,7 +7,8 @@
 #include <libgen.h> // For dirname
 #include <limits.h> // For PATH_MAX
 #include <errno.h>  // For errno
-#include <unistd.h> // For realpath (sometimes in stdlib.h)
+#include <unistd.h> // For getopt, realpath (sometimes in stdlib.h)
+#include <stdbool.h> // For bool type
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096 // Define PATH_MAX if not available
@@ -133,12 +134,29 @@ static int print_file_content(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <file1> [file2] ...\n", argv[0]);
+    bool print_code_fences = true;
+    int opt;
+
+    // Parse command-line options
+    while ((opt = getopt(argc, argv, "n")) != -1) {
+        switch (opt) {
+            case 'n':
+                print_code_fences = false;
+                break;
+            default: /* '?' */
+                fprintf(stderr, "Usage: %s [-n] <file1> [file2] ...\n", argv[0]);
+                return EXIT_FAILURE;
+        }
+    }
+
+    // Check if any file arguments were provided after options
+    if (optind >= argc) {
+        fprintf(stderr, "Usage: %s [-n] <file1> [file2] ...\n", argv[0]);
+        fprintf(stderr, "Error: No input files specified.\n");
         return EXIT_FAILURE;
     }
 
-    int num_files = argc - 1;
+    int num_files = argc - optind; // Number of files is remaining arguments
     char **abs_paths = malloc(num_files * sizeof(char *));
     char **rel_paths = malloc(num_files * sizeof(char *));
     char common_root[PATH_MAX] = "";
@@ -171,8 +189,9 @@ int main(int argc, char *argv[]) {
 
     // 1. Get absolute paths and find common root directory
     for (int i = 0; i < num_files; ++i) {
-        if (realpath(argv[i + 1], abs_paths[i]) == NULL) {
-            fprintf(stderr, "Error resolving path %s: %s\n", argv[i + 1], strerror(errno));
+        // Use optind to get the correct file argument index
+        if (realpath(argv[optind + i], abs_paths[i]) == NULL) {
+            fprintf(stderr, "Error resolving path %s: %s\n", argv[optind + i], strerror(errno));
             // Cleanup allocated memory
              for (int j = 0; j < num_files; ++j) {
                 free(abs_paths[j]);
@@ -253,9 +272,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-
-    // 3. Print XML structure with code fences
-    printf("```\n<file_paths>\n");
+    // 3. Print XML structure (conditionally with code fences)
+    if (print_code_fences) {
+        printf("```\n");
+    }
+    printf("<file_paths>\n");
     for (int i = 0; i < num_files; ++i) {
         printf("%s\n", rel_paths[i]);
     }
@@ -269,11 +290,12 @@ int main(int argc, char *argv[]) {
         printf("<%s>\n", rel_paths[i]);
 
         // Print file content and check if it ends with a newline
-        int ends_with_newline = print_file_content(argv[i + 1]); // Use original path
+        // Use optind to get the correct file argument index
+        int ends_with_newline = print_file_content(argv[optind + i]); // Use original path
 
         // Print closing tag, adding a newline only if the content didn't end with one
         // Also check file is not empty before potentially adding a newline
-        FILE *check_file = fopen(argv[i + 1], "rb");
+        FILE *check_file = fopen(argv[optind + i], "rb");
         long file_size = -1;
         if (check_file) {
             fseek(check_file, 0, SEEK_END);
@@ -292,8 +314,11 @@ int main(int argc, char *argv[]) {
             printf("\n\n");
         }
     }
-    printf("\n```\n"); // Final code fence at the end of output
+    printf("\n"); // Final newline before potential fence
 
+    if (print_code_fences) {
+        printf("```\n"); // Final code fence at the end of output
+    }
 
     // 4. Free memory
     for (int i = 0; i < num_files; ++i) {
