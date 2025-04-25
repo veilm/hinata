@@ -364,9 +364,9 @@ int main(int argc, char *argv[]) {
       current_provider = PROVIDER_OPENROUTER;
       api_url_base = OPENROUTER_API_URL;
       api_key_env_var = "OPENROUTER_API_KEY";
-      // OpenRouter specific headers (optional)
-      // headers = curl_slist_append(headers, "HTTP-Referer: YOUR_SITE_URL");
-      // headers = curl_slist_append(headers, "X-Title: YOUR_APP_NAME");
+      // OpenRouter specific headers
+      headers = curl_slist_append(headers, "HTTP-Referer: https://github.com/michaelskyba/hinata/");
+      headers = curl_slist_append(headers, "X-Title: hinata");
   } else if (strncmp(model_arg, "deepseek/", provider_len + 1) == 0) {
       current_provider = PROVIDER_DEEPSEEK;
       api_url_base = DEEPSEEK_API_URL;

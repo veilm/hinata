@@ -1,0 +1,26 @@
+diff --git a/aider/models.py b/aider/models.py
+index dd0abd45..20706ffb 100644
+--- a/aider/models.py
++++ b/aider/models.py
+@@ -7,6 +7,7 @@ import os
+ import platform
+ import sys
+ import time
++from datetime import datetime
+ from dataclasses import dataclass, fields
+ from pathlib import Path
+ from typing import Optional, Union
+@@ -809,6 +810,13 @@ class Model(ModelSettings):
+         kwargs["messages"] = messages
+ 
+         res = litellm.completion(**kwargs)
++
++        # Log the completion call details
++        with open("/tmp/aider_log.txt", "a") as logfile:
++            logfile.write(f"Time: {datetime.now().isoformat()}\n")
++            logfile.write(f"Kwargs: {json.dumps(kwargs, indent=2, default=str)}\n")
++            logfile.write(f"Response: {json.dumps(res, indent=2, default=str)}\n\n")
++
+         return hash_object, res
+ 
+     def simple_send_with_retries(self, messages):
