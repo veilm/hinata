@@ -1,0 +1,7 @@
+#!/bin/sh -e
+
+gcc \
+	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
+	hnt-apply.c -o ./hnt-apply
+
+sudo cp ./hnt-apply /usr/local/bin/
