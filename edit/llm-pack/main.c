@@ -135,23 +135,30 @@ static int print_file_content(const char *path) {
 
 int main(int argc, char *argv[]) {
     bool print_code_fences = true;
+    bool print_common_root_only = false; // Flag for -p option
     int opt;
 
     // Parse command-line options
-    while ((opt = getopt(argc, argv, "n")) != -1) {
+    // Add 'p' to the list of valid options
+    while ((opt = getopt(argc, argv, "np")) != -1) {
         switch (opt) {
             case 'n':
                 print_code_fences = false;
                 break;
+            case 'p':
+                print_common_root_only = true;
+                break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-n] <file1> [file2] ...\n", argv[0]);
+                // Update usage message
+                fprintf(stderr, "Usage: %s [-n] [-p] <file1> [file2] ...\n", argv[0]);
                 return EXIT_FAILURE;
         }
     }
 
     // Check if any file arguments were provided after options
     if (optind >= argc) {
-        fprintf(stderr, "Usage: %s [-n] <file1> [file2] ...\n", argv[0]);
+        // Update usage message
+        fprintf(stderr, "Usage: %s [-n] [-p] <file1> [file2] ...\n", argv[0]);
         fprintf(stderr, "Error: No input files specified.\n");
         return EXIT_FAILURE;
     }
@@ -223,6 +230,19 @@ int main(int argc, char *argv[]) {
             // Update common_root by finding common prefix with the current file's directory
             find_common_prefix(common_root, dir_buffer);
         }
+    }
+
+    // If -p was specified, print the common root and exit
+    if (print_common_root_only) {
+        printf("%s\n", common_root);
+        // Free allocated memory before exiting
+        for (int i = 0; i < num_files; ++i) {
+            free(abs_paths[i]);
+            free(rel_paths[i]);
+        }
+        free(abs_paths);
+        free(rel_paths);
+        return EXIT_SUCCESS;
     }
 
     // 2. Calculate relative paths
