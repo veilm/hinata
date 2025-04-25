@@ -5,7 +5,7 @@ inst="Please update the favourite number to 5. And please add a second print sta
 source_files="test/main.py test/docs/README.md"
 
 # pre-determined =================================================
-system_f=./01.md
+system_f=../prompts/01-targetreplace.md
 user_f=$(mktemp -u)
 gen_f=$(mktemp -u)
 
