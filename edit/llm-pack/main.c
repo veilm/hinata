@@ -92,32 +92,44 @@ static void find_common_prefix(char *prefix, const char *path2_dir) {
 
 
 // Function to print the content of a file to stdout
-static void print_file_content(const char *path) {
+// Returns 1 if the content ended with a newline, 0 otherwise.
+static int print_file_content(const char *path) {
     FILE *file = fopen(path, "rb"); // Use binary mode for arbitrary file content
     if (!file) {
         fprintf(stderr, "Warning: Could not open file %s: %s. Skipping content.\n", path, strerror(errno));
         printf("<!-- Error reading file %s: %s -->", path, strerror(errno));
-        return;
+        return 0; // Indicate error / unknown ending
     }
 
     char buffer[4096];
     size_t bytes_read;
+    int last_byte = -1; // Track the last byte successfully written
+
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
         // Write exactly the bytes read to stdout
         if (fwrite(buffer, 1, bytes_read, stdout) != bytes_read) {
              fprintf(stderr, "Warning: Error writing content of file %s to output: %s.\n", path, strerror(errno));
              printf("<!-- Error writing file %s -->", path);
              fclose(file);
-             return; // Stop processing this file on write error
+             return 0; // Indicate error / unknown ending on write error
+        }
+        // Update last_byte with the last byte actually written in this chunk
+        if (bytes_read > 0) {
+             last_byte = buffer[bytes_read - 1];
         }
     }
 
     if (ferror(file)) {
         fprintf(stderr, "Warning: Error reading file %s: %s.\n", path, strerror(errno));
         printf("<!-- Error during reading file %s -->", path);
+        // Continue to return based on last byte written, even if there was a read error after some writes
     }
 
     fclose(file);
+
+    // Return true (1) if the last byte written was a newline, false (0) otherwise
+    // Handles empty files correctly (last_byte remains -1, returns 0)
+    return (last_byte == '\n');
 }
 
 int main(int argc, char *argv[]) {
@@ -249,17 +261,35 @@ int main(int argc, char *argv[]) {
     }
     printf("</file_paths>\n");
 
-    // Separator between blocks
-    printf("\n"); // Only one newline before the first content block per example
+    // Separator before the first file content block
+    printf("\n");
 
     for (int i = 0; i < num_files; ++i) {
-        printf("\n<%s>\n", rel_paths[i]); // Separator + Opening tag
-        print_file_content(argv[i + 1]); // Use original path to open file
-        printf("\n</%s>", rel_paths[i]); // Closing tag (no leading newline needed)
+        // Print opening tag for the current file
+        printf("<%s>\n", rel_paths[i]);
 
-        // Separator between file content blocks
+        // Print file content and check if it ends with a newline
+        int ends_with_newline = print_file_content(argv[i + 1]); // Use original path
+
+        // Print closing tag, adding a newline only if the content didn't end with one
+        // Also check file is not empty before potentially adding a newline
+        FILE *check_file = fopen(argv[i + 1], "rb");
+        long file_size = -1;
+        if (check_file) {
+            fseek(check_file, 0, SEEK_END);
+            file_size = ftell(check_file);
+            fclose(check_file);
+        }
+
+        if (!ends_with_newline && file_size > 0) {
+             printf("\n");
+        }
+        printf("</%s>", rel_paths[i]);
+
+        // Print separator for the *next* file block, if there is one
+        // This creates one blank line between </file1> and <file2>
         if (i < num_files - 1) {
-            printf("\n"); // Example shows one newline between </tag> and <next_tag>
+            printf("\n\n");
         }
     }
     printf("\n"); // Final newline at the end of output
