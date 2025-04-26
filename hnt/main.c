@@ -7,6 +7,8 @@
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
 
+#define VERSION_STRING "hnt(llm) 0.01"
+
 // Global flag for debug mode
 static int debug_mode = 0;
 
@@ -284,6 +286,7 @@ int main(int argc, char *argv[]) {
   static struct option long_options[] = {
       {"model",        required_argument, 0, 'm'},
       {"system",       required_argument, 0, 's'},
+      {"version",      no_argument,       0, 'V'}, // Version flag
       {"debug-unsafe", no_argument,       0, 'd'}, // Added debug flag (using 'd' internally)
       {0, 0, 0, 0} // End of options marker
   };
@@ -291,8 +294,12 @@ int main(int argc, char *argv[]) {
   // Use model_arg to store the argument value, default or from -m
   // Use system_prompt to store the system prompt argument
   // Use 'd' internally for the debug flag, no short option exposed to user
-  while ((opt = getopt_long(argc, argv, "m:s:", long_options, NULL)) != -1) {
+  // Use 'V' for version flag
+  while ((opt = getopt_long(argc, argv, "m:s:V", long_options, NULL)) != -1) {
       switch (opt) {
+          case 'V': // Handle version flag
+              printf("%s\n", VERSION_STRING);
+              exit(0); // Exit successfully after printing version
           case 'm':
               model_arg = optarg;
               break;
@@ -305,7 +312,7 @@ int main(int argc, char *argv[]) {
           case '?':
               // getopt_long already printed an error message.
               fprintf(stderr, "Model format: provider/model_name (e.g., openai/gpt-4o, openrouter/some/model)\n");
-              fprintf(stderr, "Usage: %s [-m provider/model_name] [-s system_prompt]\n", argv[0]);
+              fprintf(stderr, "Usage: %s [-m provider/model_name] [-s system_prompt] [--version|-V]\n", argv[0]);
               return 1;
           default:
               abort(); // Should not happen
@@ -316,7 +323,7 @@ int main(int argc, char *argv[]) {
   if (optind < argc) {
       fprintf(stderr, "Error: Unexpected non-option arguments found.\n");
       fprintf(stderr, "Model format: provider/model_name (e.g., openai/gpt-4o, openrouter/some/model)\n");
-      fprintf(stderr, "Usage: %s [-m provider/model_name] [-s system_prompt]\n", argv[0]);
+      fprintf(stderr, "Usage: %s [-m provider/model_name] [-s system_prompt] [--version|-V]\n", argv[0]);
       return 1;
   }
 
