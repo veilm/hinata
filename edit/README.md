@@ -15,12 +15,15 @@ almost certainly already have them installed
 ## usage
 Basic usage:
 ```
-$ hnt-edit <file1> [file2 ...] [-m|--message user_message]
+$ hnt-edit <file1> [file2 ...] [-m|--message user_message] [--model provider/model]
 ```
 
 The LLM will read your user message and use your given files for reference,
 potentially making edits to them using
 [an aider-like TARGET/REPLACE format](https://github.com/michaelskyba/hinata/blob/main/edit/prompts/01-targetreplace.md).
+
+See [the hnt README](https://github.com/michaelskyba/hinata/tree/main/hnt) for
+the list of supported model providers.
 
 If you don't include a message in the CLI args, `$EDITOR` will be used for
 input.

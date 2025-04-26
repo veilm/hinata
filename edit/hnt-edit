@@ -120,6 +120,10 @@ def main():
         nargs='+',
         help="One or more source files to edit."
     )
+    parser.add_argument(
+        '--model',
+        help="Model to use (passed through to hnt)"
+    )
     args = parser.parse_args()
 
     # 1. Get system message
@@ -144,6 +148,8 @@ def main():
 
     # 5. Run hnt -s, stream and capture output
     hnt_cmd = ['hnt', '-s', system_message]
+    if args.model:
+        hnt_cmd.extend(['--model', args.model])
     hnt_output_capture = io.StringIO()
 
     try:
