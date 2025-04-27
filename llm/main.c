@@ -1,3 +1,4 @@
+#define _GNU_SOURCE // Needed for strdup
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,18 +8,18 @@
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
 
-#define VERSION_STRING "hnt-llm 0.01"
+#define VERSION_STRING "hnt-llm 0.02"
+
+// Structure for a single message in the conversation
+typedef struct Message {
+    char *role;
+    char *content;
+    struct Message *next;
+} Message;
+
 
 // Global flag for debug mode
 static int debug_mode = 0;
-
-// API Providers Enum
-enum ApiProvider {
-    PROVIDER_OPENAI,
-    PROVIDER_OPENROUTER,
-    PROVIDER_DEEPSEEK,
-    PROVIDER_GOOGLE
-};
 
 // Define API endpoints
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
@@ -261,6 +262,77 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
     return realsize; // Tell curl we processed all received bytes
 }
 
+// Function to create a new message node
+static Message* create_message(const char *role, const char *content) {
+    Message *new_message = malloc(sizeof(Message));
+    if (!new_message) {
+        perror("Failed to allocate memory for message");
+        return NULL;
+    }
+
+    // Use strdup to allocate and copy the content
+    new_message->content = strdup(content);
+    if (!new_message->content) {
+        perror("Failed to duplicate message content");
+        free(new_message);
+        return NULL;
+    }
+
+    // Role can be a static string, no need to copy unless modifying
+    new_message->role = (char *)role; // Cast away const, assuming role is static literal
+    new_message->next = NULL;
+
+    return new_message;
+}
+
+// Function to free the message linked list
+static void free_message_list(Message *head) {
+    Message *current = head;
+    Message *next;
+    while (current != NULL) {
+        next = current->next;
+        free(current->content); // Free the duplicated content
+        // Do not free role if it points to static literals
+        free(current);
+        current = next;
+    }
+}
+
+// Function to convert message linked list to Jansson JSON array
+static json_t* messages_to_json_array(Message *head) {
+    json_t *messages_array = json_array();
+    if (!messages_array) {
+        fprintf(stderr, "Error: Failed to create messages JSON array.\n");
+        return NULL;
+    }
+
+    Message *current = head;
+    while (current != NULL) {
+        json_t *message_obj = json_object();
+        if (!message_obj) {
+            fprintf(stderr, "Error: Failed to create message JSON object.\n");
+            json_decref(messages_array); // Clean up partially created array
+            return NULL;
+        }
+        if (json_object_set_new(message_obj, "role", json_string(current->role)) != 0 ||
+            json_object_set_new(message_obj, "content", json_string(current->content)) != 0) {
+            fprintf(stderr, "Error: Failed to set message properties in JSON.\n");
+            json_decref(message_obj);
+            json_decref(messages_array);
+            return NULL;
+        }
+        if (json_array_append_new(messages_array, message_obj) != 0) {
+            fprintf(stderr, "Error: Failed to append message to messages array.\n");
+            // message_obj is now owned by messages_array or freed if append failed
+            json_decref(messages_array);
+            return NULL;
+        }
+        current = current->next;
+    }
+
+    return messages_array;
+}
+
 
 int main(int argc, char *argv[]) {
   CURL *curl_handle = NULL; // Initialize curl_handle to NULL
@@ -271,7 +343,10 @@ int main(int argc, char *argv[]) {
   char auth_header[1024]; // Buffer for the Authorization header
   char *stdin_content = NULL;
   size_t stdin_len = 0;
+  Message *message_list_head = NULL;
+  Message *message_list_tail = NULL;
   json_t *root_payload = NULL;
+  json_t *messages_array = NULL; // To hold the generated JSON array
   char *post_data_dynamic = NULL;
   const char *model_arg = "openrouter/deepseek/deepseek-chat-v3-0324:free"; // Default model argument
   const char *api_url_base = NULL; // Base URL or format string
@@ -381,7 +456,7 @@ int main(int argc, char *argv[]) {
   api_key = getenv(api_key_env_var); // Use the selected environment variable
   if (api_key == NULL) {
     fprintf(stderr, "Error: %s environment variable not set.\n", api_key_env_var);
-    free(stdin_content);
+    // No stdin_content to free yet
     free(stream_data.buffer);
     return 1; // Keep exit code 1 for consistency
   }
@@ -403,7 +478,35 @@ int main(int argc, char *argv[]) {
   }
    // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
 
-  // --- 5. Construct Final API URL ---
+
+  // --- 5. Build Message Linked List ---
+  Message *new_msg = NULL;
+
+  // Add system message if provided
+  if (system_prompt != NULL) {
+      new_msg = create_message("system", system_prompt);
+      if (!new_msg) {
+          goto cleanup; // Error handled in create_message
+      }
+      message_list_head = new_msg;
+      message_list_tail = new_msg;
+  }
+
+  // Add user message (always present)
+  new_msg = create_message("user", stdin_content);
+   if (!new_msg) {
+      goto cleanup; // Error handled in create_message
+  }
+  if (message_list_tail) {
+      message_list_tail->next = new_msg;
+      message_list_tail = new_msg;
+  } else {
+      message_list_head = new_msg;
+      message_list_tail = new_msg;
+  }
+
+
+  // --- 5b. Construct Final API URL ---
   // URL is now fixed for all providers, API key always goes in header
   strncpy(final_api_url, api_url_base, sizeof(final_api_url) - 1);
   final_api_url[sizeof(final_api_url) - 1] = '\0'; // Ensure null termination
@@ -438,52 +541,25 @@ int main(int argc, char *argv[]) {
       goto cleanup;
   }
 
-  // Create messages array
-  json_t *messages_array = json_array();
+  // Convert message linked list to JSON array
+  messages_array = messages_to_json_array(message_list_head);
   if (!messages_array) {
-      fprintf(stderr, "Error: Failed to create messages JSON array.\n");
+      // Error message printed inside messages_to_json_array
       goto cleanup;
   }
+
+  // Add the generated messages array to the root payload
   if (json_object_set_new(root_payload, "messages", messages_array) != 0) {
       fprintf(stderr, "Error: Failed to add messages array to root JSON.\n");
+      // messages_array will be decref'd by the cleanup of root_payload if it was successfully added
+      // If set_new fails, we might need to decref messages_array explicitly?
+      // Jansson docs say set_new consumes reference on success. If it fails,
+      // the reference count isn't changed, so we still need to decref it.
+      json_decref(messages_array); // Decref here if set_new failed
+      messages_array = NULL; // Avoid double free in cleanup
       goto cleanup;
   }
-
-  // Add system message if provided
-  if (system_prompt != NULL) {
-      json_t *system_message_obj = json_object();
-      if (!system_message_obj) {
-          fprintf(stderr, "Error: Failed to create system message JSON object.\n");
-          goto cleanup;
-      }
-      if (json_object_set_new(system_message_obj, "role", json_string("system")) != 0 ||
-          json_object_set_new(system_message_obj, "content", json_string(system_prompt)) != 0) {
-          fprintf(stderr, "Error: Failed to set system message properties in JSON.\n");
-          json_decref(system_message_obj);
-          goto cleanup;
-      }
-      if (json_array_append_new(messages_array, system_message_obj) != 0) {
-          fprintf(stderr, "Error: Failed to append system message to messages array.\n");
-          goto cleanup;
-      }
-  }
-
-  // Create user message object
-  json_t *user_message_obj = json_object();
-  if (!user_message_obj) {
-      fprintf(stderr, "Error: Failed to create user message JSON object.\n");
-      goto cleanup;
-  }
-  if (json_object_set_new(user_message_obj, "role", json_string("user")) != 0 ||
-      json_object_set_new(user_message_obj, "content", json_string(stdin_content)) != 0) {
-      fprintf(stderr, "Error: Failed to set user message properties in JSON.\n");
-      json_decref(user_message_obj);
-      goto cleanup;
-  }
-  if (json_array_append_new(messages_array, user_message_obj) != 0) {
-      fprintf(stderr, "Error: Failed to append user message to messages array.\n");
-      goto cleanup;
-  }
+  // messages_array is now owned by root_payload
 
   // Add stream parameter
   if (json_object_set_new(root_payload, "stream", json_true()) != 0) {
@@ -558,14 +634,17 @@ int main(int argc, char *argv[]) {
   // --- 12. Cleanup ---
 cleanup: // Label for centralized cleanup
   if (post_data_dynamic) free(post_data_dynamic); // Free dynamically generated JSON string
-  if (root_payload) json_decref(root_payload);     // Free jansson object structure
+  if (root_payload) json_decref(root_payload);     // Free jansson object structure (this will decref messages_array if it was added)
+  else if (messages_array) json_decref(messages_array); // Decref messages_array if root_payload creation failed or set_new failed
+  free_message_list(message_list_head);           // Free the message linked list
   if (stdin_content) free(stdin_content);         // Free stdin buffer
   if (curl_handle) curl_easy_cleanup(curl_handle); // Cleanup curl handle
   free(stream_data.buffer);                       // Free stream buffer
   curl_slist_free_all(headers);                   // Free headers list
   curl_global_cleanup();                          // Global curl cleanup
 
-  // Return 0 on success (request sent without curl error), 1 otherwise.
+  // Return 0 on success (request sent without curl error and payload generated), 1 otherwise.
   // Note: API-level errors might have been printed during the stream or during setup.
-  return (res == CURLE_OK && post_data_dynamic != NULL) ? 0 : 1; // Also check if JSON creation succeeded
+  // Check post_data_dynamic as a proxy for successful JSON creation and dumping.
+  return (res == CURLE_OK && post_data_dynamic != NULL && message_list_head != NULL) ? 0 : 1;
 }
