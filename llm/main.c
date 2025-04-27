@@ -7,7 +7,7 @@
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
 
-#define VERSION_STRING "hnt(llm) 0.01"
+#define VERSION_STRING "hnt-llm 0.01"
 
 // Global flag for debug mode
 static int debug_mode = 0;

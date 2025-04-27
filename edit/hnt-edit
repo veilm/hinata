@@ -8,6 +8,7 @@ import tempfile
 import io
 from pathlib import Path
 
+
 def run_command(cmd, stdin_content=None, capture_output=True, check=True, text=True):
     """Helper function to run a command."""
     try:
@@ -23,14 +24,20 @@ def run_command(cmd, stdin_content=None, capture_output=True, check=True, text=T
         print(f"Error: Command not found: {cmd[0]}", file=sys.stderr)
         sys.exit(1)
     except subprocess.CalledProcessError as e:
-        print(f"Error: Command '{' '.join(cmd)}' failed with exit code {e.returncode}", file=sys.stderr)
+        print(
+            f"Error: Command '{' '.join(cmd)}' failed with exit code {e.returncode}",
+            file=sys.stderr,
+        )
         if e.stderr:
             print(f"Stderr:\n{e.stderr}", file=sys.stderr)
         if e.stdout:
-             print(f"Stdout:\n{e.stdout}", file=sys.stderr)
+            print(f"Stdout:\n{e.stdout}", file=sys.stderr)
         sys.exit(e.returncode)
     except Exception as e:
-        print(f"An unexpected error occurred while running {' '.join(cmd)}: {e}", file=sys.stderr)
+        print(
+            f"An unexpected error occurred while running {' '.join(cmd)}: {e}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -39,12 +46,14 @@ def get_user_instruction(message_arg):
     if message_arg:
         return message_arg
 
-    editor = os.environ.get('EDITOR', 'vi')
+    editor = os.environ.get("EDITOR", "vi")
     initial_text = """Replace this text with your instructions. Then write to this file and exit your
 text editor. Leave the file unchanged or empty to abort."""
 
     try:
-        with tempfile.NamedTemporaryFile(mode='w+', prefix="hnt-edit-", suffix=".txt", delete=False) as tmpfile:
+        with tempfile.NamedTemporaryFile(
+            mode="w+", prefix="hnt-edit-", suffix=".txt", delete=False
+        ) as tmpfile:
             tmpfile.write(initial_text)
             tmpfile.flush()
             tmp_path = tmpfile.name
@@ -53,7 +62,7 @@ text editor. Leave the file unchanged or empty to abort."""
         run_command([editor, tmp_path], capture_output=False, check=True)
 
         # Read the content after editor exits
-        with open(tmp_path, 'r') as f:
+        with open(tmp_path, "r") as f:
             instruction = f.read().strip()
 
         # Clean up the temp file
@@ -68,8 +77,8 @@ text editor. Leave the file unchanged or empty to abort."""
 
     except Exception as e:
         print(f"Error getting user instruction via editor: {e}", file=sys.stderr)
-        if 'tmp_path' in locals() and os.path.exists(tmp_path):
-             os.unlink(tmp_path) # Ensure cleanup on error
+        if "tmp_path" in locals() and os.path.exists(tmp_path):
+            os.unlink(tmp_path)  # Ensure cleanup on error
         sys.exit(1)
 
 
@@ -78,52 +87,54 @@ def get_system_message(system_arg):
     if system_arg:
         # Check if it's a file path that exists
         if os.path.exists(system_arg):
-             try:
-                 with open(system_arg, 'r') as f:
-                     return f.read()
-             except IOError as e:
-                 print(f"Error reading system file {system_arg}: {e}", file=sys.stderr)
-                 sys.exit(1)
+            try:
+                with open(system_arg, "r") as f:
+                    return f.read()
+            except IOError as e:
+                print(f"Error reading system file {system_arg}: {e}", file=sys.stderr)
+                sys.exit(1)
         else:
-             # Assume it's the literal system message string
-             return system_arg
+            # Assume it's the literal system message string
+            return system_arg
     else:
         # Default path
-        config_home = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
-        default_path = Path(config_home) / 'hinata' / 'prompts' / '01-targetreplace.md'
+        config_home = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+        default_path = Path(config_home) / "hinata" / "prompts" / "01-targetreplace.md"
         try:
-            with open(default_path, 'r') as f:
+            with open(default_path, "r") as f:
                 return f.read()
         except FileNotFoundError:
-            print(f"Error: Default system file not found: {default_path}", file=sys.stderr)
+            print(
+                f"Error: Default system file not found: {default_path}", file=sys.stderr
+            )
             sys.exit(1)
         except IOError as e:
-            print(f"Error reading default system file {default_path}: {e}", file=sys.stderr)
+            print(
+                f"Error reading default system file {default_path}: {e}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Edit files using hinata LLM agent.",
-        epilog="Example: hnt-edit -m 'Refactor foo function' src/main.py src/utils.py"
+        epilog="Example: hnt-edit -m 'Refactor foo function' src/main.py src/utils.py",
     )
     parser.add_argument(
-        '-s', '--system',
-        help="System message string or path to system message file. Defaults to $XDG_CONFIG_HOME/hinata/prompts/01-targetreplace.md"
+        "-s",
+        "--system",
+        help="System message string or path to system message file. Defaults to $XDG_CONFIG_HOME/hinata/prompts/01-targetreplace.md",
     )
     parser.add_argument(
-        '-m', '--message',
-        help="User instruction message. If not provided, $EDITOR will be opened."
+        "-m",
+        "--message",
+        help="User instruction message. If not provided, $EDITOR will be opened.",
     )
     parser.add_argument(
-        'source_files',
-        nargs='+',
-        help="One or more source files to edit."
+        "source_files", nargs="+", help="One or more source files to edit."
     )
-    parser.add_argument(
-        '--model',
-        help="Model to use (passed through to hnt)"
-    )
+    parser.add_argument("--model", help="Model to use (passed through to hnt-llm)")
     args = parser.parse_args()
 
     # 1. Get system message
@@ -133,12 +144,14 @@ def main():
     instruction = get_user_instruction(args.message)
 
     # 3. Run llm-pack
-    llm_pack_cmd = ['llm-pack'] + args.source_files
-    llm_pack_result = run_command(llm_pack_cmd, capture_output=True, check=True, text=True)
+    llm_pack_cmd = ["llm-pack"] + args.source_files
+    llm_pack_result = run_command(
+        llm_pack_cmd, capture_output=True, check=True, text=True
+    )
     packed_sources = llm_pack_result.stdout
 
-    # 4. Prepare input for hnt
-    hnt_input = f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
+    # 4. Prepare input for hnt-llm
+    hnt_llm_input = f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
 
     # Show user query if it came from EDITOR
     if not args.message:
@@ -146,62 +159,74 @@ def main():
         print(instruction)
         print("-" * 40 + "\n")
 
-    # 5. Run hnt -s, stream and capture output
-    hnt_cmd = ['hnt', '-s', system_message]
+    # 5. Run hnt-llm -s, stream and capture output
+    hnt_llm_cmd = ["hnt-llm", "-s", system_message]
     if args.model:
-        hnt_cmd.extend(['--model', args.model])
-    hnt_output_capture = io.StringIO()
+        hnt_llm_cmd.extend(["--model", args.model])
+    hnt_llm_output_capture = io.StringIO()
 
     try:
         # Use Popen for streaming stdout
-        hnt_process = subprocess.Popen(
-            hnt_cmd,
+        hnt_llm_process = subprocess.Popen(
+            hnt_llm_cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, # Capture stderr too
+            stderr=subprocess.PIPE,  # Capture stderr too
             text=True,
-            bufsize=1 # Line buffered
+            bufsize=1,  # Line buffered
         )
 
-        # Write input to hnt's stdin
-        hnt_process.stdin.write(hnt_input)
-        hnt_process.stdin.close() # Signal EOF
+        # Write input to hnt-llm's stdin
+        hnt_llm_process.stdin.write(hnt_llm_input)
+        hnt_llm_process.stdin.close()  # Signal EOF
 
         # Stream stdout and capture
         while True:
-            line = hnt_process.stdout.readline()
+            line = hnt_llm_process.stdout.readline()
             if not line:
                 break
-            sys.stdout.write(line) # Stream to terminal
+            sys.stdout.write(line)  # Stream to terminal
             sys.stdout.flush()
-            hnt_output_capture.write(line) # Capture
+            hnt_llm_output_capture.write(line)  # Capture
 
         # Wait for process to finish and check return code
-        hnt_process.wait()
-        if hnt_process.returncode != 0:
-             # Read any remaining stderr
-             stderr_output = hnt_process.stderr.read()
-             print(f"\nError: 'hnt -s' failed with exit code {hnt_process.returncode}", file=sys.stderr)
-             if stderr_output:
-                 print(f"Stderr:\n{stderr_output}", file=sys.stderr)
-             sys.exit(hnt_process.returncode)
+        hnt_llm_process.wait()
+        if hnt_llm_process.returncode != 0:
+            # Read any remaining stderr
+            stderr_output = hnt_llm_process.stderr.read()
+            print(
+                f"\nError: 'hnt-llm -s' failed with exit code {hnt_llm_process.returncode}",
+                file=sys.stderr,
+            )
+            if stderr_output:
+                print(f"Stderr:\n{stderr_output}", file=sys.stderr)
+            sys.exit(hnt_llm_process.returncode)
 
     except FileNotFoundError:
-        print(f"Error: Command not found: {hnt_cmd[0]}", file=sys.stderr)
+        print(f"Error: Command not found: {hnt_llm_cmd[0]}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"An unexpected error occurred while running {' '.join(hnt_cmd)}: {e}", file=sys.stderr)
+        print(
+            f"An unexpected error occurred while running {' '.join(hnt_llm_cmd)}: {e}",
+            file=sys.stderr,
+        )
         # Ensure process is terminated if it's still running
-        if 'hnt_process' in locals() and hnt_process.poll() is None:
-            hnt_process.terminate()
+        if "hnt_llm_process" in locals() and hnt_llm_process.poll() is None:
+            hnt_llm_process.terminate()
         sys.exit(1)
 
-    final_hnt_output = hnt_output_capture.getvalue()
-    hnt_output_capture.close()
+    final_hnt_llm_output = hnt_llm_output_capture.getvalue()
+    hnt_llm_output_capture.close()
 
     # 6. Run hnt-apply
-    hnt_apply_cmd = ['hnt-apply'] + args.source_files
-    run_command(hnt_apply_cmd, stdin_content=final_hnt_output, capture_output=False, check=True, text=True)
+    hnt_apply_cmd = ["hnt-apply"] + args.source_files
+    run_command(
+        hnt_apply_cmd,
+        stdin_content=final_hnt_llm_output,
+        capture_output=False,
+        check=True,
+        text=True,
+    )
 
     print("\nhnt-edit: Edits applied successfully.")
 

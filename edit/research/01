@@ -16,7 +16,7 @@ Source reference:" >> "$user_f"
 llm-pack $source_files >> "$user_f"
 
 system=$(cat "$system_f")
-hnt -s "$system" < "$user_f" | tee "$gen_f"
+hnt-llm -s "$system" < "$user_f" | tee "$gen_f"
 
 hnt-apply $source_files < "$gen_f"
 

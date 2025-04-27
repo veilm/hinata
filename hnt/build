@@ -1,9 +1,0 @@
-#!/bin/sh -e
-
-# gcc -lcurl -ljansson main.c -o ./hnt
-gcc \
-	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
-	-lcurl -ljansson \
-	main.c -o ./hnt
-
-sudo cp ./hnt /usr/local/bin/
