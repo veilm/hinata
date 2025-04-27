@@ -7,6 +7,8 @@
 
 # vague philosophy. here we go again...
 
+[informal roadmap](https://github.com/michaelskyba/hinata/issues/1)
+
 **Goal: unequivocally mog yapcine's setup**
 
 - Have something like Aider / Claude code / codex but ~~impossible to use~~
