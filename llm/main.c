@@ -7,8 +7,9 @@
 #include <errno.h>     // For errno
 #include <unistd.h>    // For isatty() and STDIN_FILENO
 #include <getopt.h>    // For getopt_long
+#include <ctype.h>     // For isspace
 
-#define VERSION_STRING "hnt-llm 0.02"
+#define VERSION_STRING "hnt-llm 0.03"
 
 // Structure for a single message in the conversation
 typedef struct Message {
@@ -17,6 +18,12 @@ typedef struct Message {
     struct Message *next;
 } Message;
 
+
+// Structure to store the start and end positions of XML tags to remove
+typedef struct XmlRange {
+    char *start;
+    char *end; // Points to the character *after* the closing '>'
+} XmlRange;
 
 // Global flag for debug mode
 static int debug_mode = 0;
@@ -333,6 +340,44 @@ static json_t* messages_to_json_array(Message *head) {
     return messages_array;
 }
 
+// Helper function to trim leading and trailing whitespace from a string (modifies the string in place)
+static char *trim_whitespace(char *str) {
+    if (!str) return NULL; // Handle NULL input defensively
+    char *end;
+
+    // Trim leading space
+    while(isspace((unsigned char)*str)) str++;
+
+    if(*str == 0)  // All spaces?
+        return str;
+
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while(end > str && isspace((unsigned char)*end)) end--;
+
+    // Write new null terminator character
+    end[1] = '\0';
+
+    return str;
+}
+
+// Function to add a message to the list (centralized for convenience)
+static int add_message_to_list(Message **head, Message **tail, const char *role, const char *content) {
+    Message *new_msg = create_message(role, content);
+    if (!new_msg) {
+        // create_message prints error
+        return 0; // Error
+    }
+    if (*tail) {
+        (*tail)->next = new_msg;
+        *tail = new_msg;
+    } else {
+        *head = new_msg;
+        *tail = new_msg;
+    }
+    return 1; // Success
+}
+
 
 int main(int argc, char *argv[]) {
   CURL *curl_handle = NULL; // Initialize curl_handle to NULL
@@ -343,11 +388,16 @@ int main(int argc, char *argv[]) {
   char auth_header[1024]; // Buffer for the Authorization header
   char *stdin_content = NULL;
   size_t stdin_len = 0;
-  Message *message_list_head = NULL;
-  Message *message_list_tail = NULL;
+  Message *message_list_head = NULL; // Head of the conversation message list
+  Message *message_list_tail = NULL; // Tail for efficient appending
   json_t *root_payload = NULL;
   json_t *messages_array = NULL; // To hold the generated JSON array
   char *post_data_dynamic = NULL;
+  // Variables for XML parsing and remaining content
+  XmlRange *ranges_to_remove = NULL;
+  size_t ranges_count = 0;
+  size_t ranges_capacity = 0;
+  char *remaining_content_buffer = NULL;
   const char *model_arg = "openrouter/deepseek/deepseek-chat-v3-0324:free"; // Default model argument
   const char *api_url_base = NULL; // Base URL or format string
   char final_api_url[1024]; // Buffer for the final formatted URL
@@ -479,34 +529,180 @@ int main(int argc, char *argv[]) {
    // fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm bytes read
 
 
-  // --- 5. Build Message Linked List ---
-  Message *new_msg = NULL;
+  // --- 5. Parse Stdin for XML Tags and Build Message List ---
+  message_list_head = NULL; // Initialize message list
+  message_list_tail = NULL;
 
-  // Add system message if provided
+  // 5.1 Add system message from CLI argument first, if provided
   if (system_prompt != NULL) {
-      new_msg = create_message("system", system_prompt);
-      if (!new_msg) {
-          goto cleanup; // Error handled in create_message
+      if (!add_message_to_list(&message_list_head, &message_list_tail, "system", system_prompt)) {
+          // Error already printed by create_message/add_message_to_list
+          goto cleanup;
       }
-      message_list_head = new_msg;
-      message_list_tail = new_msg;
+      if (debug_mode) fprintf(stderr, "DEBUG: Added CLI system prompt.\n");
   }
 
-  // Add user message (always present)
-  new_msg = create_message("user", stdin_content);
-   if (!new_msg) {
-      goto cleanup; // Error handled in create_message
+  // 5.2 Parse XML tags from stdin_content
+  char *current_pos = stdin_content;
+  remaining_content_buffer = NULL; // Initialize here
+  ranges_to_remove = NULL; // Initialize here
+  ranges_count = 0;
+  ranges_capacity = 0;
+
+  const char *tags[][2] = { // {tag_name, role}
+      {"hnt-system", "system"},
+      {"hnt-user", "user"},
+      {"hnt-assistant", "assistant"}
+  };
+  const int num_tags = sizeof(tags) / sizeof(tags[0]);
+
+  if (debug_mode) fprintf(stderr, "DEBUG: Starting XML tag parsing in stdin.\n");
+
+  while (current_pos != NULL && *current_pos != '\0') {
+      char *next_tag_start = NULL;
+      int found_tag_index = -1;
+      char open_tag[50]; // Buffer for "<tag_name>"
+
+      // Find the earliest occurrence of any known opening tag
+      for (int i = 0; i < num_tags; ++i) {
+          snprintf(open_tag, sizeof(open_tag), "<%s>", tags[i][0]);
+          char *found_pos = strstr(current_pos, open_tag);
+          if (found_pos) {
+              if (next_tag_start == NULL || found_pos < next_tag_start) {
+                  next_tag_start = found_pos;
+                  found_tag_index = i;
+              }
+          }
+      }
+
+      if (next_tag_start == NULL) {
+          // No more known tags found in the rest of the string
+          if (debug_mode) fprintf(stderr, "DEBUG: No more known XML tags found.\n");
+          break;
+      }
+
+      // Found a tag, now find its corresponding closing tag
+      const char *tag_name = tags[found_tag_index][0];
+      const char *role = tags[found_tag_index][1];
+      size_t open_tag_len = strlen(tag_name) + 2; // Length of "<tag_name>"
+      char close_tag[50]; // Buffer for "</tag_name>"
+      snprintf(close_tag, sizeof(close_tag), "</%s>", tag_name);
+      size_t close_tag_len = strlen(close_tag);
+
+      char *content_start = next_tag_start + open_tag_len;
+      char *close_tag_start = strstr(content_start, close_tag);
+
+      if (!close_tag_start) {
+          fprintf(stderr, "Error: Malformed XML in stdin. Found opening tag '<%s>' starting at offset %ld but no closing tag '</%s>'.\n",
+                  tag_name, (long)(next_tag_start - stdin_content), tag_name);
+          // ranges_to_remove and remaining_content_buffer cleanup handled in 'cleanup' block
+          goto cleanup; // Malformed XML
+      }
+
+      // Extract content
+      size_t content_len = close_tag_start - content_start;
+      char *content = malloc(content_len + 1);
+      if (!content) {
+          perror("Failed to allocate memory for tag content");
+          goto cleanup;
+      }
+      memcpy(content, content_start, content_len);
+      content[content_len] = '\0';
+      if (debug_mode) fprintf(stderr, "DEBUG: Found tag: <%s>, Role: %s, Content: \"%.*s...\"\n", tag_name, role, content_len > 20 ? 20 : (int)content_len, content);
+
+
+      // Add message to list
+      if (!add_message_to_list(&message_list_head, &message_list_tail, role, content)) {
+          free(content);
+          goto cleanup; // Error
+      }
+      free(content); // Content is duplicated by create_message
+
+      // Record the range to remove (from start of opening tag to end of closing tag)
+      if (ranges_count >= ranges_capacity) {
+          ranges_capacity = (ranges_capacity == 0) ? 8 : ranges_capacity * 2;
+          XmlRange *new_ranges = realloc(ranges_to_remove, ranges_capacity * sizeof(XmlRange));
+          if (!new_ranges) {
+              perror("Failed to reallocate memory for XML ranges");
+              // Old ranges_to_remove is still valid if realloc fails, cleanup will handle it
+              goto cleanup;
+          }
+          ranges_to_remove = new_ranges;
+      }
+      ranges_to_remove[ranges_count].start = next_tag_start;
+      ranges_to_remove[ranges_count].end = close_tag_start + close_tag_len; // Point *after* closing tag '>'
+      ranges_count++;
+
+
+      // Move current_pos past the processed tag
+      current_pos = ranges_to_remove[ranges_count - 1].end;
   }
-  if (message_list_tail) {
-      message_list_tail->next = new_msg;
-      message_list_tail = new_msg;
+  if (debug_mode) fprintf(stderr, "DEBUG: Finished XML tag parsing. Found %zu tags.\n", ranges_count);
+
+
+  // 5.3 Construct remaining content string (excluding removed ranges)
+  remaining_content_buffer = malloc(stdin_len + 1); // Max possible size
+   if (!remaining_content_buffer) {
+      perror("Failed to allocate memory for remaining content buffer");
+      goto cleanup;
+  }
+
+  char *write_ptr = remaining_content_buffer;
+  char *read_ptr = stdin_content;
+  size_t current_range_idx = 0;
+
+  while (read_ptr != NULL && *read_ptr != '\0') {
+      // Check if the current read_ptr is within a range to be removed
+      int in_remove_range = 0;
+      if (current_range_idx < ranges_count && read_ptr >= ranges_to_remove[current_range_idx].start) {
+           // We assume ranges are sorted by start pointer as they are found sequentially
+          if (read_ptr < ranges_to_remove[current_range_idx].end) {
+              in_remove_range = 1;
+              // Advance read_ptr to the end of this range
+              read_ptr = ranges_to_remove[current_range_idx].end;
+              current_range_idx++; // Move to check the next range
+          } else {
+              // This case means read_ptr is exactly at or after the end of the current range.
+              // This can happen if ranges are adjacent or if read_ptr somehow landed here.
+              // We should just advance the range index and re-evaluate the *same* read_ptr
+              // against the *next* range in the next loop iteration.
+               current_range_idx++;
+               continue; // Re-evaluate same read_ptr against next range (if any)
+          }
+      }
+
+      if (!in_remove_range && read_ptr != NULL && *read_ptr != '\0') { // Check *read_ptr again after potential jump
+          *write_ptr++ = *read_ptr++;
+      } else if (read_ptr == NULL || *read_ptr == '\0') {
+           // Reached end after jumping past a range or original string ended
+           break;
+      }
+      // If in_remove_range is true, read_ptr was already advanced, loop continues
+  }
+  *write_ptr = '\0'; // Null-terminate the remaining content
+  size_t remaining_content_len = write_ptr - remaining_content_buffer;
+  free(ranges_to_remove); // No longer needed
+  ranges_to_remove = NULL; // Avoid double free in cleanup
+
+  if (debug_mode) fprintf(stderr, "DEBUG: Remaining content after XML removal (%zu bytes): \"%s\"\n", remaining_content_len, remaining_content_buffer);
+
+  // 5.4 Add remaining content as a final user message if not empty/whitespace
+  char *trimmed_remaining = trim_whitespace(remaining_content_buffer); // Modifies buffer in-place
+  if (trimmed_remaining && *trimmed_remaining != '\0') {
+      if (debug_mode) fprintf(stderr, "DEBUG: Adding trimmed remaining content as final user message: \"%s\"\n", trimmed_remaining);
+      if (!add_message_to_list(&message_list_head, &message_list_tail, "user", trimmed_remaining)) {
+          // free(remaining_content_buffer); // Don't free here, cleanup handles it
+          goto cleanup; // Error
+      }
   } else {
-      message_list_head = new_msg;
-      message_list_tail = new_msg;
+      if (debug_mode) fprintf(stderr, "DEBUG: Trimmed remaining content is empty, not adding final user message.\n");
   }
+  // Free the buffer used for remaining content construction AFTER it's potentially added to the list (it's duplicated by create_message)
+  free(remaining_content_buffer);
+  remaining_content_buffer = NULL; // Avoid double free in cleanup
 
 
-  // --- 5b. Construct Final API URL ---
+  // --- 5b. Construct Final API URL --- (This section remains the same)
   // URL is now fixed for all providers, API key always goes in header
   strncpy(final_api_url, api_url_base, sizeof(final_api_url) - 1);
   final_api_url[sizeof(final_api_url) - 1] = '\0'; // Ensure null termination
@@ -641,10 +837,24 @@ cleanup: // Label for centralized cleanup
   if (curl_handle) curl_easy_cleanup(curl_handle); // Cleanup curl handle
   free(stream_data.buffer);                       // Free stream buffer
   curl_slist_free_all(headers);                   // Free headers list
+  // --- Add cleanup for new allocations ---
+  if (ranges_to_remove) free(ranges_to_remove); // In case of early exit via goto
+  if (remaining_content_buffer) free(remaining_content_buffer); // In case of early exit via goto
+  // --- End added cleanup ---
   curl_global_cleanup();                          // Global curl cleanup
 
-  // Return 0 on success (request sent without curl error and payload generated), 1 otherwise.
-  // Note: API-level errors might have been printed during the stream or during setup.
   // Check post_data_dynamic as a proxy for successful JSON creation and dumping.
-  return (res == CURLE_OK && post_data_dynamic != NULL && message_list_head != NULL) ? 0 : 1;
+  // Also check if message_list_head is not NULL, as it's possible to have no messages
+  // if stdin is empty and no -s is provided. Sending empty messages is likely an error.
+  int success = (res == CURLE_OK && post_data_dynamic != NULL && message_list_head != NULL);
+   if (!success && message_list_head == NULL && res == CURLE_OK) {
+       // Specific case: No messages provided (empty stdin, no -s, or only whitespace after XML removal)
+       // We don't treat this as an error needing a message if the curl call itself didn't fail
+       // Allow sending empty messages list if API supports it? For now, treat as non-success.
+       // Let's print an info message but still return 1, as nothing was sent.
+       if (debug_mode) fprintf(stderr, "DEBUG: No messages were generated to send (empty stdin/result?).\n");
+       // No need to print another error if curl failed, it was already printed.
+   }
+
+  return success ? 0 : 1;
 }
