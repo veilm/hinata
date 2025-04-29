@@ -9,6 +9,10 @@
 #include <limits.h>     // For PATH_MAX
 #include <errno.h>      // For errno, perror
 #include <stdint.h>     // For SIZE_MAX
+#include <getopt.h>     // For getopt_long
+
+// --- Global Flags ---
+int verbose_mode = 0; // Global flag for verbose output
 
 // --- Forward Declarations ---
 
@@ -49,15 +53,47 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
 // --- Main Function ---
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <file1> [file2] ...\n", argv[0]);
-        fprintf(stderr, "Reads LLM patch format from stdin and applies changes to files.\n");
+    // --- 0. Parse Command Line Options ---
+    struct option long_options[] = {
+        {"verbose", no_argument, &verbose_mode, 1},
+        {0, 0, 0, 0} // End of options
+    };
+    int opt;
+    int option_index = 0;
+
+    // Keep parsing options until there are no more
+    // `getopt_long` permutes argv so that non-option arguments are at the end
+    while ((opt = getopt_long(argc, argv, "v", long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'v':
+                verbose_mode = 1;
+                break;
+            case 0: // For long options that set a flag
+                // If the option sets a flag variable, getopt_long returns 0
+                // 'verbose_mode' is already set by the option definition
+                break;
+            case '?': // Unknown option or missing argument
+                // Error message is printed by getopt_long
+                fprintf(stderr, "Usage: %s [-v|--verbose] <file1> [file2] ...\n", argv[0]);
+                 fprintf(stderr, "Learn more at https://github.com/michaelskyba/hinata/tree/main/edit\n");
+                return EXIT_FAILURE;
+            default:
+                // Should not happen
+                abort();
+        }
+    }
+
+    // Check if any file paths were provided after options
+    if (optind >= argc) {
+        fprintf(stderr, "Usage: %s [-v|--verbose] <file1> [file2] ...\n", argv[0]);
+        fprintf(stderr, "Error: No input files specified.\n");
         fprintf(stderr, "Learn more at https://github.com/michaelskyba/hinata/tree/main/edit\n");
         return EXIT_FAILURE;
     }
 
     // --- 1. Resolve absolute paths for input files ---
-    int num_input_paths = argc - 1;
+    // File paths start at argv[optind]
+    int num_input_paths = argc - optind;
     char **abs_input_paths = malloc(num_input_paths * sizeof(char*));
     if (!abs_input_paths) {
         perror("Failed to allocate memory for absolute paths");
@@ -66,10 +102,11 @@ int main(int argc, char *argv[]) {
 
     size_t cmd_len = strlen("llm-pack -p") + 1; // Base command + space
     for (int i = 0; i < num_input_paths; ++i) {
-        abs_input_paths[i] = realpath(argv[i + 1], NULL);
+        // Access files using argv[optind + i]
+        abs_input_paths[i] = realpath(argv[optind + i], NULL);
         if (!abs_input_paths[i]) {
             perror("Error resolving input path");
-            fprintf(stderr, "Failed path: %s\n", argv[i + 1]);
+            fprintf(stderr, "Failed path: %s\n", argv[optind + i]);
             // Clean up already resolved paths before exiting
             for (int j = 0; j < i; ++j) {
                 free(abs_input_paths[j]);
@@ -97,25 +134,39 @@ int main(int argc, char *argv[]) {
         strcat(llm_pack_cmd, abs_input_paths[i]);
     }
 
-    printf("Running: %s\n", llm_pack_cmd);
+    if (verbose_mode) {
+        printf("hnt-edit: Running: %s\n", llm_pack_cmd);
+    }
     char *shared_root = run_command(llm_pack_cmd);
-    printf("Shared root: %s\n", shared_root);
+    if (verbose_mode) {
+        printf("hnt-edit: Shared root: %s\n", shared_root);
+    }
     free(llm_pack_cmd); // Command string no longer needed
 
     // --- 3. Read LLM generation from stdin ---
-    printf("Reading LLM generation from stdin...\n");
+    if (verbose_mode) {
+        printf("hnt-edit: Reading LLM generation from stdin...\n");
+    }
     char *stdin_content = read_stream_to_string(stdin);
     if (!stdin_content) {
-        fprintf(stderr, "Error reading from stdin.\n");
+        // Error reading already prints message in read_stream_to_string or run_command
+        // Just ensure cleanup and exit
         // Clean up
         free(shared_root);
         for (int i = 0; i < num_input_paths; ++i) free(abs_input_paths[i]);
         free(abs_input_paths);
+        // The frees below were duplicates causing use-after-free errors.
+        // The resources are already freed correctly by lines 150-152.
         return EXIT_FAILURE;
     }
-    printf("Finished reading stdin.\n");
+    if (verbose_mode) {
+        printf("hnt-edit: Finished reading stdin.\n");
+    }
 
     // --- 4. Parse stdin and process blocks ---
+    if (!verbose_mode && *stdin_content != '\0') { // Only print if there might be blocks
+         printf("hnt-edit: Processing blocks...\n");
+    }
     char* current_pos = stdin_content;
     const char* block_marker = "```";
     const char* target_marker = "<<<<<<< TARGET";
@@ -203,16 +254,24 @@ int main(int argc, char *argv[]) {
         }
 
         block_count++;
-        printf("\n--- Processing Block %d: %s ---\n", block_count, relative_path);
-        // printf("Target:\n---\n%s\n---\n", target_content); // Uncomment for debugging
-        // printf("Replace:\n---\n%s\n---\n", replace_content); // Uncomment for debugging
+        if (verbose_mode) {
+            printf("\n--- Processing Block %d: %s ---\n", block_count, relative_path);
+            printf("Target:\n---\n%s\n---\n", target_content);
+            printf("Replace:\n---\n%s\n---\n", replace_content);
+        }
 
         // Process the extracted block
+        // Keep relative_path alive for succinct logging after success
         process_block(shared_root, abs_input_paths, num_input_paths,
                       relative_path, target_content, replace_content);
 
+        // Log success for succinct mode
+        if (!verbose_mode) {
+            printf("[%d] %s: OK\n", block_count, relative_path);
+        }
+
         // Free memory for this block's parsed content
-        free(relative_path);
+        free(relative_path); // Free relative_path *after* potential use in succinct log
         free(target_content);
         free(replace_content);
 
@@ -220,7 +279,16 @@ int main(int argc, char *argv[]) {
         current_pos = block_end_marker + strlen(block_marker);
     }
 
-    printf("\nFinished processing %d block(s).\n", block_count);
+    // Final summary message
+    if (verbose_mode) {
+        // Matches original final message format
+        printf("\nhnt-edit: Finished processing %d block(s).\n", block_count);
+    } else if (block_count == 0 && *stdin_content != '\0') { // Check if stdin wasn't empty
+        // If stdin had content but no blocks were parsed, it indicates a format error
+        // which should have already been printed to stderr, or stdin had no valid blocks.
+         printf("\nhnt-edit: No valid blocks found to process.\n");
+    }
+
 
     // --- 5. Cleanup ---
     free(stdin_content);
@@ -484,7 +552,8 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
              exit(EXIT_FAILURE);
         }
 
-        printf("Successfully applied change to %s\n", canonical_path);
+        // Success message is now handled in main() based on verbose_mode
+        // printf("Successfully applied change to %s\n", canonical_path);
         free(new_content); // Free the buffer holding the modified content
     }
 
