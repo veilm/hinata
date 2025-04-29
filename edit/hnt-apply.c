@@ -14,6 +14,10 @@
 // --- Global Flags ---
 int verbose_mode = 0; // Global flag for verbose output
 
+#ifndef MIN // Define MIN if not already defined (e.g., by sys/param.h)
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
 // --- Forward Declarations ---
 
 /**
@@ -46,9 +50,10 @@ char* run_command(const char* cmd);
  * @param rel_path The relative path parsed from the LLM block.
  * @param target The target content to search for.
  * @param replace The replacement content.
+ * @return 0 on success, 1 on failure.
  */
-void process_block(const char *shared_root, char **abs_input_paths, int num_input_paths,
-                   const char *rel_path, const char *target, const char *replace);
+int process_block(const char *shared_root, char **abs_input_paths, int num_input_paths,
+                  const char *rel_path, const char *target, const char *replace);
 
 // --- Main Function ---
 
@@ -173,6 +178,7 @@ int main(int argc, char *argv[]) {
     const char* separator_marker = "=======";
     const char* replace_marker = ">>>>>>> REPLACE";
     int block_count = 0;
+    int overall_status = EXIT_SUCCESS; // Track if any block fails
 
     while (1) {
         char* block_start = strstr(current_pos, block_marker);
@@ -180,29 +186,57 @@ int main(int argc, char *argv[]) {
 
         // Find start of the line *after* the opening ``` marker
         char* line_after_block_start = strchr(block_start, '\n');
-        if (!line_after_block_start) break; // Malformed block: ``` not followed by newline
+        if (!line_after_block_start) {
+            // Malformed block: ``` not followed by newline
+            // If block_start is not NULL, it means we found ``` but no newline after it.
+            // If stdin wasn't empty, this is an error. If stdin was empty or only whitespace, block_start would be NULL.
+            if (block_start != NULL && strlen(block_start) > strlen(block_marker)) { // Check if there's content after ```
+                fprintf(stderr, "Error: Malformed block - '%s' not followed by newline.\n", block_marker);
+                overall_status = EXIT_FAILURE;
+                current_pos = block_start + strlen(block_marker); // Advance past the marker to avoid looping
+                continue; // Try to find the next block
+            }
+            break; // Otherwise, assume end of input or only whitespace left
+        }
         char* path_start = line_after_block_start + 1;
 
         // Find the end of the path line
         char* path_end = strchr(path_start, '\n');
-        if (!path_end) break; // Malformed block: path not followed by newline
+        if (!path_end) {
+            fprintf(stderr, "Error: Malformed block - path line starting near '%.*s' not terminated by newline.\n",
+                    (int)MIN(20, strlen(path_start)), path_start); // Print start of path line for context
+            overall_status = EXIT_FAILURE;
+            current_pos = path_start; // Advance past the point of error
+            continue;
+        }
 
         // Extract relative path
         char* relative_path = strndup(path_start, path_end - path_start);
-        if (!relative_path) { perror("strndup failed for relative_path"); break; }
+        if (!relative_path) {
+            perror("strndup failed for relative_path");
+            overall_status = EXIT_FAILURE;
+            current_pos = path_end; // Advance past the point of error
+            continue;
+        }
 
         // Find TARGET marker after the path
         char* target_delim_start = strstr(path_end, target_marker);
         if (!target_delim_start) {
             fprintf(stderr, "Error: Missing '%s' after path '%s'\n", target_marker, relative_path);
-            free(relative_path); break;
+            free(relative_path);
+            overall_status = EXIT_FAILURE;
+            current_pos = path_end; // Advance past the path line
+            continue;
         }
 
         // Find start of target content (line after TARGET marker)
         char* target_start = strchr(target_delim_start, '\n');
         if (!target_start) {
             fprintf(stderr, "Error: Missing newline after '%s' for path '%s'\n", target_marker, relative_path);
-            free(relative_path); break;
+            free(relative_path);
+            overall_status = EXIT_FAILURE;
+            current_pos = target_delim_start + strlen(target_marker); // Advance past marker
+            continue;
         }
         target_start++; // Move past the newline
 
@@ -210,7 +244,11 @@ int main(int argc, char *argv[]) {
         char* separator_delim_start = strstr(target_start, separator_marker);
         if (!separator_delim_start) {
             fprintf(stderr, "Error: Missing '%s' after target section for path '%s'\n", separator_marker, relative_path);
-            free(relative_path); break;
+            free(relative_path);
+            overall_status = EXIT_FAILURE;
+            // Advance past where we started searching for the separator
+            current_pos = target_start;
+            continue;
         }
 
         // Find end of target content (character before the separator line)
@@ -220,13 +258,22 @@ int main(int argc, char *argv[]) {
             target_end--;
         }
         char* target_content = strndup(target_start, target_end - target_start);
-        if (!target_content) { perror("strndup failed for target_content"); free(relative_path); break; }
+        if (!target_content) {
+            perror("strndup failed for target_content");
+            free(relative_path);
+            overall_status = EXIT_FAILURE;
+            current_pos = separator_delim_start; // Advance past separator marker
+            continue;
+        }
 
         // Find start of replace content (line after separator marker)
         char* replace_start = strchr(separator_delim_start, '\n');
         if (!replace_start) {
             fprintf(stderr, "Error: Missing newline after '%s' for path '%s'\n", separator_marker, relative_path);
-            free(relative_path); free(target_content); break;
+            free(relative_path); free(target_content);
+            overall_status = EXIT_FAILURE;
+            current_pos = separator_delim_start + strlen(separator_marker); // Advance past marker
+            continue;
         }
         replace_start++; // Move past the newline
 
@@ -234,7 +281,10 @@ int main(int argc, char *argv[]) {
         char* replace_delim_start = strstr(replace_start, replace_marker);
         if (!replace_delim_start) {
             fprintf(stderr, "Error: Missing '%s' after replace section for path '%s'\n", replace_marker, relative_path);
-            free(relative_path); free(target_content); break;
+            free(relative_path); free(target_content);
+            overall_status = EXIT_FAILURE;
+            current_pos = replace_start; // Advance past where replace content started
+            continue;
         }
 
         // Find end of replace content (character before the REPLACE line)
@@ -244,13 +294,23 @@ int main(int argc, char *argv[]) {
             replace_end--;
         }
         char* replace_content = strndup(replace_start, replace_end - replace_start);
-        if (!replace_content) { perror("strndup failed for replace_content"); free(relative_path); free(target_content); break; }
+        if (!replace_content) {
+            perror("strndup failed for replace_content");
+            free(relative_path); free(target_content);
+            overall_status = EXIT_FAILURE;
+            current_pos = replace_delim_start; // Advance past replace marker
+            continue;
+        }
 
         // Find the closing ``` marker
         char* block_end_marker = strstr(replace_delim_start, block_marker);
         if (!block_end_marker) {
              fprintf(stderr, "Error: Missing closing '%s' for block related to path '%s'\n", block_marker, relative_path);
-             free(relative_path); free(target_content); free(replace_content); break;
+             free(relative_path); free(target_content); free(replace_content);
+             overall_status = EXIT_FAILURE;
+             // Advance past the point where we expected the closing marker
+             current_pos = replace_delim_start + strlen(replace_marker);
+             continue;
         }
 
         block_count++;
@@ -261,17 +321,25 @@ int main(int argc, char *argv[]) {
         }
 
         // Process the extracted block
-        // Keep relative_path alive for succinct logging after success
-        process_block(shared_root, abs_input_paths, num_input_paths,
-                      relative_path, target_content, replace_content);
+        int block_status = process_block(shared_root, abs_input_paths, num_input_paths,
+                                         relative_path, target_content, replace_content);
 
-        // Log success for succinct mode
-        if (!verbose_mode) {
-            printf("[%d] %s: OK\n", block_count, relative_path);
+        // Log status and update overall status
+        if (block_status != 0) {
+            overall_status = EXIT_FAILURE;
+            // Error message already printed by process_block
+            if (!verbose_mode) {
+                printf("[%d] %s: FAILED\n", block_count, relative_path);
+            }
+        } else {
+            // Success
+            if (!verbose_mode) {
+                printf("[%d] %s: OK\n", block_count, relative_path);
+            }
         }
 
         // Free memory for this block's parsed content
-        free(relative_path); // Free relative_path *after* potential use in succinct log
+        free(relative_path);
         free(target_content);
         free(replace_content);
 
@@ -281,12 +349,15 @@ int main(int argc, char *argv[]) {
 
     // Final summary message
     if (verbose_mode) {
-        // Matches original final message format
         printf("\nhnt-edit: Finished processing %d block(s).\n", block_count);
-    } else if (block_count == 0 && *stdin_content != '\0') { // Check if stdin wasn't empty
-        // If stdin had content but no blocks were parsed, it indicates a format error
-        // which should have already been printed to stderr, or stdin had no valid blocks.
-         printf("\nhnt-edit: No valid blocks found to process.\n");
+    } else if (block_count == 0 && *stdin_content != '\0' && overall_status == EXIT_SUCCESS) {
+        // Only print "No valid blocks" if no errors occurred during parsing attempts
+        printf("\nhnt-edit: No valid blocks found to process.\n");
+    } else if (overall_status != EXIT_SUCCESS) {
+        fprintf(stderr, "\nhnt-edit: Finished processing %d block(s) with one or more errors.\n", block_count);
+    } else {
+        // Successful run, non-verbose, blocks processed
+        printf("\nhnt-edit: Finished processing %d block(s) successfully.\n", block_count);
     }
 
 
@@ -298,10 +369,12 @@ int main(int argc, char *argv[]) {
     }
     free(abs_input_paths);
 
-    return EXIT_SUCCESS;
+    return overall_status; // Return 0 if all blocks succeeded, 1 otherwise
 }
 
 // --- Helper Function Implementations ---
+
+// (read_stream_to_string remains the same)
 
 char* read_stream_to_string(FILE *stream) {
     size_t capacity = 4096; // Initial capacity
@@ -388,15 +461,16 @@ char* run_command(const char* cmd) {
 }
 
 
-void process_block(const char *shared_root, char **abs_input_paths, int num_input_paths,
-                   const char *rel_path, const char *target, const char *replace) {
+// Implementation for process_block
+int process_block(const char *shared_root, char **abs_input_paths, int num_input_paths,
+                  const char *rel_path, const char *target, const char *replace) {
 
     // --- 1. Construct full path ---
     char constructed_path_buf[PATH_MAX];
     int written = snprintf(constructed_path_buf, PATH_MAX, "%s/%s", shared_root, rel_path);
     if (written < 0 || written >= PATH_MAX) {
         fprintf(stderr, "Error: Constructed path exceeds PATH_MAX or snprintf error for %s/%s\n", shared_root, rel_path);
-        exit(EXIT_FAILURE); // Cannot proceed without a valid path
+        return 1; // Cannot proceed without a valid path
     }
 
     // --- 2. Get canonical absolute path for comparison ---
@@ -405,10 +479,11 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
     char *canonical_path = realpath(constructed_path_buf, canonical_path_buf);
     if (!canonical_path) {
         // If realpath fails, canonical_path is NULL, check errno
+        // If realpath fails, canonical_path is NULL, check errno
         perror("Error resolving constructed path");
         fprintf(stderr, "Failed path: %s (from %s + %s)\n", constructed_path_buf, shared_root, rel_path);
         // realpath doesn't allocate on failure when buffer is provided
-        exit(EXIT_FAILURE); // Exit as per requirement
+        return 1; // Indicate failure
     }
     // Note: canonical_path now points inside canonical_path_buf
 
@@ -427,7 +502,7 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
          for (int i = 0; i < num_input_paths; ++i) {
             fprintf(stderr, "- %s\n", abs_input_paths[i]);
         }
-        exit(EXIT_FAILURE);
+        return 1; // Indicate failure
     }
 
     // --- 4. Read target file content ---
@@ -435,13 +510,15 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
     if (!fp_read) {
         perror("Error opening file for reading");
         fprintf(stderr, "File: %s\n", canonical_path);
-        exit(EXIT_FAILURE);
+        return 1; // Indicate failure
     }
     char *file_content = read_stream_to_string(fp_read);
     fclose(fp_read); // Close file immediately after reading
     if (!file_content) {
+        // read_stream_to_string already printed an error
         fprintf(stderr, "Error reading content from file: %s\n", canonical_path);
-        exit(EXIT_FAILURE);
+        // No file_content to free yet
+        return 1; // Indicate failure
     }
     long file_size = strlen(file_content); // Use strlen since read_stream null-terminates
 
@@ -453,10 +530,11 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
 
     // Handle empty target string - treat as error? Or match everywhere?
     // Let's treat empty target as an error because replacement is ill-defined.
+    // Let's treat empty target as an error because replacement is ill-defined.
     if (target_len == 0) {
         fprintf(stderr, "Error: Target string is empty for file %s. Cannot apply change.\n", canonical_path);
         free(file_content);
-        exit(EXIT_FAILURE);
+        return 1; // Indicate failure
     }
 
     while ((search_start = strstr(search_start, target)) != NULL) {
@@ -477,12 +555,12 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
         fprintf(stderr, "Error: Target not found in file %s\n", canonical_path);
         fprintf(stderr, "Target (length %zu):\n---\n%s\n---\n", target_len, target);
         free(file_content);
-        exit(EXIT_FAILURE);
+        return 1; // Indicate failure
     } else if (count > 1) {
         fprintf(stderr, "Error: Target found %d times (expected exactly 1) in file %s\n", count, canonical_path);
         fprintf(stderr, "Target (length %zu):\n---\n%s\n---\n", target_len, target);
         free(file_content);
-        exit(EXIT_FAILURE);
+        return 1; // Indicate failure
     } else {
         // Found exactly once at 'first_occurrence'
         size_t replace_len = strlen(replace);
@@ -498,7 +576,7 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
             prefix_len + replace_len > SIZE_MAX - suffix_len) {
              fprintf(stderr, "Error: New file size calculation would overflow for %s.\n", canonical_path);
              free(file_content);
-             exit(EXIT_FAILURE);
+             return 1; // Indicate failure
         }
         size_t new_size = prefix_len + replace_len + suffix_len;
 
@@ -507,7 +585,7 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
         if (!new_content) {
             perror("Failed to allocate memory for new file content");
             free(file_content);
-            exit(EXIT_FAILURE);
+            return 1; // Indicate failure
         }
 
         // Build new content: prefix + replace + suffix
@@ -524,7 +602,7 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
             fprintf(stderr, "File: %s\n", canonical_path);
             free(new_content);
             free(file_content);
-            exit(EXIT_FAILURE);
+            return 1; // Indicate failure
         }
 
         size_t written = fwrite(new_content, 1, new_size, fp_write);
@@ -539,7 +617,7 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
              fclose(fp_write); // Attempt to close even on error
              free(new_content);
              free(file_content);
-             exit(EXIT_FAILURE);
+             return 1; // Indicate failure
         }
 
         // Ensure data is flushed and check for errors during close
@@ -549,7 +627,7 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
              // Data might be partially written or corrupted
              free(new_content);
              free(file_content);
-             exit(EXIT_FAILURE);
+             return 1; // Indicate failure
         }
 
         // Success message is now handled in main() based on verbose_mode
@@ -559,5 +637,6 @@ void process_block(const char *shared_root, char **abs_input_paths, int num_inpu
 
     free(file_content); // Free the original file content buffer
     // No need to free canonical_path as it points into canonical_path_buf (stack allocated)
+    return 0; // Indicate success
 }
 
