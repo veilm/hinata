@@ -56,6 +56,7 @@ simple as. Is this really worth 15k GitHub stars?
 # non-default options
 - `-n`: [n]o code fences
 - `-p`: don't pack code. just print the absolute shared root [p]ath that would have been used
+- `-s`: [s]ort the input files alphabetically by their absolute paths before processing. can help with LLM comprehension, compared to a random order
 
 # philosophy
 - an initial file_paths list tells the LLM what to expect
