@@ -9,7 +9,7 @@
 #include <getopt.h>    // For getopt_long
 #include <ctype.h>     // For isspace
 
-#define VERSION_STRING "hnt-llm 0.04"
+#define VERSION_STRING "hnt-llm 0.05"
 
 // Structure for a single message in the conversation
 typedef struct Message {
@@ -89,15 +89,20 @@ static void process_sse_data(const char *json_data) {
         if (json_is_object(error_obj)) {
             json_t *message_str = json_object_get(error_obj, "message");
             if (json_is_string(message_str)) {
-                fprintf(stderr, "\nAPI Error: %s\n", json_string_value(message_str));
+                // Remove leading/trailing \n
+                fprintf(stderr, "API Error: %s", json_string_value(message_str));
             } else {
-                fprintf(stderr, "\nAPI Error: (Could not parse error message)\n");
+                // Remove leading/trailing \n
+                fprintf(stderr, "API Error: (Could not parse error message)");
             }
             api_error_occurred = 1; // Set the flag indicating an API error was found
+            fflush(stderr); // Ensure error appears immediately
         } else {
              // Only print unknown format error if it wasn't the [DONE] marker
              if (strcmp(json_data, "[DONE]") != 0) {
-                fprintf(stderr, "\nWarning: Received chunk in unknown format or without content/choices.\nData: %s\n", json_data);
+                 // Remove leading \n, keep trailing \n for the data dump
+                fprintf(stderr, "Warning: Received chunk in unknown format or without content/choices.\nData: %s\n", json_data);
+                fflush(stderr); // Ensure warning appears immediately
              }
         }
     }
@@ -211,15 +216,16 @@ static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, voi
 
         if (standalone_error_found) {
             if (error_message) {
-                fprintf(stderr, "\nAPI Error (standalone chunk): %s\n", error_message);
+                fprintf(stderr, "API Error (standalone chunk): %s", error_message);
             } else {
                  // Error structure found, but couldn't extract message string
                  char *dump = json_dumps(error_obj ? error_obj : root_direct, JSON_INDENT(2));
-                 fprintf(stderr, "\nAPI Error (standalone chunk, structure found but message parsing failed):\n%s\n", dump ? dump : "(Could not dump error JSON)");
+                 // Keep the newline after the message but remove the leading one. Add a newline after the JSON dump for readability.
+                 fprintf(stderr, "API Error (standalone chunk, structure found but message parsing failed):\n%s\n", dump ? dump : "(Could not dump error JSON)");
                  if (dump) free(dump);
             }
             api_error_occurred = 1; // Set the flag indicating an API error was found
-            fflush(stderr);
+            fflush(stderr); // Ensure error appears immediately
         }
 
         json_decref(root_direct); // Clean up the parsed JSON
@@ -903,8 +909,11 @@ int main(int argc, char *argv[]) {
     // Check if the last character printed by the callback was a newline
     // This is tricky as the callback doesn't track this easily.
     // A simple approach is to always print a newline if the curl call succeeded.
-    // If the stream ended cleanly, it might result in a double newline,
-    // but it guarantees one newline after successful completion.
+    // Ensure a final newline *only* if necessary, which is hard to track.
+    // The LLM output/error message itself should contain the final newline if appropriate.
+    // Removing the unconditional printf("\n");
+
+	// 1745964031 nvm I'm returning it since it seemed to work fine
     printf("\n");
   }
 
