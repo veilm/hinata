@@ -9,7 +9,7 @@
 #include <getopt.h>    // For getopt_long
 #include <ctype.h>     // For isspace
 
-#define VERSION_STRING "hnt-llm 0.03"
+#define VERSION_STRING "hnt-llm 0.04"
 
 // Structure for a single message in the conversation
 typedef struct Message {
@@ -27,6 +27,8 @@ typedef struct XmlRange {
 
 // Global flag for debug mode
 static int debug_mode = 0;
+// Global flag to track if an API error was detected in the response
+static int api_error_occurred = 0;
 
 // Define API endpoints
 #define OPENAI_API_URL "https://api.openai.com/v1/chat/completions"
@@ -91,6 +93,7 @@ static void process_sse_data(const char *json_data) {
             } else {
                 fprintf(stderr, "\nAPI Error: (Could not parse error message)\n");
             }
+            api_error_occurred = 1; // Set the flag indicating an API error was found
         } else {
              // Only print unknown format error if it wasn't the [DONE] marker
              if (strcmp(json_data, "[DONE]") != 0) {
@@ -153,19 +156,97 @@ static char* read_stdin_all(size_t *out_len) {
 
 
 // Callback function for libcurl to handle incoming stream data
+// Callback function for libcurl to handle incoming stream data
 static size_t WriteStreamCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     struct StreamData *stream_data = (struct StreamData *)userp;
     const char *data_prefix = "data: ";
     size_t prefix_len = strlen(data_prefix);
+    json_t *root_direct = NULL;
+    json_error_t error_direct;
+    int standalone_error_found = 0; // Flag to indicate if we handled a direct JSON error
 
     if (debug_mode) {
         fprintf(stderr, "DEBUG: Raw incoming chunk (%zu bytes):\n", realsize);
         fwrite(contents, 1, realsize, stderr);
+        fwrite(contents, 1, realsize, stderr);
         fprintf(stderr, "\n");
     }
 
-    // --- 1. Append new data to buffer ---
+    // --- Attempt to parse the entire chunk as JSON directly (for potential standalone errors) ---
+    root_direct = json_loadb(contents, realsize, 0, &error_direct);
+    if (root_direct) {
+        // Successfully parsed the chunk directly as JSON. Check for error structures.
+        json_t *error_obj = NULL;
+        const char *error_message = NULL;
+
+        if (json_is_object(root_direct)) {
+            error_obj = json_object_get(root_direct, "error");
+            if (json_is_object(error_obj)) {
+                json_t *message_str = json_object_get(error_obj, "message");
+                if (json_is_string(message_str)) {
+                    error_message = json_string_value(message_str);
+                }
+                 standalone_error_found = 1; // Mark as handled
+            }
+        } else if (json_is_array(root_direct)) {
+            size_t i;
+            json_t *value;
+            json_array_foreach(root_direct, i, value) {
+                if (json_is_object(value)) {
+                    error_obj = json_object_get(value, "error");
+                    if (json_is_object(error_obj)) {
+                         json_t *message_str = json_object_get(error_obj, "message");
+                         if (json_is_string(message_str)) {
+                            error_message = json_string_value(message_str); // Take the first one found
+                            break; // Stop after finding the first error in the array
+                         }
+                    }
+                }
+            }
+            if (error_message) {
+                 standalone_error_found = 1; // Mark as handled
+            }
+        }
+
+        if (standalone_error_found) {
+            if (error_message) {
+                fprintf(stderr, "\nAPI Error (standalone chunk): %s\n", error_message);
+            } else {
+                 // Error structure found, but couldn't extract message string
+                 char *dump = json_dumps(error_obj ? error_obj : root_direct, JSON_INDENT(2));
+                 fprintf(stderr, "\nAPI Error (standalone chunk, structure found but message parsing failed):\n%s\n", dump ? dump : "(Could not dump error JSON)");
+                 if (dump) free(dump);
+            }
+            api_error_occurred = 1; // Set the flag indicating an API error was found
+            fflush(stderr);
+        }
+
+        json_decref(root_direct); // Clean up the parsed JSON
+
+        // If we found and handled a standalone error, consume the chunk and return.
+        // Otherwise, proceed to appending/buffering for standard SSE processing.
+        if (standalone_error_found) {
+            return realsize; // Tell curl we handled this many bytes
+        }
+        // If no error structure was found, fall through to standard buffering...
+
+    } else {
+        // json_loadb failed. This chunk is likely not a standalone JSON error.
+        // Proceed with the standard SSE buffering logic below.
+        if (debug_mode) {
+             // Check if the beginning of the chunk looks like "data: "
+             if(realsize < prefix_len || memcmp(contents, data_prefix, prefix_len) != 0) {
+                  fprintf(stderr, "DEBUG: Chunk did not parse as standalone JSON and doesn't start with '%s'. Error (if any): %s (L%d C%d P%d). Proceeding with buffering.\n",
+                          data_prefix, error_direct.text, error_direct.line, error_direct.column, error_direct.position);
+             } else {
+                  fprintf(stderr, "DEBUG: Chunk did not parse as standalone JSON, but starts with '%s'. Proceeding with buffering.\n", data_prefix);
+             }
+        }
+    }
+
+
+    // --- 1. Append new data to buffer (Only if not handled as a standalone error) ---
     size_t needed_size = stream_data->data_len + realsize + 1; // +1 for null terminator
     if (stream_data->buffer == NULL || needed_size > stream_data->buffer_size) {
         size_t new_size = (stream_data->buffer_size == 0) ? 1024 : stream_data->buffer_size * 2;
@@ -843,13 +924,16 @@ cleanup: // Label for centralized cleanup
   // --- End added cleanup ---
   curl_global_cleanup();                          // Global curl cleanup
 
-  // Check post_data_dynamic as a proxy for successful JSON creation and dumping.
-  // Also check if message_list_head is not NULL, as it's possible to have no messages
-  // if stdin is empty and no -s is provided. Sending empty messages is likely an error.
-  int success = (res == CURLE_OK && post_data_dynamic != NULL && message_list_head != NULL);
-   if (!success && message_list_head == NULL && res == CURLE_OK) {
-       // Specific case: No messages provided (empty stdin, no -s, or only whitespace after XML removal)
-       // We don't treat this as an error needing a message if the curl call itself didn't fail
+  // Check curl success, payload creation, non-empty messages, AND our API error flag.
+  int success = (res == CURLE_OK &&
+                 post_data_dynamic != NULL &&
+                 message_list_head != NULL &&
+                 !api_error_occurred); // Check the API error flag
+
+   if (!success && message_list_head == NULL && res == CURLE_OK && !api_error_occurred) {
+       // Specific case: No messages provided (empty stdin, no -s, or only whitespace after XML removal),
+       // and no other errors occurred (curl ok, no API error).
+       // We don't treat this as an error needing a message if the curl call itself didn't fail and no API error reported.
        // Allow sending empty messages list if API supports it? For now, treat as non-success.
        // Let's print an info message but still return 1, as nothing was sent.
        if (debug_mode) fprintf(stderr, "DEBUG: No messages were generated to send (empty stdin/result?).\n");
