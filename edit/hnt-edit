@@ -52,7 +52,7 @@ text editor. Leave the file unchanged or empty to abort."""
 
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w+", prefix="hnt-edit-", suffix=".txt", delete=False
+            mode="w+", prefix="hnt-edit-", suffix=".md", delete=False
         ) as tmpfile:
             tmpfile.write(initial_text)
             tmpfile.flush()
