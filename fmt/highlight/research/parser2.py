@@ -7,7 +7,8 @@ import signal
 try:
     from pygments import highlight
     from pygments.lexers import get_lexer_by_name, guess_lexer
-    from pygments.formatters import TerminalTrueColorFormatter
+    # from pygments.formatters import TerminalTrueColorFormatter
+    from pygments.formatters import TerminalFormatter
     from pygments.util import ClassNotFound
     PYGMENTS_AVAILABLE = True
 except ImportError:
@@ -63,7 +64,8 @@ def process_line(line):
                         lexer = guess_lexer(code_buffer)
                     # Use a default formatter if not created yet
                     if formatter is None:
-                       formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
+                       # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
+                       formatter = TerminalFormatter(bg="dark") # Or choose another style
                     # Highlight the whole buffer
                     highlighted_code = highlight(code_buffer, lexer, formatter)
                     # Add background color line by line
@@ -91,7 +93,8 @@ def process_line(line):
             code_language = code_block_match.group(1) or None
             code_buffer = "" # Clear buffer for new block
             if PYGMENTS_AVAILABLE:
-                 formatter = TerminalTrueColorFormatter(style='monokai') # You can choose style
+               # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
+               formatter = TerminalFormatter(bg="dark") # Or choose another style
             return # Don't print the opening ``` line itself
 
     if in_code_block:
@@ -151,7 +154,8 @@ def main():
                     else:
                         lexer = guess_lexer(code_buffer)
                     if formatter is None:
-                        formatter = TerminalTrueColorFormatter(style='monokai')
+                       # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
+                       formatter = TerminalFormatter(bg="dark") # Or choose another style
                     highlighted_code = highlight(code_buffer, lexer, formatter)
                     highlighted_lines = [f"{CODE_BG}{l}{RESET}" for l in highlighted_code.rstrip('\n').split('\n')]
                     print('\n'.join(highlighted_lines))
