@@ -1,3 +1,9 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pygments>=2.19.1"]
+# ///
+
 # Import necessary libraries
 import sys
 import re
