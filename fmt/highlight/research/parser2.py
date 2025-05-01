@@ -10,9 +10,11 @@ try:
     # from pygments.formatters import TerminalTrueColorFormatter
     from pygments.formatters import TerminalFormatter
     from pygments.util import ClassNotFound
-    PYGMENTS_AVAILABLE = True
 except ImportError:
-    PYGMENTS_AVAILABLE = False
+    # Pygments is mandatory for this script version
+    print("Error: The 'pygments' library is required for syntax highlighting.", file=sys.stderr)
+    print("Please install it, for example using: pip install Pygments", file=sys.stderr)
+    sys.exit(1)
 
 # --- ANSI Escape Codes ---
 RESET = "\033[0m"
@@ -55,14 +57,14 @@ def process_line(line):
         if in_code_block:
             # End of code block
             in_code_block = False
-            if PYGMENTS_AVAILABLE and code_buffer:
+            if code_buffer: # Only process if there's code in the buffer
                 try:
                     # Use specified lexer or guess
                     if code_language:
                         lexer = get_lexer_by_name(code_language)
                     else:
                         lexer = guess_lexer(code_buffer)
-                    # Use a default formatter if not created yet
+                    # Use a default formatter if not created yet (should be created at block start)
                     if formatter is None:
                        # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
                        formatter = TerminalFormatter(bg="dark") # Or choose another style
@@ -72,16 +74,13 @@ def process_line(line):
                     highlighted_lines = [f"{CODE_BG}{l}{RESET}" for l in highlighted_code.rstrip('\n').split('\n')]
                     print('\n'.join(highlighted_lines))
                 except ClassNotFound:
-                    # Fallback if lexer not found
+                    # Fallback if lexer not found - print raw code
+                    print(f"{CODE_BG}# Lexer '{code_language or '(guessed)'}' not found. Printing raw code.{RESET}")
                     print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}")
                 except Exception as e:
-                     # Fallback for any other highlighting error
-                    print(f"{CODE_BG}# Error highlighting: {e}{RESET}")
+                     # Fallback for any other highlighting error - print raw code
+                    print(f"{CODE_BG}# Error during highlighting: {e}{RESET}")
                     print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}")
-
-            elif code_buffer:
-                # Fallback if Pygments is not available
-                 print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}")
 
             code_buffer = "" # Reset buffer
             code_language = None
@@ -92,9 +91,9 @@ def process_line(line):
             in_code_block = True
             code_language = code_block_match.group(1) or None
             code_buffer = "" # Clear buffer for new block
-            if PYGMENTS_AVAILABLE:
-               # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
-               formatter = TerminalFormatter(bg="dark") # Or choose another style
+            # Initialize the formatter for this code block
+            # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
+            formatter = TerminalFormatter(bg="dark") # Or choose another style
             return # Don't print the opening ``` line itself
 
     if in_code_block:
@@ -144,25 +143,31 @@ def main():
     try:
         for line in sys.stdin:
             process_line(line)
-        # If the input ends while still in a code block, print what we have
+        # If the input ends while still in a code block, attempt to highlight and print what we have
         if in_code_block and code_buffer:
              print(f"\n{CODE_BG}--- Code block potentially truncated ---{RESET}", file=sys.stderr)
-             if PYGMENTS_AVAILABLE:
-                try:
-                    if code_language:
-                        lexer = get_lexer_by_name(code_language)
-                    else:
-                        lexer = guess_lexer(code_buffer)
-                    if formatter is None:
-                       # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
-                       formatter = TerminalFormatter(bg="dark") # Or choose another style
-                    highlighted_code = highlight(code_buffer, lexer, formatter)
-                    highlighted_lines = [f"{CODE_BG}{l}{RESET}" for l in highlighted_code.rstrip('\n').split('\n')]
-                    print('\n'.join(highlighted_lines))
-                except Exception:
-                     print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}") # Fallback
-             else:
-                print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}") # Fallback
+             try:
+                 # Attempt to get the lexer
+                 if code_language:
+                     lexer = get_lexer_by_name(code_language)
+                 else:
+                     lexer = guess_lexer(code_buffer)
+                 # Ensure formatter exists (it should from block start, but safer to check)
+                 if formatter is None:
+                    # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
+                    formatter = TerminalFormatter(bg="dark") # Or choose another style
+                 # Highlight and print
+                 highlighted_code = highlight(code_buffer, lexer, formatter)
+                 highlighted_lines = [f"{CODE_BG}{l}{RESET}" for l in highlighted_code.rstrip('\n').split('\n')]
+                 print('\n'.join(highlighted_lines))
+             except ClassNotFound:
+                 # Fallback if lexer not found for truncated block
+                 print(f"{CODE_BG}# Lexer '{code_language or '(guessed)'}' not found for truncated block. Printing raw code.{RESET}")
+                 print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}")
+             except Exception as e:
+                 # Fallback for any other highlighting error in truncated block
+                 print(f"{CODE_BG}# Error highlighting truncated block: {e}{RESET}")
+                 print(f"{CODE_BG}{code_buffer.rstrip()}{RESET}") # Print raw code as fallback
 
     except BrokenPipeError:
         # Handle cases where the reading pipe is closed (e.g., piping to `head`)
