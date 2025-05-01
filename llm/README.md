@@ -49,6 +49,31 @@ echo hello | hnt-llm -m google/gemini-2.5-flash-preview-04-17
 ### local
 no support yet. I'm an ill , homeless peasant with no GPU
 
+## XML history input
+you can provide conversation history via stdin using XML tags:
+- `<hnt-system>`
+- `<hnt-user>`
+- `<hnt-assistant>`
+
+- TODO `hnt-escape` for escaping
+
+any content outside of these tags will be treated final user message if given,
+for consistency. if a system prompt is provided via `-s`, it is inserted as the
+very first message in the request, before any `<hnt-system>` content
+
+this would send msg1 and msg2 as consecutive system messages, with "msg5"
+(surrounding space trimmed) as the final user message:
+```
+echo "
+<hnt-system>msg2</hnt-system>
+<hnt-user>msg3</hnt-user>
+<hnt-assistant>msg4</hnt-assistant>
+msg5
+" | hnt-llm -s msg1
+```
+
+XML is simpler to construct manually and in scripts than JSON
+
 ## debugging
 you can use the `--debug-unsafe` flag to examine the raw LLM request/response
 for your query. **This will include your API key in the output.**
