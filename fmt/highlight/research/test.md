@@ -1,6 +1,13 @@
-# foo
-- bar
-- baz
+# header1
+- item1
+- item2
 
-# hello
-*bye*
+## header2
+*italic*
+
+```python
+# this is supposed to be a comment
+from foo import bar
+def main():
+	print("this is python")
+```

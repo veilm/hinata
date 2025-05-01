@@ -9,8 +9,22 @@ try:
     from pygments.lexers import get_lexer_by_name, guess_lexer
 
     # from pygments.formatters import TerminalTrueColorFormatter
-    from pygments.formatters import TerminalFormatter
+    # from pygments.formatters import TerminalFormatter
+    from pygments.formatters import Terminal256Formatter
     from pygments.util import ClassNotFound
+    from pygments.style import Style
+    from pygments.token import (
+        Keyword,
+        Name,
+        Comment,
+        String,
+        Error,
+        Number,
+        Operator,
+        Generic,
+        Token,
+        Whitespace,
+    )  # Import Style and Tokens
 except ImportError:
     # Pygments is mandatory for this script version
     print(
@@ -20,7 +34,88 @@ except ImportError:
     print("Please install it, for example using: pip install Pygments", file=sys.stderr)
     sys.exit(1)
 
-# --- ANSI Escape Codes ---
+
+# --- Custom ANSI Style for Pygments ---
+class MyAnsiStyle(Style):
+    """
+    Custom Pygments style using ANSI color names to respect terminal themes.
+    Maps token types to 'ansicolor' names.
+    """
+
+    background_color = None  # Use terminal's background
+    background_color = "ansired"  # Use terminal's background
+    default_style = ""  # Use terminal's default foreground
+
+    styles = {
+        Whitespace: "bg:ansiblack",  # No specific style for whitespace
+        Comment: "bg:ansiblack ansibrightblack italic",
+        Keyword: "bg:ansiblack ansiblue bold",
+        Keyword.Constant: "bg:ansiblack ansicyan",
+        Keyword.Declaration: "bg:ansiblack ansibrightblue",
+        Keyword.Namespace: "bg:ansiblack ansimagenta bold",
+        Keyword.Pseudo: "bg:ansiblack ansibrightblack",
+        Keyword.Reserved: "bg:ansiblack ansiblue",
+        Keyword.Type: "bg:ansiblack ansibrightred",
+        Name: "bg:ansiblack ",  # Default
+        Name.Attribute: "bg:ansiblack ansibrightyellow",
+        Name.Builtin: "bg:ansiblack ansicyan",
+        Name.Builtin.Pseudo: "bg:ansiblack ansibrightblack",
+        Name.Class: "bg:ansiblack ansibrightgreen bold",
+        Name.Constant: "bg:ansiblack ansired",
+        Name.Decorator: "bg:ansiblack ansibrightmagenta",
+        Name.Entity: "bg:ansiblack ansibrightyellow",
+        Name.Exception: "bg:ansiblack ansibrightred bold",
+        Name.Function: "bg:ansiblack ansigreen",
+        Name.Function.Magic: "bg:ansiblack ansibrightgreen",
+        Name.Label: "bg:ansiblack ansibrightyellow",
+        Name.Namespace: "bg:ansiblack ansimagenta",
+        Name.Other: "bg:ansiblack ",  # Default
+        Name.Tag: "bg:ansiblack ansiblue bold",
+        Name.Variable: "bg:ansiblack ansired",
+        Name.Variable.Class: "bg:ansiblack ansibrightgreen",
+        Name.Variable.Global: "bg:ansiblack ansibrightred",
+        Name.Variable.Instance: "bg:ansiblack ansired",
+        Name.Variable.Magic: "bg:ansiblack ansibrightgreen",
+        String: "bg:ansiblack ansiyellow",
+        String.Affix: "bg:ansiblack ansibrightblue",
+        String.Backtick: "bg:ansiblack ansibrightred",
+        String.Char: "bg:ansiblack ansiyellow",
+        String.Delimiter: "bg:ansiblack ansibrightblue",
+        String.Doc: "bg:ansiblack ansibrightblack italic",
+        String.Double: "bg:ansiblack ansiyellow",
+        String.Escape: "bg:ansiblack ansibrightred bold",
+        String.Heredoc: "bg:ansiblack ansiyellow italic",
+        String.Interpol: "bg:ansiblack ansimagenta",
+        String.Other: "bg:ansiblack ansiyellow",
+        String.Regex: "bg:ansiblack ansimagenta",
+        String.Single: "bg:ansiblack ansiyellow",
+        String.Symbol: "bg:ansiblack ansired bold",
+        Number: "bg:ansiblack ansicyan",
+        Number.Bin: "bg:ansiblack ansicyan",
+        Number.Float: "bg:ansiblack ansibrightcyan",
+        Number.Hex: "bg:ansiblack ansicyan",
+        Number.Integer: "bg:ansiblack ansicyan",
+        Number.Integer.Long: "bg:ansiblack ansicyan",
+        Number.Oct: "bg:ansiblack ansicyan",
+        Operator: "bg:ansiblack ansibrightmagenta",
+        Operator.Word: "bg:ansiblack ansimagenta bold",
+        Generic.Deleted: "bg:ansiblack ansired",
+        Generic.Emph: "bg:ansiblack italic",
+        Generic.Error: "ansibrightred bg:ansired",
+        Generic.Heading: "bg:ansiblack bold ansiblue",
+        Generic.Inserted: "bg:ansiblack ansigreen",
+        Generic.Output: "bg:ansiblack ansibrightblack",
+        Generic.Prompt: "bg:ansiblack ansiblue bold",
+        Generic.Strong: "bg:ansiblack bold",
+        Generic.Subheading: "bg:ansiblack bold ansimagenta",
+        Generic.Traceback: "bg:ansiblack ansibrightred bold",
+        Generic.Underline: "bg:ansiblack underline",
+        Error: "ansibrightred bold bg:ansired",  # Ensure errors are visible
+        Token.Other: "bg:ansiblack",  # Default for anything else
+    }
+
+
+# --- ANSI Escape Codes (for non-Pygments parts) ---
 RESET = "\033[0m"
 BOLD = "\033[1m"
 ITALIC = "\033[3m"
@@ -35,7 +130,11 @@ CODE_BG = "\033[48;5;235m"  # Dark grey background for code blocks
 in_code_block = False
 code_language = None
 code_buffer = ""
-formatter = None  # Pygments formatter
+# Initialize the formatter once, globally
+# formatter = TerminalFormatter(style=MyAnsiStyle, bg="dark")
+# formatter = TerminalFormatter(bg="light")
+# formatter = TerminalFormatter(style=MyAnsiStyle)
+formatter = Terminal256Formatter(style=MyAnsiStyle)
 
 
 def apply_inline_styles(line):
@@ -76,13 +175,7 @@ def process_line(line):
                         lexer = get_lexer_by_name(code_language)
                     else:
                         lexer = guess_lexer(code_buffer)
-                    # Use a default formatter if not created yet (should be created at block start)
-                    if formatter is None:
-                        # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
-                        formatter = TerminalFormatter(
-                            bg="dark"
-                        )  # Or choose another style
-                    # Highlight the whole buffer
+                    # Highlight the whole buffer using the global formatter
                     highlighted_code = highlight(code_buffer, lexer, formatter)
                     # Add background color line by line
                     highlighted_lines = [
@@ -103,16 +196,14 @@ def process_line(line):
 
             code_buffer = ""  # Reset buffer
             code_language = None
-            formatter = None
+            # formatter = None # No need to reset the global formatter
             return  # Don't print the closing ``` line itself
         else:
             # Start of code block
             in_code_block = True
             code_language = code_block_match.group(1) or None
             code_buffer = ""  # Clear buffer for new block
-            # Initialize the formatter for this code block
-            # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
-            formatter = TerminalFormatter(bg="dark")  # Or choose another style
+            # No need to initialize formatter here, it's global
             return  # Don't print the opening ``` line itself
 
     if in_code_block:
@@ -175,11 +266,7 @@ def main():
                     lexer = get_lexer_by_name(code_language)
                 else:
                     lexer = guess_lexer(code_buffer)
-                # Ensure formatter exists (it should from block start, but safer to check)
-                if formatter is None:
-                    # formatter = TerminalTrueColorFormatter(style='monokai') # Or choose another style
-                    formatter = TerminalFormatter(bg="dark")  # Or choose another style
-                # Highlight and print
+                # Highlight and print using the global formatter
                 highlighted_code = highlight(code_buffer, lexer, formatter)
                 highlighted_lines = [
                     f"{CODE_BG}{l}{RESET}"
