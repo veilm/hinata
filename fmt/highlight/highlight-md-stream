@@ -11,7 +11,7 @@ import signal
 
 # Attempt to import Pygments for syntax highlighting
 from pygments import highlight
-from pygments.lexers import get_lexer_by_name, guess_lexer
+from pygments.lexers import get_lexer_by_name
 
 # from pygments.formatters import TerminalTrueColorFormatter
 from pygments.formatters import TerminalFormatter
@@ -167,33 +167,25 @@ def process_line(line):
             # End of code block
             in_code_block = False
             if code_buffer:  # Only process if there's code in the buffer
-                try:
-                    # Use specified lexer or guess
-                    if code_language:
+                if code_language:
+                    try:
                         lexer = get_lexer_by_name(code_language)
-                    else:
-                        lexer = guess_lexer(code_buffer)
-                    # Highlight the whole buffer using the global formatter
-                    highlighted_code = highlight(code_buffer, lexer, formatter)
-                    # The formatter should now handle the background based on MyAnsiStyle
-                    # We print the result directly, removing the manual CODE_BG wrap.
-                    # highlighted_lines = [
-                    #     f"{CODE_BG}{l}{RESET}" # REMOVED
-                    #     for l in highlighted_code.rstrip("\n").split("\n") # REMOVED
-                    # ] # REMOVED
-                    # print("\n".join(highlighted_lines)) # REMOVED
-                    print(highlighted_code.rstrip("\n"))  # ADDED - Print directly
-                except ClassNotFound:
-                    # Fallback if lexer not found - print raw code without forced BG
-                    # Print fallback without the forced CODE_BG
-                    print(
-                        f"# Lexer '{code_language or '(guessed)'}' not found. Printing raw code.{RESET}"
-                    )  # MODIFIED
-                    print(f"{code_buffer.rstrip()}{RESET}")  # MODIFIED
-                except Exception as e:
-                    # Fallback for any other highlighting error - print raw code without forced BG
-                    print(f"# Error during highlighting: {e}{RESET}")  # MODIFIED
-                    print(f"{code_buffer.rstrip()}{RESET}")  # MODIFIED
+                        # Highlight the whole buffer using the global formatter
+                        highlighted_code = highlight(code_buffer, lexer, formatter)
+                        print(highlighted_code.rstrip("\n"))
+                    except ClassNotFound:
+                        # Fallback if specified lexer not found - print raw code
+                        print(
+                            f"# Lexer '{code_language}' not found. Printing raw code.{RESET}"
+                        )
+                        print(f"{code_buffer.rstrip()}{RESET}")
+                    except Exception as e:
+                        # Fallback for any other highlighting error - print raw code
+                        print(f"# Error during highlighting: {e}{RESET}")
+                        print(f"{code_buffer.rstrip()}{RESET}")
+                else:
+                    # No language specified, print raw code buffer
+                    print(f"{code_buffer.rstrip()}{RESET}")
 
             code_buffer = ""  # Reset buffer
             code_language = None
@@ -261,30 +253,26 @@ def main():
                 f"\n{CODE_BG}--- Code block potentially truncated ---{RESET}",
                 file=sys.stderr,
             )
-            try:
-                # Attempt to get the lexer
-                if code_language:
+            if code_language:
+                try:
+                    # Attempt to get the specified lexer
                     lexer = get_lexer_by_name(code_language)
-                else:
-                    lexer = guess_lexer(code_buffer)
-                # Highlight and print using the global formatter, without forced BG
-                highlighted_code = highlight(code_buffer, lexer, formatter)
-                # highlighted_lines = [ # REMOVED
-                #     f"{CODE_BG}{l}{RESET}" # REMOVED
-                #     for l in highlighted_code.rstrip("\n").split("\n") # REMOVED
-                # ] # REMOVED
-                # print("\n".join(highlighted_lines)) # REMOVED
-                print(highlighted_code.rstrip("\n"))  # ADDED
-            except ClassNotFound:
-                # Fallback if lexer not found for truncated block, without forced BG
-                print(
-                    f"# Lexer '{code_language or '(guessed)'}' not found for truncated block. Printing raw code.{RESET}"
-                )  # MODIFIED
-                print(f"{code_buffer.rstrip()}{RESET}")  # MODIFIED
-            except Exception as e:
-                # Fallback for any other highlighting error in truncated block, without forced BG
-                print(f"# Error highlighting truncated block: {e}{RESET}")  # MODIFIED
-                print(f"{code_buffer.rstrip()}{RESET}")  # MODIFIED
+                    # Highlight and print using the global formatter
+                    highlighted_code = highlight(code_buffer, lexer, formatter)
+                    print(highlighted_code.rstrip("\n"))
+                except ClassNotFound:
+                    # Fallback if specified lexer not found for truncated block
+                    print(
+                        f"# Lexer '{code_language}' not found for truncated block. Printing raw code.{RESET}"
+                    )
+                    print(f"{code_buffer.rstrip()}{RESET}")
+                except Exception as e:
+                    # Fallback for any other highlighting error in truncated block
+                    print(f"# Error highlighting truncated block: {e}{RESET}")
+                    print(f"{code_buffer.rstrip()}{RESET}")
+            else:
+                # No language specified for truncated block, print raw code
+                print(f"{code_buffer.rstrip()}{RESET}")
 
     except BrokenPipeError:
         # Handle cases where the reading pipe is closed (e.g., piping to `head`)
