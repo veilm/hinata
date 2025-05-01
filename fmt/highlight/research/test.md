@@ -11,3 +11,13 @@ from foo import bar
 def main():
 	print("this is python")
 ```
+
+markdown code block section:
+```markdown
+# header1
+- item1
+- item2
+
+## header2
+*italic*
+```

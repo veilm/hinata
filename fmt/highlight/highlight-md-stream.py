@@ -4,36 +4,27 @@ import re
 import signal
 
 # Attempt to import Pygments for syntax highlighting
-try:
-    from pygments import highlight
-    from pygments.lexers import get_lexer_by_name, guess_lexer
+from pygments import highlight
+from pygments.lexers import get_lexer_by_name, guess_lexer
 
-    # from pygments.formatters import TerminalTrueColorFormatter
-    from pygments.formatters import TerminalFormatter
+# from pygments.formatters import TerminalTrueColorFormatter
+from pygments.formatters import TerminalFormatter
 
-    from pygments.formatters import Terminal256Formatter
-    from pygments.util import ClassNotFound
-    from pygments.style import Style
-    from pygments.token import (
-        Keyword,
-        Name,
-        Comment,
-        String,
-        Error,
-        Number,
-        Operator,
-        Generic,
-        Token,
-        Whitespace,
-    )  # Import Style and Tokens
-except ImportError:
-    # Pygments is mandatory for this script version
-    print(
-        "Error: The 'pygments' library is required for syntax highlighting.",
-        file=sys.stderr,
-    )
-    print("Please install it, for example using: pip install Pygments", file=sys.stderr)
-    sys.exit(1)
+from pygments.formatters import Terminal256Formatter
+from pygments.util import ClassNotFound
+from pygments.style import Style
+from pygments.token import (
+    Keyword,
+    Name,
+    Comment,
+    String,
+    Error,
+    Number,
+    Operator,
+    Generic,
+    Token,
+    Whitespace,
+)  # Import Style and Tokens
 
 
 # --- Custom ANSI Style for Pygments ---
@@ -46,71 +37,71 @@ class MyAnsiStyle(Style):
     default_style = ""  # Use terminal's default foreground
 
     styles = {
-        Whitespace: "bg:ansiblack ",  # No specific style for whitespace
-        Comment: "bg:ansiblack ansibrightblack italic",
-        Keyword: "bg:ansiblack ansiblue bold",
-        Keyword.Constant: "bg:ansiblack ansicyan",
-        Keyword.Declaration: "bg:ansiblack ansibrightblue",
-        Keyword.Namespace: "bg:ansiblack ansimagenta bold",
-        Keyword.Pseudo: "bg:ansiblack ansibrightblack",
-        Keyword.Reserved: "bg:ansiblack ansiblue",
-        Keyword.Type: "bg:ansiblack ansibrightred",
-        Name: "bg:ansiblack ",  # Default
-        Name.Attribute: "bg:ansiblack ansibrightyellow",
-        Name.Builtin: "bg:ansiblack ansicyan",
-        Name.Builtin.Pseudo: "bg:ansiblack ansibrightblack",
-        Name.Class: "bg:ansiblack ansibrightgreen bold",
-        Name.Constant: "bg:ansiblack ansired",
-        Name.Decorator: "bg:ansiblack ansibrightmagenta",
-        Name.Entity: "bg:ansiblack ansibrightyellow",
-        Name.Exception: "bg:ansiblack ansibrightred bold",
-        Name.Function: "bg:ansiblack ansigreen",
-        Name.Function.Magic: "bg:ansiblack ansibrightgreen",
-        Name.Label: "bg:ansiblack ansibrightyellow",
-        Name.Namespace: "bg:ansiblack ansimagenta",
-        Name.Other: "bg:ansiblack ",  # Default
-        Name.Tag: "bg:ansiblack ansiblue bold",
-        Name.Variable: "bg:ansiblack ansired",
-        Name.Variable.Class: "bg:ansiblack ansibrightgreen",
-        Name.Variable.Global: "bg:ansiblack ansibrightred",
-        Name.Variable.Instance: "bg:ansiblack ansired",
-        Name.Variable.Magic: "bg:ansiblack ansibrightgreen",
-        String: "bg:ansiblack ansiyellow",
-        String.Affix: "bg:ansiblack ansibrightblue",
-        String.Backtick: "bg:ansiblack ansibrightred",
-        String.Char: "bg:ansiblack ansiyellow",
-        String.Delimiter: "bg:ansiblack ansibrightblue",
-        String.Doc: "bg:ansiblack ansibrightblack italic",
-        String.Double: "bg:ansiblack ansiyellow",
-        String.Escape: "bg:ansiblack ansibrightred bold",
-        String.Heredoc: "bg:ansiblack ansiyellow italic",
-        String.Interpol: "bg:ansiblack ansimagenta",
-        String.Other: "bg:ansiblack ansiyellow",
-        String.Regex: "bg:ansiblack ansimagenta",
-        String.Single: "bg:ansiblack ansiyellow",
-        String.Symbol: "bg:ansiblack ansired bold",
-        Number: "bg:ansiblack ansicyan",
-        Number.Bin: "bg:ansiblack ansicyan",
-        Number.Float: "bg:ansiblack ansibrightcyan",
-        Number.Hex: "bg:ansiblack ansicyan",
-        Number.Integer: "bg:ansiblack ansicyan",
-        Number.Integer.Long: "bg:ansiblack ansicyan",
-        Number.Oct: "bg:ansiblack ansicyan",
-        Operator: "bg:ansiblack ansibrightmagenta",
-        Operator.Word: "bg:ansiblack ansimagenta bold",
-        Generic.Deleted: "bg:ansiblack ansired",
-        Generic.Emph: "bg:ansiblack italic",
-        Generic.Error: "bg:ansiblack ansibrightred bg:ansired",
-        Generic.Heading: "bg:ansiblack bold ansiblue",
-        Generic.Inserted: "bg:ansiblack ansigreen",
-        Generic.Output: "bg:ansiblack ansibrightblack",
-        Generic.Prompt: "bg:ansiblack ansiblue bold",
-        Generic.Strong: "bg:ansiblack bold",
-        Generic.Subheading: "bg:ansiblack bold ansimagenta",
-        Generic.Traceback: "bg:ansiblack ansibrightred bold",
-        Generic.Underline: "bg:ansiblack underline",
-        Error: "bg:ansiblack ansibrightred bold bg:ansired",  # Ensure errors are visible
-        Token.Other: "bg:ansiblack ",  # Default for anything else
+        Whitespace: "",  # No specific style for whitespace
+        Comment: "ansibrightblack italic",
+        Keyword: "ansiblue bold",
+        Keyword.Constant: "ansicyan",
+        Keyword.Declaration: "ansibrightblue",
+        Keyword.Namespace: "ansimagenta bold",
+        Keyword.Pseudo: "ansibrightblack",
+        Keyword.Reserved: "ansiblue",
+        Keyword.Type: "ansibrightred",
+        Name: "",  # Default
+        Name.Attribute: "ansibrightyellow",
+        Name.Builtin: "ansicyan",
+        Name.Builtin.Pseudo: "ansibrightblack",
+        Name.Class: "ansibrightgreen bold",
+        Name.Constant: "ansired",
+        Name.Decorator: "ansibrightmagenta",
+        Name.Entity: "ansibrightyellow",
+        Name.Exception: "ansibrightred bold",
+        Name.Function: "ansigreen",
+        Name.Function.Magic: "ansibrightgreen",
+        Name.Label: "ansibrightyellow",
+        Name.Namespace: "ansimagenta",
+        Name.Other: "",  # Default
+        Name.Tag: "ansiblue bold",
+        Name.Variable: "ansired",
+        Name.Variable.Class: "ansibrightgreen",
+        Name.Variable.Global: "ansibrightred",
+        Name.Variable.Instance: "ansired",
+        Name.Variable.Magic: "ansibrightgreen",
+        String: "ansiyellow",
+        String.Affix: "ansibrightblue",
+        String.Backtick: "ansibrightred",
+        String.Char: "ansiyellow",
+        String.Delimiter: "ansibrightblue",
+        String.Doc: "ansibrightblack italic",
+        String.Double: "ansiyellow",
+        String.Escape: "ansibrightred bold",
+        String.Heredoc: "ansiyellow italic",
+        String.Interpol: "ansimagenta",
+        String.Other: "ansiyellow",
+        String.Regex: "ansimagenta",
+        String.Single: "ansiyellow",
+        String.Symbol: "ansired bold",
+        Number: "ansicyan",
+        Number.Bin: "ansicyan",
+        Number.Float: "ansibrightcyan",
+        Number.Hex: "ansicyan",
+        Number.Integer: "ansicyan",
+        Number.Integer.Long: "ansicyan",
+        Number.Oct: "ansicyan",
+        Operator: "ansibrightmagenta",
+        Operator.Word: "ansimagenta bold",
+        Generic.Deleted: "ansired",
+        Generic.Emph: "italic",
+        Generic.Error: "ansibrightred bg:ansired",
+        Generic.Heading: "bold ansiblue",
+        Generic.Inserted: "ansigreen",
+        Generic.Output: "ansibrightblack",
+        Generic.Prompt: "ansiblue bold",
+        Generic.Strong: "bold",
+        Generic.Subheading: "bold ansimagenta",
+        Generic.Traceback: "ansibrightred bold",
+        Generic.Underline: "underline",
+        Error: "ansibrightred bold bg:ansired",  # Ensure errors are visible
+        Token.Other: "",  # Default for anything else
     }
 
 
@@ -134,8 +125,8 @@ code_buffer = ""
 # formatter = TerminalFormatter(bg="light")
 # formatter = TerminalFormatter(style=MyAnsiStyle)
 
-formatter = Terminal256Formatter(style=MyAnsiStyle)
 # formatter = Terminal256Formatter(style="monokai")
+formatter = Terminal256Formatter(style=MyAnsiStyle)
 
 
 def apply_inline_styles(line):
