@@ -3,6 +3,7 @@
 - [`hnt-llm`](./llm/): simple, performant text backend. pipe text input in, receive LLM text response out
 - [`llm-pack`](./edit/llm-pack/): take source code filenames as CLI args. write LLM packed prompt to stdout
 - [`hnt-apply`](./edit/): take LLM output including TARGET/REPLACE blocks as stdin. make edits to those files on the LLM's behalf
+- [`hlmd-st`](./fmt/highlight/): take LLM markdown output, including code blocks as stdin. write syntax highlighted ver to stdout
 - [`hnt-edit`](./edit/): (very low-budget) aider clone. wrapper that uses llm-pack to format source code. sends it along with user instructions to hnt-llm. then uses hnt-apply to parse the LLM's desired edits
 
 # vague philosophy. here we go again...
