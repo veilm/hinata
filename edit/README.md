@@ -35,7 +35,23 @@ edit format to the LLM, it will have no awareness of it and thus no way to edit
 files. Using a blank prompt like `-s ""` is fine if you only need read access,
 such as for asking questions about the code, though.
 
-## ss
-using `hlmd-st` syntax highlighting
+## syntax highlighting
+the LLM markdown output can be automatically piped to a syntax highlighting CLI.
+by default it looks in `$PATH` for
+[`hlmd-st`](https://github.com/michaelskyba/hinata/tree/main/fmt/highlight)
+
+you can choose your own by setting `$HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD`, which
+will override the `hlmd-st` check. e.g. setting it to `cat` will be equivalent
+to disabling syntax highlighting since piping into cat returns your input
+verbatim
+
+keep in mind that your highlighting CLI needs to support streaming, which is not
+the case for popular options like `rich-cli` and `pygmentize` that buffer the
+entire stdin before parsing it. `hlmd-st` works as expected
+
+the higlighter will not intefere with the LLM's edit format; `hnt-apply` is
+given the raw LLM generation rather than your highlighter's output
+
+## ss (`hlmd-st`)
 
 ![with syntax highlighting](https://github.com/michaelskyba/michaelskyba.github.io/blob/master/static/1746146910-hnt-edit.png?raw=true)
