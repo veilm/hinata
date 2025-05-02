@@ -191,10 +191,6 @@ def process_line(line):
                 lexer = get_lexer_by_name(code_language)
             except ClassNotFound:
                 # Use a default or plain text lexer if specified one not found
-                print(
-                    f"# Lexer '{code_language}' not found. Using plain text.{RESET}",
-                    file=sys.stderr,
-                )
                 try:
                     lexer = get_lexer_by_name("text")  # Fallback lexer
                 except ClassNotFound:  # Should not happen for 'text'
