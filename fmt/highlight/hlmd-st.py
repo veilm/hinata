@@ -126,7 +126,7 @@ CODE_BG = "\033[48;5;235m"  # Dark grey background for code blocks
 in_code_block = False
 code_language = None
 code_buffer = ""
-code_gen_pos = 0 # Tracks the length of the already emitted highlighted code
+code_gen_pos = 0  # Tracks the length of the already emitted highlighted code
 lexer = None
 # Initialize the formatter once, globally
 # formatter = TerminalFormatter(style=MyAnsiStyle, bg="dark")
@@ -168,45 +168,48 @@ def process_line(line):
         if in_code_block:
             # End of code block
             in_code_block = False
-            lexer = None # Reset lexer
+            lexer = None  # Reset lexer
             code_buffer = ""  # Reset buffer
             code_language = None
-            code_gen_pos = 0 # Reset position tracker
-            print(RESET, end="") # Ensure styles are reset after code block
+            code_gen_pos = 0  # Reset position tracker
+            print(RESET, end="")  # Ensure styles are reset after code block
             return  # Don't print the closing ``` line itself
         else:
             # Start of code block
             in_code_block = True
             code_language = code_block_match.group(1) or None
             code_buffer = ""  # Clear buffer for new block
-            code_gen_pos = 0 # Reset position tracker
-            lexer = None # Reset lexer, will be determined on first line of code
+            code_gen_pos = 0  # Reset position tracker
+            lexer = None  # Reset lexer, will be determined on first line of code
             # print(CODE_BG, end="") # Optional: Start with a background color immediately
             return  # Don't print the opening ``` line itself
 
     if in_code_block:
         # Determine lexer on the first line inside the block
         if lexer is None and code_language:
-             try:
-                 lexer = get_lexer_by_name(code_language)
-             except ClassNotFound:
-                 # Use a default or plain text lexer if specified one not found
-                 print(f"# Lexer '{code_language}' not found. Using plain text.{RESET}", file=sys.stderr)
-                 try:
-                      lexer = get_lexer_by_name("text") # Fallback lexer
-                 except ClassNotFound: # Should not happen for 'text'
-                      print(f"# Fallback lexer 'text' not found.", file=sys.stderr)
-                      # If even text lexer fails, we cannot highlight
-                      print(line.rstrip()) # Print raw line
-                      return
+            try:
+                lexer = get_lexer_by_name(code_language)
+            except ClassNotFound:
+                # Use a default or plain text lexer if specified one not found
+                print(
+                    f"# Lexer '{code_language}' not found. Using plain text.{RESET}",
+                    file=sys.stderr,
+                )
+                try:
+                    lexer = get_lexer_by_name("text")  # Fallback lexer
+                except ClassNotFound:  # Should not happen for 'text'
+                    print(f"# Fallback lexer 'text' not found.", file=sys.stderr)
+                    # If even text lexer fails, we cannot highlight
+                    print(line.rstrip())  # Print raw line
+                    return
 
-        elif lexer is None: # No language specified
-             try:
-                 lexer = get_lexer_by_name("text") # Default to plain text
-             except ClassNotFound:
-                 print(f"# Default lexer 'text' not found.", file=sys.stderr)
-                 print(line.rstrip()) # Print raw line
-                 return
+        elif lexer is None:  # No language specified
+            try:
+                lexer = get_lexer_by_name("text")  # Default to plain text
+            except ClassNotFound:
+                print(f"# Default lexer 'text' not found.", file=sys.stderr)
+                print(line.rstrip())  # Print raw line
+                return
 
         # Accumulate line, highlight the whole buffer, extract and print the new part
         code_buffer += line
@@ -229,13 +232,15 @@ def process_line(line):
             code_gen_pos = len(full_highlighted_output)
 
         except Exception as e:
-             # Fallback for any highlighting error - print raw line for this step
-             print(f"# Error during incremental highlighting: {e}{RESET}", file=sys.stderr)
-             print(line.rstrip(), end="") # Print raw line content
-             # Try to keep buffer consistent, but highlighting is likely broken now
-             code_gen_pos += len(line) # Rough estimate
+            # Fallback for any highlighting error - print raw line for this step
+            print(
+                f"# Error during incremental highlighting: {e}{RESET}", file=sys.stderr
+            )
+            print(line.rstrip(), end="")  # Print raw line content
+            # Try to keep buffer consistent, but highlighting is likely broken now
+            code_gen_pos += len(line)  # Rough estimate
 
-        return # Line processed within code block
+        return  # Line processed within code block
 
     # --- Headers ---
     header_match = re.match(r"^(#+)\s+(.*)", line)
@@ -283,14 +288,14 @@ def main():
             process_line(line)
         # Ensure style is reset if script ends abruptly or normally
         if in_code_block:
-            print(RESET, end="") # Reset style if we were in a code block
+            print(RESET, end="")  # Reset style if we were in a code block
             print(f"\n--- Code block potentially truncated ---{RESET}", file=sys.stderr)
         # No need for the explicit end-of-stream highlighting block anymore,
         # as highlighting is done incrementally.
 
     except BrokenPipeError:
         # Handle cases where the reading pipe is closed (e.g., piping to `head`)
-        print(RESET, end="") # Ensure reset on broken pipe
+        print(RESET, end="")  # Ensure reset on broken pipe
         sys.stderr.close()  # Suppress further stderr errors
         sys.exit(0)
     except Exception as e:

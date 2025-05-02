@@ -1,0 +1,10 @@
+#!/bin/sh -e
+cd "$(dirname "$0")"
+
+f=/tmp/hlmd-st
+cp ./hlmd-st.py "$f"
+chmod +x "$f"
+sudo mv "$f" /usr/local/bin/
+
+which hlmd-st > /dev/null
+echo "build: hlmd-st installed" | hlmd-st
