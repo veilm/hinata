@@ -36,4 +36,6 @@ files. Using a blank prompt like `-s ""` is fine if you only need read access,
 such as for asking questions about the code, though.
 
 ## ss
-![no syntax highlighting yet?](https://raw.githubusercontent.com/michaelskyba/michaelskyba.github.io/refs/heads/master/static/hnt-edit-1745629293.jpg)
+using hlmd-st syntax highlighting
+
+![with syntax highlighting](https://github.com/michaelskyba/michaelskyba.github.io/blob/master/static/1746146910-hnt-edit.png?raw=true)
