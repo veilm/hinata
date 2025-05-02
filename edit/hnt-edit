@@ -6,7 +6,18 @@ import subprocess
 import sys
 import tempfile
 import io
+import shutil
 from pathlib import Path
+
+
+# Command to pipe output through for syntax highlighting
+SYNTAX_HIGHLIGHT_PIPE_CMD = ["hlmd-st"]
+
+# more complex but feature-rich alternative
+# https://github.com/kristopolous/Streamdown
+
+# don't use. doesn't buffer
+# SYNTAX_HIGHLIGHT_PIPE_CMD = ["rich", "-m", "-"]
 
 
 def run_command(cmd, stdin_content=None, capture_output=True, check=True, text=True):
@@ -117,6 +128,22 @@ def get_system_message(system_arg):
 
 
 def main():
+    # --- Syntax Highlighting Check ---
+    syntax_highlight_enabled = False
+    highlighter_executable = None
+    if SYNTAX_HIGHLIGHT_PIPE_CMD:
+        highlighter_executable = shutil.which(SYNTAX_HIGHLIGHT_PIPE_CMD[0])
+        if highlighter_executable:
+            syntax_highlight_enabled = True
+            # Use the full path found by `which`
+            SYNTAX_HIGHLIGHT_PIPE_CMD[0] = highlighter_executable
+        else:
+            print(
+                f"Info: Syntax highlighter '{SYNTAX_HIGHLIGHT_PIPE_CMD[0]}' not found in PATH. Highlighting disabled.",
+                file=sys.stderr,
+            )
+    # --- End Syntax Highlighting Check ---
+
     parser = argparse.ArgumentParser(
         description="Edit files using hinata LLM agent.",
         epilog="Example: hnt-edit -m 'Refactor foo function' src/main.py src/utils.py",
@@ -151,7 +178,9 @@ def main():
     packed_sources = llm_pack_result.stdout
 
     # 4. Prepare input for hnt-llm
-    hnt_llm_input = f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
+    hnt_llm_input = (
+        f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
+    )
 
     # Show user query if it came from EDITOR
     if not args.message:
@@ -164,6 +193,7 @@ def main():
     if args.model:
         hnt_llm_cmd.extend(["--model", args.model])
     hnt_llm_output_capture = io.StringIO()
+    rich_process = None  # Initialize rich_process outside try
 
     try:
         # Use Popen for streaming stdout
@@ -173,50 +203,141 @@ def main():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,  # Capture stderr too
             text=True,
-            bufsize=1,  # Line buffered
+            bufsize=1,  # Line buffered, might help with streaming
+            # universal_newlines=True # Alternative to text=True
         )
 
-        # Write input to hnt-llm's stdin
+        # Start syntax highlighter process if enabled
+        # rich_process = None # Moved outside the try block
+        if syntax_highlight_enabled:
+            try:
+                rich_process = subprocess.Popen(
+                    SYNTAX_HIGHLIGHT_PIPE_CMD,
+                    stdin=subprocess.PIPE,
+                    stdout=sys.stdout,  # Pipe rich output directly to terminal stdout
+                    stderr=sys.stderr,  # Pipe rich errors directly to terminal stderr
+                    text=True,
+                )
+            except FileNotFoundError:
+                print(
+                    f"Error: Syntax highlighter command failed: {SYNTAX_HIGHLIGHT_PIPE_CMD[0]}",
+                    file=sys.stderr,
+                )
+                syntax_highlight_enabled = False  # Disable if Popen fails
+            except Exception as e:
+                print(f"Error starting syntax highlighter: {e}", file=sys.stderr)
+                syntax_highlight_enabled = False  # Disable on other errors
+
+        # Write input to hnt-llm's stdin in a separate thread or handle potential blocks
+        # Simple write for now, assuming input isn't excessively large to block pipe
         hnt_llm_process.stdin.write(hnt_llm_input)
         hnt_llm_process.stdin.close()  # Signal EOF
 
-        # Stream stdout and capture
+        # Stream stdout from hnt-llm, capture it, and pipe to rich if enabled
         while True:
             line = hnt_llm_process.stdout.readline()
             if not line:
                 break
-            sys.stdout.write(line)  # Stream to terminal
-            sys.stdout.flush()
-            hnt_llm_output_capture.write(line)  # Capture
 
-        # Wait for process to finish and check return code
-        hnt_llm_process.wait()
-        if hnt_llm_process.returncode != 0:
-            # Read any remaining stderr
-            stderr_output = hnt_llm_process.stderr.read()
+            # Always capture the raw output
+            hnt_llm_output_capture.write(line)
+
+            # Pipe to syntax highlighter OR print directly
+            if syntax_highlight_enabled and rich_process:
+                try:
+                    rich_process.stdin.write(line)
+                    rich_process.stdin.flush()
+                except BrokenPipeError:
+                    # Rich process might have exited (e.g., if user Ctrl+C'd)
+                    print("Warning: Syntax highlighter pipe broken.", file=sys.stderr)
+                    syntax_highlight_enabled = False  # Stop trying to write
+                    # Print remaining lines directly
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                except Exception as e:
+                    print(f"Error writing to syntax highlighter: {e}", file=sys.stderr)
+                    syntax_highlight_enabled = False  # Stop trying to write
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+
+            else:
+                # Highlighting disabled or failed, print directly
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
+        # Close rich stdin if it was used
+        if rich_process and rich_process.stdin:
+            try:
+                rich_process.stdin.close()
+            except Exception as e:
+                print(
+                    f"Warning: Error closing syntax highlighter stdin: {e}",
+                    file=sys.stderr,
+                )
+
+        # Wait for hnt-llm process to finish and check return code
+        hnt_llm_rc = hnt_llm_process.wait()
+        if hnt_llm_rc != 0:
+            # Read any remaining stderr from hnt-llm
+            stderr_output = ""
+            if hnt_llm_process.stderr:  # Check if stderr was captured
+                stderr_output = hnt_llm_process.stderr.read()
             print(
-                f"\nError: 'hnt-llm -s' failed with exit code {hnt_llm_process.returncode}",
+                f"\nError: '{' '.join(hnt_llm_cmd)}' failed with exit code {hnt_llm_rc}",
                 file=sys.stderr,
             )
             if stderr_output:
-                print(f"Stderr:\n{stderr_output}", file=sys.stderr)
-            sys.exit(hnt_llm_process.returncode)
+                print(f"hnt-llm Stderr:\n{stderr_output}", file=sys.stderr)
+            # Don't exit immediately if rich also needs cleanup/check
+            # sys.exit(hnt_llm_rc) # Moved after potential rich wait
 
     except FileNotFoundError:
-        print(f"Error: Command not found: {hnt_llm_cmd[0]}", file=sys.stderr)
+        print(
+            f"Error: Command not found during Popen: {hnt_llm_cmd[0]}", file=sys.stderr
+        )
         sys.exit(1)
     except Exception as e:
         print(
             f"An unexpected error occurred while running {' '.join(hnt_llm_cmd)}: {e}",
             file=sys.stderr,
         )
-        # Ensure process is terminated if it's still running
+        # Ensure processes are terminated if they are still running
         if "hnt_llm_process" in locals() and hnt_llm_process.poll() is None:
             hnt_llm_process.terminate()
+            hnt_llm_process.wait()  # Ensure termination
+        if rich_process and rich_process.poll() is None:
+            rich_process.terminate()
+            rich_process.wait()  # Ensure termination
         sys.exit(1)
+    finally:
+        # Ensure resources are cleaned up even if errors occurred mid-stream
+
+        # Wait for rich process if it was started
+        rich_rc = 0
+        if rich_process:
+            rich_rc = rich_process.wait()
+            if rich_rc != 0:
+                # Rich errors likely already went to stderr, but log rc
+                print(
+                    f"Info: Syntax highlighter exited with code {rich_rc}",
+                    file=sys.stderr,
+                )
+
+        # Now check hnt-llm's return code and exit if it failed
+        # Use the previously captured return code
+        if "hnt_llm_rc" in locals() and hnt_llm_rc != 0:
+            sys.exit(hnt_llm_rc)
 
     final_hnt_llm_output = hnt_llm_output_capture.getvalue()
     hnt_llm_output_capture.close()
+
+    # Check if output is empty (might happen if hnt-llm failed silently or produced nothing)
+    if not final_hnt_llm_output.strip():
+        print(
+            "Warning: hnt-llm produced no output. Aborting before running hnt-apply.",
+            file=sys.stderr,
+        )
+        sys.exit(1)  # Or a specific error code
 
     # 6. Run hnt-apply
     hnt_apply_cmd = ["hnt-apply"] + args.source_files
@@ -227,8 +348,6 @@ def main():
         check=True,
         text=True,
     )
-
-    print("\nhnt-edit: Edits applied successfully.")
 
 
 if __name__ == "__main__":
