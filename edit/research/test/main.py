@@ -17,7 +17,9 @@ blandit sed. Curabitur sem purus, pellentesque vel eleifend eu, accumsan eget
 erat. Integer lobortis efficitur accumsan.
 """
 
+
 def main():
     print("My favourite number is", fav_number)
+
 
 main()

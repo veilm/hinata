@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import io
+import shlex
 import shutil
 from pathlib import Path
 
@@ -130,16 +131,43 @@ def get_system_message(system_arg):
 def main():
     # --- Syntax Highlighting Check ---
     syntax_highlight_enabled = False
-    highlighter_executable = None
-    if SYNTAX_HIGHLIGHT_PIPE_CMD:
+    effective_syntax_cmd = None # This will hold the command list to execute
+
+    # Check environment variable first
+    env_cmd_str = os.environ.get("HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD")
+    if env_cmd_str:
+        try:
+            # Parse the command string, respecting quotes and spaces
+            effective_syntax_cmd = shlex.split(env_cmd_str)
+            if effective_syntax_cmd: # Ensure shlex.split didn't return empty list
+                 syntax_highlight_enabled = True
+            else:
+                 print(
+                     f"Warning: HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD is set but resulted in an empty command after parsing: '{env_cmd_str}'. Highlighting disabled.",
+                     file=sys.stderr
+                 )
+                 env_cmd_str = None # Treat as if not set for fallback logic
+        except ValueError as e:
+            print(
+                f"Warning: Could not parse HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD: '{env_cmd_str}'. Error: {e}. Highlighting disabled.",
+                file=sys.stderr
+            )
+            env_cmd_str = None # Treat as if not set for fallback logic
+
+    # If environment variable wasn't used or was invalid, try the default
+    if not env_cmd_str and SYNTAX_HIGHLIGHT_PIPE_CMD:
+        # Check if the default command exists in PATH
         highlighter_executable = shutil.which(SYNTAX_HIGHLIGHT_PIPE_CMD[0])
         if highlighter_executable:
             syntax_highlight_enabled = True
-            # Use the full path found by `which`
-            SYNTAX_HIGHLIGHT_PIPE_CMD[0] = highlighter_executable
+            # Use the default command, but update executable with full path
+            effective_syntax_cmd = SYNTAX_HIGHLIGHT_PIPE_CMD[:] # Make a copy
+            effective_syntax_cmd[0] = highlighter_executable
+            # No need to print info message if using default and found
         else:
+            # Only print info if default command not found and env var wasn't used
             print(
-                f"Info: Syntax highlighter '{SYNTAX_HIGHLIGHT_PIPE_CMD[0]}' not found in PATH. Highlighting disabled.",
+                f"Info: Default syntax highlighter '{SYNTAX_HIGHLIGHT_PIPE_CMD[0]}' not found in PATH. Highlighting disabled.",
                 file=sys.stderr,
             )
     # --- End Syntax Highlighting Check ---
@@ -211,16 +239,18 @@ def main():
         # rich_process = None # Moved outside the try block
         if syntax_highlight_enabled:
             try:
+                # Use the command determined earlier (from env var or default)
                 rich_process = subprocess.Popen(
-                    SYNTAX_HIGHLIGHT_PIPE_CMD,
+                    effective_syntax_cmd,
                     stdin=subprocess.PIPE,
                     stdout=sys.stdout,  # Pipe rich output directly to terminal stdout
                     stderr=sys.stderr,  # Pipe rich errors directly to terminal stderr
                     text=True,
                 )
             except FileNotFoundError:
+                 # Use the actual command that was attempted
                 print(
-                    f"Error: Syntax highlighter command failed: {SYNTAX_HIGHLIGHT_PIPE_CMD[0]}",
+                    f"Error: Syntax highlighter command '{effective_syntax_cmd[0]}' not found.",
                     file=sys.stderr,
                 )
                 syntax_highlight_enabled = False  # Disable if Popen fails
