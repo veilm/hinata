@@ -6,4 +6,8 @@ gcc \
 	-lcurl -ljansson \
 	main.c -o ./hnt-llm
 
+gcc \
+	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
+	escape.c -o ./hnt-escape
+
 sudo cp ./hnt-llm /usr/local/bin/
