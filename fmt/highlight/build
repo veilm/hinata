@@ -1,4 +1,11 @@
 #!/bin/sh -e
+
+if ! which uv > /dev/null 2>&1
+then
+	echo "build: uv is required"
+	exit 1
+fi
+
 cd "$(dirname "$0")"
 
 f=/tmp/hlmd-st
