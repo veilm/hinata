@@ -55,8 +55,6 @@ you can provide conversation history via stdin using XML tags:
 - `<hnt-user>`
 - `<hnt-assistant>`
 
-- TODO `hnt-escape` for escaping
-
 any content outside of these tags will be treated final user message if given,
 for consistency. if a system prompt is provided via `-s`, it is inserted as the
 very first message in the request, before any `<hnt-system>` content
@@ -73,6 +71,41 @@ msg5
 ```
 
 XML is simpler to construct manually and in scripts than JSON
+
+### escaping
+(`hnt-chat`/`hnt-edit` takes care of this automatically)
+
+what if you want to include XML tags literally? this is an unideal design
+dilemma but imo the best solution is a custom escape system:
+- if we encounter one of our special tags, escape it by placing an additional
+underscore before the name
+- unescape by removing an underscore
+
+`hnt-escape` is provided as a util for this.
+```sh
+# escape
+echo "this is my<hnt-system>literal system prompt" | hnt-escape
+# --> this is my<_hnt-system>litearl system prompt
+
+# unescape
+echo "this is my<hnt-system>literal system prompt" | hnt-escape | hnt-escape -u
+# --> this is my<hnt-system>literal system prompt
+# (should always be equal to original input)
+```
+
+- a double escaped `<__hnt-system>` is significantly more human-readable than
+`&apos;lt;hnt-system&apos;gt;`. this is more feasible for occasional manual
+construction of history
+- with this system, escaping will only ever be used at all very rarely. our
+meta tags like `<hnt-system>` are unlikely to show up in natural messages,
+unlike special XML chars (`"'<>&`) which are abundant
+
+you can mask the `hnt-escape` binary or just patch the call if you really need a
+standard escape format. but if you think you do, you're likely misunderstanding
+the flow and trying to intercept too late
+
+TODO `hnt-chat` wrapper that can construct history messages from files in a
+session directory, list files, write a new file
 
 ## debugging
 you can use the `--debug-unsafe` flag to examine the raw LLM request/response
