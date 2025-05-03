@@ -1,7 +1,9 @@
+#define _POSIX_C_SOURCE 200809L  // Define POSIX standard for getopt/optind
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>  // For exit
 #include <string.h>
+#include <unistd.h>  // For getopt
 
 #define MAX_TAG_BUFFER 50  // Max length for <[/]_*hnt-assistant> + extras
 
@@ -20,6 +22,7 @@ static int buffer_idx = 0;
 static int is_closing = 0;
 static int underscore_count = 0;
 static char matched_tag_base[20] = "";
+static int unescape_mode = 0;  // 0 for escape (default), 1 for unescape (-u)
 // Note: Removed unused tag_name_len variable
 
 // Forward declaration for reprocess_char_in_normal used within
@@ -41,35 +44,89 @@ static void flush_buffer_and_reset() {
 	matched_tag_base[0] = '\0';
 }
 
-// Processes a confirmed tag match, printing the modified tag
+// Processes a confirmed tag match, printing the modified tag based on mode
 static void process_match() {
-	putchar('<');
-	if (is_closing) {
-		putchar('/');
-	}
-	// Add the extra underscore requested
-	putchar('_');
-	// Print existing underscores
-	for (int i = 0; i < underscore_count; ++i) {
-		putchar('_');
-	}
-	// Print the matched tag name in lowercase
-	if (strcmp(matched_tag_base, "system") == 0)
-		printf("hnt-system");
-	else if (strcmp(matched_tag_base, "user") == 0)
-		printf("hnt-user");
-	else if (strcmp(matched_tag_base, "assistant") == 0)
-		printf("hnt-assistant");
-	// Should have a valid matched_tag_base if we got here
+	if (unescape_mode) {  // Unescaping mode (-u)
+		if (underscore_count > 0) {
+			// Remove one underscore
+			putchar('<');
+			if (is_closing) {
+				putchar('/');
+			}
+			for (int i = 0; i < underscore_count - 1; ++i) {
+				putchar('_');
+			}
+			// Print the base tag name
+			if (strcmp(matched_tag_base, "system") == 0)
+				printf("hnt-system");
+			else if (strcmp(matched_tag_base, "user") == 0)
+				printf("hnt-user");
+			else if (strcmp(matched_tag_base, "assistant") == 0)
+				printf("hnt-assistant");
+			putchar('>');
+		} else {  // underscore_count == 0 in unescape mode - Warning!
+			// Construct the tag string first for the message
+			char found_tag[MAX_TAG_BUFFER];
+			int len = 0;
+			found_tag[len++] = '<';
+			if (is_closing) {
+				found_tag[len++] = '/';
+			}
+			const char *base_name_ptr = NULL;
+			if (strcmp(matched_tag_base, "system") == 0)
+				base_name_ptr = "hnt-system";
+			else if (strcmp(matched_tag_base, "user") == 0)
+				base_name_ptr = "hnt-user";
+			else if (strcmp(matched_tag_base, "assistant") == 0)
+				base_name_ptr = "hnt-assistant";
 
-	putchar('>');
+			// Copy base name if found (should always be found here)
+			if (base_name_ptr) {
+				strcpy(found_tag + len, base_name_ptr);
+				len += strlen(base_name_ptr);
+			}
+			found_tag[len++] = '>';
+			found_tag[len] = '\0';
 
-	// Reset state after processing
+			// Print warning to stderr
+			fprintf(stderr, "Warning: Found unescaped tag '%s'\n", found_tag);
+
+			// Print original tag to stdout (as is)
+			putchar('<');
+			if (is_closing) {
+				putchar('/');
+			}
+			if (base_name_ptr) {  // Print base name again
+				printf("%s", base_name_ptr);
+			}
+			putchar('>');
+		}
+	} else {  // Escaping mode (default)
+		// Add one underscore
+		putchar('<');
+		if (is_closing) {
+			putchar('/');
+		}
+		putchar('_');  // Add the extra underscore
+		// Print existing underscores
+		for (int i = 0; i < underscore_count; ++i) {
+			putchar('_');
+		}
+		// Print the base tag name
+		if (strcmp(matched_tag_base, "system") == 0)
+			printf("hnt-system");
+		else if (strcmp(matched_tag_base, "user") == 0)
+			printf("hnt-user");
+		else if (strcmp(matched_tag_base, "assistant") == 0)
+			printf("hnt-assistant");
+		putchar('>');
+	}
+
+	// Reset state after processing (common to both modes)
 	buffer_idx = 0;
 	state = STATE_NORMAL;
 	is_closing = 0;
 	underscore_count = 0;
-	// tag_name_len removed
 	matched_tag_base[0] = '\0';
 }
 
@@ -92,8 +149,45 @@ static void reprocess_char_in_normal(int current_char) {
 	}
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 	int c;
+	int opt;
+
+	// Parse command-line options
+	// opterr = 0; // Uncomment to disable getopt's default error messages
+	while ((opt = getopt(argc, argv, "u")) != -1) {
+		switch (opt) {
+			case 'u':
+				unescape_mode = 1;
+				break;
+			default: /* '?' */
+				fprintf(stderr, "Usage: %s [-u]\n", argv[0]);
+				fprintf(stderr,
+				        "  Processes stdin to stdout, escaping or "
+				        "unescaping special tags.\n");
+				fprintf(stderr,
+				        "  Default mode adds one leading underscore "
+				        "to tags like <_hnt-system>.\n");
+				fprintf(stderr,
+				        "  -u: Unescape mode (removes one leading "
+				        "underscore from tags).\n");
+				fprintf(stderr,
+				        "      Warns on stderr if tag has no "
+				        "underscores to remove.\n");
+				exit(EXIT_FAILURE);
+		}
+	}
+
+	// Check for non-option arguments (we don't process files, only stdin)
+	if (optind < argc) {
+		fprintf(stderr, "Error: Unexpected arguments found: ");
+		for (int i = optind; i < argc; i++) {
+			fprintf(stderr, "%s ", argv[i]);
+		}
+		fprintf(stderr, "\nUsage: %s [-u]\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
 	// State variables are now static globals
 
 	// --- Main Loop ---
