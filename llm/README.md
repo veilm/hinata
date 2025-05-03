@@ -81,6 +81,18 @@ dilemma but imo the best solution is a custom escape system:
 underscore before the name
 - unescape by removing an underscore
 
+the escaping happens in whatever hnt-llm wrapper you have that is constructing
+messages. you e.g. take your raw assistant message, escape it, then wrap it in
+real `<hnt-assistant></hnt-assistant>` closing tags as part of your final
+hnt-llm stdin construction. nothing abnormal; it's just as you would if passing
+JSON
+
+the unescaping happens internally in `hnt-llm`. for each message it finds
+(including a system message provided through `--system`, for consistency, even
+though it likely doesn't need it), it will unescape it as it constructs the
+internal linked list of messages. the LLM sees your raw unescaped original
+message, of course
+
 `hnt-escape` is provided as a util for this.
 ```sh
 # escape

@@ -7,7 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>  // For isatty() and STDIN_FILENO
+#include <sys/wait.h>  // For pclose status checking (WIFEXITED, etc.)
+#include <unistd.h>    // For isatty() and STDIN_FILENO
 
 #define VERSION_STRING "hnt-llm 0.05"
 
@@ -530,6 +531,173 @@ static int add_message_to_list(Message** head, Message** tail, const char* role,
 	return 1;  // Success
 }
 
+// Helper function to run hnt-escape -u on content via a temporary file
+// Returns a new dynamically allocated string with the unescaped content,
+// or NULL on error. Caller must free the returned string.
+static char* unescape_message_content(const char* original_content) {
+	char temp_filename[] = "/tmp/hnt-llm-unescape-XXXXXX";
+	int fd = -1;
+	FILE* temp_fp = NULL;
+	FILE* pipe_fp = NULL;
+	char* command = NULL;
+	char* output_buffer = NULL;
+	size_t output_capacity = 0;
+	size_t output_len = 0;
+	char read_buf[4096];
+	size_t bytes_read;
+	int pclose_status;
+	char* final_output = NULL;
+
+	// 1. Create and write to temporary file
+	fd = mkstemp(temp_filename);
+	if (fd == -1) {
+		perror("Failed to create temporary file for unescaping");
+		return NULL;  // Indicate error
+	}
+	// Need a FILE* to easily write the string
+	temp_fp = fdopen(fd, "w");
+	if (!temp_fp) {
+		perror("Failed to fdopen temporary file");
+		close(fd);              // Close the file descriptor
+		unlink(temp_filename);  // Clean up temp file
+		return NULL;
+	}
+	if (fputs(original_content, temp_fp) == EOF) {
+		fprintf(stderr, "Error writing to temporary file: %s\n",
+		        strerror(errno));
+		fclose(temp_fp);  // This also closes fd
+		unlink(temp_filename);
+		return NULL;
+	}
+	// Ensure data is written before the child process reads it
+	if (fclose(temp_fp) != 0) {  // fclose also closes fd
+		perror("Failed to close temporary file after writing");
+		unlink(temp_filename);
+		return NULL;
+	}
+	temp_fp = NULL;  // Avoid double close
+	fd = -1;         // Avoid double close
+
+	// 2. Construct command
+	// Ensure hnt-escape is found via PATH or specify full path if needed
+	const char* escape_cmd = "hnt-escape -u";
+	size_t command_len =
+	    strlen(escape_cmd) + strlen(" < ") + strlen(temp_filename) + 1;
+	command = malloc(command_len);
+	if (!command) {
+		perror("Failed to allocate memory for unescape command");
+		unlink(temp_filename);
+		return NULL;
+	}
+	snprintf(command, command_len, "%s < %s", escape_cmd, temp_filename);
+
+	// 3. Run command with popen
+	pipe_fp = popen(command, "r");
+	free(command);  // Free command string now
+	command = NULL;
+	if (!pipe_fp) {
+		perror("Failed to popen hnt-escape command");
+		unlink(temp_filename);
+		return NULL;
+	}
+
+	// 4. Read output from the pipe
+	output_capacity = 1024;  // Initial capacity
+	output_buffer = malloc(output_capacity);
+	if (!output_buffer) {
+		perror("Failed to allocate buffer for unescape output");
+		pclose(pipe_fp);
+		unlink(temp_filename);
+		return NULL;
+	}
+	output_len = 0;
+
+	while ((bytes_read = fread(read_buf, 1, sizeof(read_buf), pipe_fp)) > 0) {
+		if (output_len + bytes_read + 1 > output_capacity) {
+			size_t new_capacity = output_capacity * 2;
+			if (new_capacity < output_len + bytes_read + 1) {
+				new_capacity = output_len + bytes_read + 1;
+			}
+			char* new_buffer = realloc(output_buffer, new_capacity);
+			if (!new_buffer) {
+				perror("Failed to reallocate buffer for unescape output");
+				free(output_buffer);
+				pclose(pipe_fp);
+				unlink(temp_filename);
+				return NULL;
+			}
+			output_buffer = new_buffer;
+			output_capacity = new_capacity;
+		}
+		memcpy(output_buffer + output_len, read_buf, bytes_read);
+		output_len += bytes_read;
+	}
+	output_buffer[output_len] = '\0';  // Null-terminate
+
+	// Check for read errors
+	if (ferror(pipe_fp)) {
+		fprintf(stderr, "Error reading from hnt-escape pipe: %s\n",
+		        strerror(errno));
+		free(output_buffer);
+		pclose(pipe_fp);
+		unlink(temp_filename);
+		return NULL;
+	}
+
+	// 5. Close the pipe and check status
+	pclose_status = pclose(pipe_fp);
+	pipe_fp = NULL;  // Avoid double close
+	if (pclose_status == -1) {
+		perror("Failed to pclose hnt-escape pipe");
+		free(output_buffer);
+		unlink(temp_filename);
+		return NULL;
+	} else if (WIFEXITED(pclose_status) && WEXITSTATUS(pclose_status) != 0) {
+		fprintf(stderr, "Error: hnt-escape command exited with status %d\n",
+		        WEXITSTATUS(pclose_status));
+		free(output_buffer);
+		unlink(temp_filename);
+		return NULL;  // Indicate command execution error
+	} else if (!WIFEXITED(pclose_status)) {
+		fprintf(stderr,
+		        "Error: hnt-escape command terminated abnormally (signal %d)\n",
+		        WTERMSIG(pclose_status));
+		free(output_buffer);
+		unlink(temp_filename);
+		return NULL;  // Indicate command execution error
+	}
+
+	// 6. Clean up temporary file
+	if (unlink(temp_filename) != 0) {
+		// Use __func__ for function name in C99+
+		fprintf(stderr,
+		        "Warning (%s): Failed to delete temporary file '%s': %s\n",
+		        __func__, temp_filename, strerror(errno));
+		// Continue, as we have the output, but warn the user
+	}
+
+	// 7. Return the captured output (caller must free)
+	// Attempt to reallocate to the exact size + null terminator.
+	final_output = realloc(output_buffer, output_len + 1);
+
+	if (!final_output) {
+		// Realloc failed. The original output_buffer is still valid and
+		// contains the correct data. Print a warning and return the original
+		// (potentially oversized) buffer.
+		fprintf(stderr,
+		        "Warning (%s): Failed to realloc unescape buffer to final size "
+		        "(%zu bytes). Returning original buffer.\n",
+		        __func__, output_len + 1);
+		return output_buffer;  // Original buffer is returned, no free occurs
+		                       // here.
+	}
+
+	// Realloc succeeded. final_output points to the new (or possibly same)
+	// buffer. The original output_buffer pointer is now potentially invalid IF
+	// realloc moved the memory. Return the new pointer.
+	return final_output;
+}
+
 int main(int argc, char* argv[]) {
 	CURL* curl_handle = NULL;  // Initialize curl_handle to NULL
 	CURLcode res = CURLE_OK;   // Initialize res
@@ -915,7 +1083,52 @@ int main(int argc, char* argv[]) {
 	free(remaining_content_buffer);
 	remaining_content_buffer = NULL;  // Avoid double free in cleanup
 
-	// --- 5b. Construct Final API URL --- (This section remains the same)
+	// --- 5.5 Unescape message content ---
+	if (debug_mode)
+		fprintf(stderr,
+		        "DEBUG: Unescaping message content using hnt-escape...\n");
+	Message* current_msg = message_list_head;
+	while (current_msg != NULL) {
+		if (debug_mode)
+			fprintf(stderr, "DEBUG: Unescaping content for role '%s'...\n",
+			        current_msg->role);
+		char* original_content =
+		    current_msg->content;  // Keep pointer to free later
+		char* unescaped_content = unescape_message_content(original_content);
+
+		if (!unescaped_content) {
+			fprintf(stderr,
+			        "Error: Failed to unescape content for role '%s'. Original "
+			        "content:\n%s\n",
+			        current_msg->role,
+			        original_content ? original_content : "(null)");
+			// Abort if unescaping fails
+			goto cleanup;  // Use existing cleanup mechanism
+		}
+
+		// Check if content actually changed to avoid unnecessary free/strdup
+		// Note: create_message uses strdup, so original_content is always
+		// allocated unless it was NULL initially (which shouldn't happen here).
+		if (strcmp(original_content, unescaped_content) != 0) {
+			if (debug_mode)
+				fprintf(stderr, "DEBUG: Content changed after unescaping.\n");
+			free(original_content);  // Free the old content
+			current_msg->content =
+			    unescaped_content;  // Assign the new (we own it now)
+		} else {
+			if (debug_mode)
+				fprintf(stderr, "DEBUG: Content unchanged after unescaping.\n");
+			free(unescaped_content);  // Free the buffer returned by helper if
+			                          // unchanged
+			// current_msg->content remains the original pointer
+		}
+
+		current_msg = current_msg->next;
+	}
+	if (debug_mode)
+		fprintf(stderr, "DEBUG: Finished unescaping message content.\n");
+
+	// --- 5b. Construct Final API URL ---
 	// URL is now fixed for all providers, API key always goes in header
 	strncpy(final_api_url, api_url_base, sizeof(final_api_url) - 1);
 	final_api_url[sizeof(final_api_url) - 1] = '\0';  // Ensure null termination

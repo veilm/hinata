@@ -375,7 +375,8 @@ int main(int argc, char *argv[]) {
 					// Add the unexpected character to the buffer before
 					// flushing.
 					buffer[buffer_idx++] = c;
-					// Flush the buffer (which contains the full matched tag + invalid char 'c').
+					// Flush the buffer (which contains the full matched tag +
+					// invalid char 'c').
 					flush_buffer_and_reset();
 					// Do NOT reprocess 'c', it was just flushed.
 				}
