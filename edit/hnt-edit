@@ -8,6 +8,7 @@ import tempfile
 import io
 import shlex
 import shutil
+import textwrap
 from pathlib import Path
 
 
@@ -128,6 +129,13 @@ def get_system_message(system_arg):
             sys.exit(1)
 
 
+# --- Helper for Debug Logging ---
+def debug_log(args, *print_args, **print_kwargs):
+    """Prints debug messages to stderr if --debug-unsafe is enabled."""
+    if args.debug_unsafe:
+        print("[DEBUG]", *print_args, file=sys.stderr, **print_kwargs)
+
+
 def main():
     # --- Syntax Highlighting Check ---
     syntax_highlight_enabled = False
@@ -190,25 +198,47 @@ def main():
         "source_files", nargs="+", help="One or more source files to edit."
     )
     parser.add_argument("--model", help="Model to use (passed through to hnt-llm)")
+    parser.add_argument(
+        "--debug-unsafe",
+        action="store_true",
+        help="Enable unsafe debugging options in hnt-llm",
+    )
     args = parser.parse_args()
+    debug_log(args, "Arguments parsed:", args)
 
     # 1. Get system message
+    debug_log(args, "Getting system message...")
     system_message = get_system_message(args.system)
+    debug_log(args, "System message source:", args.system or "default path")
+    # Log first few lines for brevity
+    debug_log(args, "System message content (first 100 chars):\n", textwrap.shorten(system_message, width=100, placeholder="..."))
 
     # 2. Get user instruction
+    debug_log(args, "Getting user instruction...")
     instruction = get_user_instruction(args.message)
+    debug_log(args, "User instruction source:", "args.message" if args.message else "$EDITOR")
+    debug_log(args, "User instruction content (first 100 chars):\n", textwrap.shorten(instruction, width=100, placeholder="..."))
+
 
     # 3. Run llm-pack
+    debug_log(args, "Running llm-pack...")
     llm_pack_cmd = ["llm-pack", "-s"] + args.source_files
+    debug_log(args, "llm-pack command:", llm_pack_cmd)
     llm_pack_result = run_command(
         llm_pack_cmd, capture_output=True, check=True, text=True
     )
     packed_sources = llm_pack_result.stdout
+    debug_log(args, "llm-pack output (packed sources) length:", len(packed_sources))
+    debug_log(args, "llm-pack output (first 200 chars):\n", textwrap.shorten(packed_sources, width=200, placeholder="..."))
 
     # 4. Prepare input for hnt-llm
+    debug_log(args, "Preparing input for hnt-llm...")
     hnt_llm_input = (
         f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
     )
+    debug_log(args, "hnt-llm input length:", len(hnt_llm_input))
+    # Don't log the full input here as it contains everything above, just confirm structure
+    debug_log(args, "hnt-llm input structure: User request + Source reference")
 
     # Show user query if it came from EDITOR
     if not args.message:
@@ -217,13 +247,23 @@ def main():
         print("-" * 40 + "\n")
 
     # 5. Run hnt-llm -s, stream and capture output
+    debug_log(args, "Running hnt-llm...")
     hnt_llm_cmd = ["hnt-llm", "-s", system_message]
     if args.model:
         hnt_llm_cmd.extend(["--model", args.model])
+        debug_log(args, "Using model:", args.model)
+    if args.debug_unsafe: # Already checked by debug_log, but hnt-llm needs the flag
+        hnt_llm_cmd.append("--debug-unsafe")
+        debug_log(args, "Passing --debug-unsafe to hnt-llm")
+    debug_log(args, "hnt-llm command:", hnt_llm_cmd)
     hnt_llm_output_capture = io.StringIO()
     rich_process = None  # Initialize rich_process outside try
+    debug_log(args, "Syntax highlighting enabled:", syntax_highlight_enabled)
+    if syntax_highlight_enabled:
+        debug_log(args, "Syntax highlight command:", effective_syntax_cmd)
 
     try:
+        debug_log(args, "Starting hnt-llm process via Popen...")
         # Use Popen for streaming stdout
         hnt_llm_process = subprocess.Popen(
             hnt_llm_cmd,
@@ -234,10 +274,12 @@ def main():
             bufsize=1,  # Line buffered, might help with streaming
             # universal_newlines=True # Alternative to text=True
         )
+        debug_log(args, f"hnt-llm process started. PID: {hnt_llm_process.pid}")
 
         # Start syntax highlighter process if enabled
         # rich_process = None # Moved outside the try block
         if syntax_highlight_enabled:
+            debug_log(args, "Starting syntax highlighter process via Popen...")
             try:
                 # Use the command determined earlier (from env var or default)
                 rich_process = subprocess.Popen(
@@ -247,27 +289,40 @@ def main():
                     stderr=sys.stderr,  # Pipe rich errors directly to terminal stderr
                     text=True,
                 )
+                debug_log(args, f"Syntax highlighter process started. PID: {rich_process.pid}")
             except FileNotFoundError:
-                 # Use the actual command that was attempted
+                # Use the actual command that was attempted
+                debug_log(args, f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found.")
                 print(
                     f"Error: Syntax highlighter command '{effective_syntax_cmd[0]}' not found.",
                     file=sys.stderr,
                 )
                 syntax_highlight_enabled = False  # Disable if Popen fails
             except Exception as e:
+                debug_log(args, f"Error starting syntax highlighter: {e}")
                 print(f"Error starting syntax highlighter: {e}", file=sys.stderr)
                 syntax_highlight_enabled = False  # Disable on other errors
+        else:
+             debug_log(args, "Syntax highlighting not enabled, skipping highlighter process start.")
 
         # Write input to hnt-llm's stdin in a separate thread or handle potential blocks
         # Simple write for now, assuming input isn't excessively large to block pipe
+        debug_log(args, "Writing input to hnt-llm stdin...")
         hnt_llm_process.stdin.write(hnt_llm_input)
+        debug_log(args, "Closing hnt-llm stdin...")
         hnt_llm_process.stdin.close()  # Signal EOF
+        debug_log(args, "hnt-llm stdin closed.")
 
         # Stream stdout from hnt-llm, capture it, and pipe to rich if enabled
+        debug_log(args, "Starting hnt-llm stdout reading loop...")
         while True:
             line = hnt_llm_process.stdout.readline()
             if not line:
+                debug_log(args, "hnt-llm stdout loop: EOF")
                 break
+
+            # Log the received line if debugging
+            debug_log(args, f"hnt-llm stdout recv: {repr(line)}")
 
             # Always capture the raw output
             hnt_llm_output_capture.write(line)
@@ -306,8 +361,11 @@ def main():
                 )
 
         # Wait for hnt-llm process to finish and check return code
+        debug_log(args, "Waiting for hnt-llm process to finish...")
         hnt_llm_rc = hnt_llm_process.wait()
+        debug_log(args, "hnt-llm process finished with return code:", hnt_llm_rc)
         if hnt_llm_rc != 0:
+            debug_log(args, "hnt-llm failed. Reading stderr...")
             # Read any remaining stderr from hnt-llm
             stderr_output = ""
             if hnt_llm_process.stderr:  # Check if stderr was captured
@@ -360,9 +418,13 @@ def main():
 
     final_hnt_llm_output = hnt_llm_output_capture.getvalue()
     hnt_llm_output_capture.close()
+    debug_log(args, "Captured hnt-llm output length:", len(final_hnt_llm_output))
+    debug_log(args, "Captured hnt-llm output (first 200 chars):\n", textwrap.shorten(final_hnt_llm_output, width=200, placeholder="..."))
+
 
     # Check if output is empty (might happen if hnt-llm failed silently or produced nothing)
     if not final_hnt_llm_output.strip():
+        debug_log(args, "hnt-llm output is empty or whitespace only.")
         print(
             "Warning: hnt-llm produced no output. Aborting before running hnt-apply.",
             file=sys.stderr,
@@ -370,7 +432,10 @@ def main():
         sys.exit(1)  # Or a specific error code
 
     # 6. Run hnt-apply
+    debug_log(args, "Running hnt-apply...")
     hnt_apply_cmd = ["hnt-apply"] + args.source_files
+    debug_log(args, "hnt-apply command:", hnt_apply_cmd)
+    debug_log(args, "Piping captured hnt-llm output to hnt-apply stdin.")
     run_command(
         hnt_apply_cmd,
         stdin_content=final_hnt_llm_output,
@@ -378,6 +443,7 @@ def main():
         check=True,
         text=True,
     )
+    debug_log(args, "hnt-apply finished successfully.")
 
 
 if __name__ == "__main__":

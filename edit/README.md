@@ -52,6 +52,11 @@ entire stdin before parsing it. `hlmd-st` works as expected
 the higlighter will not intefere with the LLM's edit format; `hnt-apply` is
 given the raw LLM generation rather than your highlighter's output
 
+## debugging
+`--debug-unsafe`
+
+warning: will likely leak your API key
+
 ## ss (`hlmd-st`)
 
 ![with syntax highlighting](https://github.com/michaelskyba/michaelskyba.github.io/blob/master/static/1746146910-hnt-edit.png?raw=true)
