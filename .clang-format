@@ -1,0 +1,10 @@
+# Specify the language if needed (optional, but good practice)
+# Language: Cpp # Can be Cpp, Java, JavaScript, ObjC, Proto, TableGen, TextProto, CSharp
+
+# Start with the built-in Google style
+BasedOnStyle: Google
+
+# Override indentation settings
+UseTab: ForIndentation     # Use tabs only for indentation, spaces for alignment
+IndentWidth: 4            # Visual width of an indentation level
+TabWidth: 4               # Visual width of a single tab character
