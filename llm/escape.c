@@ -13,83 +13,85 @@
 #define STATE_CHECK_TAG 4       // Seen '<[/]_*h...' - reading tag name
 #define STATE_EXPECT_GT 5       // Matched tag name fully, expect '>'
 
-int main() {
-    int c;
-    int state = STATE_NORMAL;
+// --- Static State Variables (File Scope) ---
+static int state = STATE_NORMAL;
+static char buffer[MAX_TAG_BUFFER];
+static int buffer_idx = 0;
+static int is_closing = 0;
+static int underscore_count = 0;
+static char matched_tag_base[20] = "";
+// Note: Removed unused tag_name_len variable
 
-    // Buffer for potential tag content during parsing
-    char buffer[MAX_TAG_BUFFER];
-    int buffer_idx = 0;
+// Forward declaration for reprocess_char_in_normal used within flush_buffer_and_reset
+static void reprocess_char_in_normal(int current_char);
 
-    // State variables for tag parsing
-    int is_closing = 0;
-    int underscore_count = 0;
-    // Store the base tag name ("system", "user", "assistant") if matched
-    char matched_tag_base[20] = "";
-    int tag_name_len = 0; // Length of the full matched tag name (e.g., "hnt-system")
+// --- Helper Functions ---
 
-    // --- Helper Functions ---
-
-    // Flushes the buffer to stdout and resets the state machine to NORMAL
-    void flush_buffer_and_reset() {
-        if (buffer_idx > 0) {
-            fwrite(buffer, 1, buffer_idx, stdout);
-        }
-        buffer_idx = 0;
-        state = STATE_NORMAL;
-        is_closing = 0;
-        underscore_count = 0;
-        tag_name_len = 0;
-        matched_tag_base[0] = '\0';
+// Flushes the buffer to stdout and resets the state machine to NORMAL
+static void flush_buffer_and_reset() {
+    if (buffer_idx > 0) {
+        fwrite(buffer, 1, buffer_idx, stdout);
     }
+    buffer_idx = 0;
+    state = STATE_NORMAL;
+    is_closing = 0;
+    underscore_count = 0;
+    // tag_name_len removed
+    matched_tag_base[0] = '\0';
+}
 
-    // Processes a confirmed tag match, printing the modified tag
-    void process_match() {
-         putchar('<');
-         if (is_closing) {
-             putchar('/');
-         }
-         // Add the extra underscore requested
+// Processes a confirmed tag match, printing the modified tag
+static void process_match() {
+     putchar('<');
+     if (is_closing) {
+         putchar('/');
+     }
+     // Add the extra underscore requested
+     putchar('_');
+     // Print existing underscores
+     for (int i = 0; i < underscore_count; ++i) {
          putchar('_');
-         // Print existing underscores
-         for (int i = 0; i < underscore_count; ++i) {
-             putchar('_');
-         }
-         // Print the matched tag name in lowercase
-         if (strcmp(matched_tag_base, "system") == 0) printf("hnt-system");
-         else if (strcmp(matched_tag_base, "user") == 0) printf("hnt-user");
-         else if (strcmp(matched_tag_base, "assistant") == 0) printf("hnt-assistant");
-         // Should have a valid matched_tag_base if we got here
+     }
+     // Print the matched tag name in lowercase
+     if (strcmp(matched_tag_base, "system") == 0) printf("hnt-system");
+     else if (strcmp(matched_tag_base, "user") == 0) printf("hnt-user");
+     else if (strcmp(matched_tag_base, "assistant") == 0) printf("hnt-assistant");
+     // Should have a valid matched_tag_base if we got here
 
-         putchar('>');
+     putchar('>');
 
-         // Reset state after processing
+     // Reset state after processing
+     buffer_idx = 0;
+     state = STATE_NORMAL;
+     is_closing = 0;
+     underscore_count = 0;
+     // tag_name_len removed
+     matched_tag_base[0] = '\0';
+}
+
+// Re-processes the current character 'c' in the NORMAL state
+// Needed after flushing when the char causing the flush needs processing
+static void reprocess_char_in_normal(int current_char) {
+    if (current_char == EOF) return; // Nothing to process
+
+    if (current_char == '<') {
+         state = STATE_SEEN_LT;
          buffer_idx = 0;
-         state = STATE_NORMAL;
+         buffer[buffer_idx++] = current_char;
          is_closing = 0;
          underscore_count = 0;
-         tag_name_len = 0;
+         // tag_name_len removed
          matched_tag_base[0] = '\0';
+    } else {
+         putchar(current_char);
+         state = STATE_NORMAL; // Ensure state is normal
     }
+}
 
-    // Re-processes the current character 'c' in the NORMAL state
-    // Needed after flushing when the char causing the flush needs processing
-    void reprocess_char_in_normal(int current_char) {
-        if (current_char == EOF) return; // Nothing to process
 
-        if (current_char == '<') {
-             state = STATE_SEEN_LT;
-             buffer_idx = 0;
-             buffer[buffer_idx++] = current_char;
-             is_closing = 0;
-             underscore_count = 0;
-             tag_name_len = 0;
-             matched_tag_base[0] = '\0';
-        } else {
-             putchar(current_char);
-             state = STATE_NORMAL; // Ensure state is normal
-        }
-    }
+int main() {
+    int c;
+    // State variables are now static globals
 
     // --- Main Loop ---
     while ((c = getchar()) != EOF) {
@@ -114,7 +116,7 @@ int main() {
                     buffer[buffer_idx++] = c;
                     is_closing = 0;
                     underscore_count = 0;
-                    tag_name_len = 0;
+                    // tag_name_len removed
                     matched_tag_base[0] = '\0';
                 } else {
                     putchar(c);
@@ -185,16 +187,16 @@ int main() {
                         const char *base_names[] = {"system", "user", "assistant"};
                         int target_tag_lengths[] = {10, 8, 13};
                         int prefix_match_found = 0;
-                        int full_match_found = 0;
+                        // Removed unused full_match_found variable
 
                         for (int i = 0; i < 3; ++i) {
                             if (current_tag_name_len == target_tag_lengths[i] &&
                                 strcmp(current_tag_name, target_tags[i]) == 0) {
                                 // Full match found!
                                 strcpy(matched_tag_base, base_names[i]);
-                                tag_name_len = target_tag_lengths[i];
+                                // tag_name_len removed
                                 state = STATE_EXPECT_GT; // Next char must be '>'
-                                full_match_found = 1;
+                                // full_match_found removed
                                 prefix_match_found = 1; // A full match is also a prefix match
                                 break; // No need to check others once a full match is found
                             } else if (current_tag_name_len < target_tag_lengths[i] &&
