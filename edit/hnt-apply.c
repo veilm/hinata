@@ -1,10 +1,11 @@
 // Define _GNU_SOURCE to enable various extensions like strndup, realpath,
 // popen, pclose Needs to be defined before including any standard headers.
 #define _GNU_SOURCE
-#include <errno.h>   // For errno, perror
-#include <getopt.h>  // For getopt_long
-#include <limits.h>  // For PATH_MAX
-#include <stdint.h>  // For SIZE_MAX
+#include <errno.h>    // For errno, perror
+#include <getopt.h>   // For getopt_long
+#include <limits.h>   // For PATH_MAX
+#include <stdbool.h>  // For bool type used in process_block
+#include <stdint.h>   // For SIZE_MAX
 #include <stdio.h>
 #include <stdlib.h>  // For realpath, malloc, free, exit, EXIT_FAILURE, EXIT_SUCCESS, size_t, NULL
 #include <string.h>
@@ -597,18 +598,78 @@ int process_block(const char *shared_root, char **abs_input_paths,
 	char *search_start = file_content;
 	size_t target_len = strlen(target);
 
-	// Handle empty target string - treat as error? Or match everywhere?
-	// Let's treat empty target as an error because replacement is ill-defined.
-	// Let's treat empty target as an error because replacement is ill-defined.
+	// --- 5b. Handle empty target string ---
 	if (target_len == 0) {
-		fprintf(
-		    stderr,
-		    "Error: Target string is empty for file %s. Cannot apply change.\n",
-		    canonical_path);
-		free(file_content);
-		return 1;  // Indicate failure
+		// Per user request: If target is empty, only proceed if the file is
+		// also effectively empty (zero bytes or just a newline).
+		long current_file_size = strlen(file_content);
+		bool file_is_effectively_empty =
+		    (current_file_size == 0) ||
+		    (current_file_size == 1 && file_content[0] == '\n');
+
+		if (file_is_effectively_empty) {
+			// Special case: Empty target and empty file -> replace file content
+			if (verbose_mode) {
+				printf(
+				    "hnt-edit: Applying replace content to effectively empty "
+				    "file %s\n",
+				    canonical_path);
+			}
+			size_t replace_len = strlen(replace);
+
+			// Write the replace content directly
+			FILE *fp_write =
+			    fopen(canonical_path, "w");  // Open for writing (truncates)
+			if (!fp_write) {
+				perror("Error opening file for writing (empty target case)");
+				fprintf(stderr, "File: %s\n", canonical_path);
+				free(file_content);
+				return 1;  // Indicate failure
+			}
+
+			size_t written = fwrite(replace, 1, replace_len, fp_write);
+			if (written != replace_len) {
+				if (ferror(fp_write)) {
+					fprintf(stderr,
+					        "Error writing replace content to file %s: %s\n",
+					        canonical_path, strerror(errno));
+				} else {
+					fprintf(stderr,
+					        "Error writing replace content to file %s: "
+					        "Incomplete write (wrote %zu of %zu bytes).\n",
+					        canonical_path, written, replace_len);
+				}
+				fclose(fp_write);
+				free(file_content);
+				return 1;  // Indicate failure
+			}
+
+			if (fclose(fp_write) != 0) {
+				perror("Error closing file after writing (empty target case)");
+				fprintf(stderr, "File: %s\n", canonical_path);
+				free(file_content);
+				return 1;  // Indicate failure
+			}
+
+			// Successfully replaced content of empty file
+			free(file_content);
+			// No need to free canonical_path (stack buffer)
+			return 0;  // Indicate success for this block
+
+		} else {
+			// Empty target but non-empty file -> Error
+			fprintf(stderr,
+			        "Error: Target string is empty, but file %s is not "
+			        "effectively empty (size %ld). Cannot apply change.\n",
+			        canonical_path, current_file_size);
+			free(file_content);
+			// No need to free canonical_path (stack buffer)
+			return 1;  // Indicate failure
+		}
 	}
 
+	// --- 5c. Search for non-empty target ---
+	// This part only runs if target_len > 0
 	while ((search_start = strstr(search_start, target)) != NULL) {
 		count++;
 		if (count == 1) {

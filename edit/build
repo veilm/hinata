@@ -11,6 +11,14 @@ then
 	cd -
 fi
 
+if ! which hnt-escape > /dev/null 2>&1
+then
+	echo "build: hnt-escape not found. compiling..."
+	cd ../llm
+	./build
+	cd -
+fi
+
 if ! which llm-pack > /dev/null 2>&1
 then
 	echo "build: llm-pack not found. compiling..."
