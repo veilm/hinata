@@ -131,7 +131,7 @@ int main() {
                 } else if (c == '_') {
                     underscore_count = 1;
                     state = STATE_SEEN_UNDERSCORE;
-                } else if (tolower(c) == 'h') {
+                } else if (c == 'h') { // Check for exact lowercase 'h'
                     state = STATE_CHECK_TAG; // Start checking tag name
                 } else {
                     flush_buffer_and_reset();
@@ -144,7 +144,7 @@ int main() {
                 if (c == '_') {
                     underscore_count = 1;
                     state = STATE_SEEN_UNDERSCORE;
-                } else if (tolower(c) == 'h') {
+                } else if (c == 'h') { // Check for exact lowercase 'h'
                     state = STATE_CHECK_TAG;
                 } else {
                     flush_buffer_and_reset();
@@ -157,7 +157,7 @@ int main() {
                  if (c == '_') {
                      underscore_count++;
                      // Stay in this state
-                 } else if (tolower(c) == 'h') {
+                 } else if (c == 'h') { // Check for exact lowercase 'h'
                      state = STATE_CHECK_TAG;
                  } else {
                      flush_buffer_and_reset();
@@ -178,10 +178,10 @@ int main() {
                         strncpy(current_tag_name, buffer + tag_name_start_idx, current_tag_name_len);
                         current_tag_name[current_tag_name_len] = '\0';
 
-                        // Convert to lowercase for comparison
-                        for(int i = 0; current_tag_name[i]; i++){
-                          current_tag_name[i] = tolower(current_tag_name[i]);
-                        }
+                        // Removed lowercase conversion - comparison is now case-sensitive
+                        // for(int i = 0; current_tag_name[i]; i++){
+                        //   current_tag_name[i] = tolower(current_tag_name[i]);
+                        // }
 
                         const char *target_tags[] = {"hnt-system", "hnt-user", "hnt-assistant"};
                         const char *base_names[] = {"system", "user", "assistant"};
@@ -216,8 +216,10 @@ int main() {
                         if (!prefix_match_found) {
                            // The tag name being built doesn't match any known prefix,
                            // so it cannot be one of our target tags. Flush.
-                           flush_buffer_and_reset();
-                           reprocess_char_in_normal(c);
+                           // The char 'c' that broke the match was already added to the buffer
+                           // before this check.
+                           flush_buffer_and_reset(); // Flushes buffer including 'c', resets state
+                           // DO NOT reprocess 'c' here, as it was just flushed as part of the buffer.
                         }
                         // else: Stay in STATE_CHECK_TAG or transition to STATE_EXPECT_GT (handled above)
 
