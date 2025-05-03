@@ -234,8 +234,10 @@ int main(int argc, char *argv[]) {
 				} else if (c == 'h') {        // Check for exact lowercase 'h'
 					state = STATE_CHECK_TAG;  // Start checking tag name
 				} else {
+					// Character broke the sequence after '<'.
+					// It was added to buffer above. Flush buffer as-is.
 					flush_buffer_and_reset();
-					reprocess_char_in_normal(c);
+					// Do NOT reprocess 'c'.
 				}
 				break;
 
@@ -247,8 +249,10 @@ int main(int argc, char *argv[]) {
 				} else if (c == 'h') {  // Check for exact lowercase 'h'
 					state = STATE_CHECK_TAG;
 				} else {
+					// Character broke the sequence after '</'.
+					// It was added to buffer above. Flush buffer as-is.
 					flush_buffer_and_reset();
-					reprocess_char_in_normal(c);
+					// Do NOT reprocess 'c'.
 				}
 				break;
 
@@ -260,8 +264,10 @@ int main(int argc, char *argv[]) {
 				} else if (c == 'h') {  // Check for exact lowercase 'h'
 					state = STATE_CHECK_TAG;
 				} else {
+					// Character broke the sequence after '<[/]_..._'.
+					// It was added to buffer above. Flush buffer as-is.
 					flush_buffer_and_reset();
-					reprocess_char_in_normal(c);
+					// Do NOT reprocess 'c'.
 				}
 				break;
 
@@ -369,9 +375,9 @@ int main(int argc, char *argv[]) {
 					// Add the unexpected character to the buffer before
 					// flushing.
 					buffer[buffer_idx++] = c;
+					// Flush the buffer (which contains the full matched tag + invalid char 'c').
 					flush_buffer_and_reset();
-					// Reprocess the char that broke the pattern
-					reprocess_char_in_normal(c);
+					// Do NOT reprocess 'c', it was just flushed.
 				}
 				break;
 

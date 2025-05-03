@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 # --- Configuration ---
-NUM_TESTS = 2000
+NUM_TESTS = 10000
 MIN_TOKENS = 1
 MAX_TOKENS = 300
 HNT_ESCAPE_CMD = "hnt-escape"  # Command to run the tool
@@ -33,6 +33,18 @@ token_generators = [
     ),  # Role random case
     lambda: random.choice(
         ["hnt-system", "hnt-user", "hnt-assistant"]
+    ),  # hnt-role literal
+    lambda: random.choice(
+        ["<hnt-system>", "<hnt-user", "<hnt-assistant>"]
+    ),  # hnt-role literal
+    lambda: random.choice(
+        ["<_hnt-system>", "<_hnt-user", "<_hnt-assistant>"]
+    ),  # hnt-role literal
+    lambda: random.choice(
+        ["</hnt-system>", "</hnt-user", "</hnt-assistant>"]
+    ),  # hnt-role literal
+    lambda: random.choice(
+        ["</_hnt-system>", "</_hnt-user", "</_hnt-assistant>"]
     ),  # hnt-role literal
     lambda: random.choice(
         ["/hnt-system", "/hnt-user", "/hnt-assistant"]
