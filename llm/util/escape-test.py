@@ -77,11 +77,15 @@ for i in range(NUM_TESTS):
         print(f"Test number: {i + 1}", file=sys.stderr)
         print(f"Command: '{' '.join(e.cmd)}'", file=sys.stderr)
         print(f"Return code: {e.returncode}", file=sys.stderr)
-        print("\nOriginal Input (bytes):", file=sys.stderr)
-        print(original_input_bytes.decode("utf-8", errors="replace"), file=sys.stderr)
-        # print(f"{original_input_bytes!r}", file=sys.stderr) # Raw bytes representation
-        print("\nStderr:", file=sys.stderr)
-        print(e.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
+        print("\nOriginal Input (repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(
+            repr(original_input_bytes.decode("utf-8", errors="replace")),
+            file=sys.stderr,
+        )
+        print("\nStderr (repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(repr(e.stderr.decode("utf-8", errors="replace")), file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(
@@ -89,8 +93,12 @@ for i in range(NUM_TESTS):
         )
         print(f"Test number: {i + 1}", file=sys.stderr)
         print(f"Error: {e}", file=sys.stderr)
-        print("\nOriginal Input (bytes):", file=sys.stderr)
-        print(original_input_bytes.decode("utf-8", errors="replace"), file=sys.stderr)
+        print("\nOriginal Input (repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(
+            repr(original_input_bytes.decode("utf-8", errors="replace")),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # 3. Pipe escaped output to hnt-escape -u (unescape)
@@ -107,13 +115,18 @@ for i in range(NUM_TESTS):
         print(f"Test number: {i + 1}", file=sys.stderr)
         print(f"Command: '{' '.join(e.cmd)}'", file=sys.stderr)
         print(f"Return code: {e.returncode}", file=sys.stderr)
-        print("\nOriginal Input (string):", file=sys.stderr)
-        print(original_input_str, file=sys.stderr)
-        print("\nInput to Unescape (Escaped Output - bytes):", file=sys.stderr)
-        print(escaped_output_bytes.decode("utf-8", errors="replace"), file=sys.stderr)
-        # print(f"{escaped_output_bytes!r}", file=sys.stderr) # Raw bytes representation
-        print("\nStderr:", file=sys.stderr)
-        print(e.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
+        print("\nOriginal Input (repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(repr(original_input_str), file=sys.stderr)
+        print("\nInput to Unescape (Escaped Output - repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(
+            repr(escaped_output_bytes.decode("utf-8", errors="replace")),
+            file=sys.stderr,
+        )
+        print("\nStderr (repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(repr(e.stderr.decode("utf-8", errors="replace")), file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(
@@ -121,10 +134,15 @@ for i in range(NUM_TESTS):
         )
         print(f"Test number: {i + 1}", file=sys.stderr)
         print(f"Error: {e}", file=sys.stderr)
-        print("\nOriginal Input (string):", file=sys.stderr)
-        print(original_input_str, file=sys.stderr)
-        print("\nInput to Unescape (Escaped Output - bytes):", file=sys.stderr)
-        print(escaped_output_bytes.decode("utf-8", errors="replace"), file=sys.stderr)
+        print("\nOriginal Input (repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(repr(original_input_str), file=sys.stderr)
+        print("\nInput to Unescape (Escaped Output - repr):", file=sys.stderr)
+        # Use repr() to show escaped characters
+        print(
+            repr(escaped_output_bytes.decode("utf-8", errors="replace")),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # 4. Compare final output with original input (byte-for-byte)
@@ -138,22 +156,24 @@ for i in range(NUM_TESTS):
             final_decoded = final_output_bytes.decode("utf-8")
             escaped_decoded = escaped_output_bytes.decode("utf-8")
 
-            print("\nOriginal Input (decoded string):")
-            print(original_decoded)
-            print("\nEscaped Output (decoded string):")
-            print(escaped_decoded)
-            print("\nFinal Output (decoded string):")
-            print(final_decoded)
+            # Use repr() to show escaped characters
+            print("\nOriginal Input (decoded string repr):")
+            print(repr(original_decoded))
+            print("\nEscaped Output (decoded string repr):")
+            print(repr(escaped_decoded))
+            print("\nFinal Output (decoded string repr):")
+            print(repr(final_decoded))
 
         except UnicodeDecodeError:
+            # Use repr() via f-string !r format specifier for bytes
             print(
-                "\n(One or more strings could not be decoded as UTF-8, showing raw bytes)"
+                "\n(One or more strings could not be decoded as UTF-8, showing byte representation)"
             )
-            print("\nOriginal Input (bytes):")
+            print("\nOriginal Input (bytes repr):")
             print(f"{original_input_bytes!r}")
-            print("\nEscaped Output (bytes):")
+            print("\nEscaped Output (bytes repr):")
             print(f"{escaped_output_bytes!r}")
-            print("\nFinal Output (bytes):")
+            print("\nFinal Output (bytes repr):")
             print(f"{final_output_bytes!r}")
 
         # Provide byte counts for quick comparison
