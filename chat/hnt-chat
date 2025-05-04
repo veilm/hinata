@@ -5,6 +5,8 @@ import sys
 import time
 import random
 import argparse
+import re
+import subprocess
 from pathlib import Path
 
 
@@ -87,25 +89,20 @@ def find_latest_conversation(base_dir):
         sys.exit(1)
 
 
-def handle_new_command():
-    conv_base_dir = get_conversations_dir()
-    new_conv_path = create_new_conversation(conv_base_dir)
-    # Print the absolute path to stdout as required
-    print(new_conv_path.resolve())
+def determine_conversation_dir(args, base_conv_dir):
+    """
+    Determines the target conversation directory based on args, env var, or latest.
+    Includes validation checks. Exits on error.
+    Returns the Path object for the conversation directory.
+    """
+    conv_dir_path = getattr(args, "conversation", None)  # Get path from args if present
 
-
-def handle_add_command(args):
-    role = args.role
-    conv_dir_path = args.conversation  # May be None initially
-
-    # 1. Determine conversation directory
     if conv_dir_path is None:
         env_conv_dir = os.getenv("HINATA_CHAT_CONVERSATION")
         if env_conv_dir:
             conv_dir_path = Path(env_conv_dir)
         else:
             # Use default: latest in base dir
-            base_conv_dir = get_conversations_dir()  # Ensures base exists
             latest_conv = find_latest_conversation(base_conv_dir)
             if latest_conv:
                 conv_dir_path = latest_conv
@@ -133,6 +130,23 @@ def handle_add_command(args):
         )
         sys.exit(1)
 
+    return conv_dir_path
+
+
+def handle_new_command():
+    conv_base_dir = get_conversations_dir()
+    new_conv_path = create_new_conversation(conv_base_dir)
+    # Print the absolute path to stdout as required
+    print(new_conv_path.resolve())
+
+
+def handle_add_command(args):
+    role = args.role
+    base_conv_dir = get_conversations_dir()  # Ensure base exists
+
+    # 1. Determine and validate conversation directory
+    conv_dir_path = determine_conversation_dir(args, base_conv_dir)
+
     # 2. Read from stdin
     if sys.stdin.isatty():
         print("hnt-chat: reading from stdin...", file=sys.stderr)
@@ -157,6 +171,69 @@ def handle_add_command(args):
 
     # 5. Print relative filename to stdout
     print(relative_filename)
+
+
+def handle_pack_command(args):
+    """
+    Packs messages from a conversation directory into a specific format using hnt-escape.
+    """
+    base_conv_dir = get_conversations_dir()  # Ensure base exists
+
+    # 1. Determine and validate conversation directory
+    conv_dir_path = determine_conversation_dir(args, base_conv_dir)
+
+    # 2. List, filter, and sort message files
+    message_files = sorted(
+        f for f in conv_dir_path.iterdir() if f.is_file() and f.name.endswith(".md")
+    )
+
+    filename_pattern = re.compile(r"^(\d+)-(user|assistant|system)\.md$")
+
+    # 3. Iterate and pack matching files
+    for msg_file_path in message_files:
+        match = filename_pattern.match(msg_file_path.name)
+        if match:
+            role = match.group(2)
+
+            # Write opening tag without newline
+            sys.stdout.write(f"<hnt-{role}>")
+            sys.stdout.flush()  # Ensure tag is written before subprocess output
+
+            try:
+                # Open the message file
+                with open(
+                    msg_file_path, "rb"
+                ) as f_in:  # Read as bytes for subprocess pipe
+                    # Pipe content through hnt-escape directly to stdout
+                    process = subprocess.run(
+                        ["hnt-escape"],
+                        stdin=f_in,
+                        stdout=sys.stdout,  # Pipe directly to our stdout
+                        stderr=sys.stderr,  # Pipe errors to our stderr
+                        check=True,  # Raise exception on non-zero exit code
+                    )
+            except FileNotFoundError:
+                print(
+                    f"\nError: 'hnt-escape' command not found. Make sure it's installed and in your PATH.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            except subprocess.CalledProcessError as e:
+                # Error message already piped to stderr by hnt-escape
+                print(
+                    f"\nError: 'hnt-escape' failed processing {msg_file_path.name} (exit code {e.returncode}).",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            except OSError as e:
+                print(f"\nError reading file {msg_file_path}: {e}", file=sys.stderr)
+                sys.exit(1)
+
+            # Write closing tag with newline
+            print(f"</hnt-{role}>")
+            # print already adds newline and flushes stdout usually
+
+        # Silently skip files that don't match the pattern
 
 
 def main():
@@ -191,16 +268,28 @@ def main():
     )
     parser_add.set_defaults(func=handle_add_command)
 
-    # --- Future commands could be added here ---
+    # 'pack'/'package' command
+    parser_pack = subparsers.add_parser(
+        "pack", aliases=["package"], help="Pack conversation messages for processing"
+    )
+    parser_pack.add_argument(
+        "-c",
+        "--conversation",
+        type=Path,
+        help="Path to the conversation directory (overrides $HINATA_CHAT_CONVERSATION, defaults to latest)",
+    )
+    parser_pack.set_defaults(func=handle_pack_command)
 
     args = parser.parse_args()
 
     # Execute the function associated with the chosen subcommand
     if hasattr(args, "func"):
-        if args.command == "add" or args.command == "add-message":
-            args.func(args)  # Pass parsed args to add handler
+        # Pass args to handlers that need them (add, pack)
+        if args.command in ["add", "add-message", "pack", "package"]:
+            args.func(args)
         else:
-            args.func()  # Other handlers might not need args
+            # Handlers like 'new' don't need args object
+            args.func()
     else:
         # This should not happen if subparsers are required=True
         # and all subparsers have set_defaults(func=...)
