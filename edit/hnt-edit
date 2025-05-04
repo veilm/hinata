@@ -139,7 +139,7 @@ def debug_log(args, *print_args, **print_kwargs):
 def main():
     # --- Syntax Highlighting Check ---
     syntax_highlight_enabled = False
-    effective_syntax_cmd = None # This will hold the command list to execute
+    effective_syntax_cmd = None  # This will hold the command list to execute
 
     # Check environment variable first
     env_cmd_str = os.environ.get("HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD")
@@ -147,20 +147,20 @@ def main():
         try:
             # Parse the command string, respecting quotes and spaces
             effective_syntax_cmd = shlex.split(env_cmd_str)
-            if effective_syntax_cmd: # Ensure shlex.split didn't return empty list
-                 syntax_highlight_enabled = True
+            if effective_syntax_cmd:  # Ensure shlex.split didn't return empty list
+                syntax_highlight_enabled = True
             else:
-                 print(
-                     f"Warning: HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD is set but resulted in an empty command after parsing: '{env_cmd_str}'. Highlighting disabled.",
-                     file=sys.stderr
-                 )
-                 env_cmd_str = None # Treat as if not set for fallback logic
+                print(
+                    f"Warning: HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD is set but resulted in an empty command after parsing: '{env_cmd_str}'. Highlighting disabled.",
+                    file=sys.stderr,
+                )
+                env_cmd_str = None  # Treat as if not set for fallback logic
         except ValueError as e:
             print(
                 f"Warning: Could not parse HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD: '{env_cmd_str}'. Error: {e}. Highlighting disabled.",
-                file=sys.stderr
+                file=sys.stderr,
             )
-            env_cmd_str = None # Treat as if not set for fallback logic
+            env_cmd_str = None  # Treat as if not set for fallback logic
 
     # If environment variable wasn't used or was invalid, try the default
     if not env_cmd_str and SYNTAX_HIGHLIGHT_PIPE_CMD:
@@ -169,7 +169,7 @@ def main():
         if highlighter_executable:
             syntax_highlight_enabled = True
             # Use the default command, but update executable with full path
-            effective_syntax_cmd = SYNTAX_HIGHLIGHT_PIPE_CMD[:] # Make a copy
+            effective_syntax_cmd = SYNTAX_HIGHLIGHT_PIPE_CMD[:]  # Make a copy
             effective_syntax_cmd[0] = highlighter_executable
             # No need to print info message if using default and found
         else:
@@ -211,14 +211,23 @@ def main():
     system_message = get_system_message(args.system)
     debug_log(args, "System message source:", args.system or "default path")
     # Log first few lines for brevity
-    debug_log(args, "System message content (first 100 chars):\n", textwrap.shorten(system_message, width=100, placeholder="..."))
+    debug_log(
+        args,
+        "System message content (first 100 chars):\n",
+        textwrap.shorten(system_message, width=100, placeholder="..."),
+    )
 
     # 2. Get user instruction
     debug_log(args, "Getting user instruction...")
     instruction = get_user_instruction(args.message)
-    debug_log(args, "User instruction source:", "args.message" if args.message else "$EDITOR")
-    debug_log(args, "User instruction content (first 100 chars):\n", textwrap.shorten(instruction, width=100, placeholder="..."))
-
+    debug_log(
+        args, "User instruction source:", "args.message" if args.message else "$EDITOR"
+    )
+    debug_log(
+        args,
+        "User instruction content (first 100 chars):\n",
+        textwrap.shorten(instruction, width=100, placeholder="..."),
+    )
 
     # 3. Run llm-pack
     debug_log(args, "Running llm-pack...")
@@ -229,7 +238,11 @@ def main():
     )
     packed_sources = llm_pack_result.stdout
     debug_log(args, "llm-pack output (packed sources) length:", len(packed_sources))
-    debug_log(args, "llm-pack output (first 200 chars):\n", textwrap.shorten(packed_sources, width=200, placeholder="..."))
+    debug_log(
+        args,
+        "llm-pack output (first 200 chars):\n",
+        textwrap.shorten(packed_sources, width=200, placeholder="..."),
+    )
 
     # 4. Prepare input for hnt-llm using XML format
     debug_log(args, "Preparing input for hnt-llm in XML format...")
@@ -242,7 +255,11 @@ def main():
     escape_cmd = ["hnt-escape"]
     debug_log(args, "hnt-escape command (system):", escape_cmd)
     escaped_system_result = run_command(
-        escape_cmd, stdin_content=system_message, capture_output=True, check=True, text=True
+        escape_cmd,
+        stdin_content=system_message,
+        capture_output=True,
+        check=True,
+        text=True,
     )
     escaped_system_message = escaped_system_result.stdout
     debug_log(args, "Escaped system message length:", len(escaped_system_message))
@@ -251,11 +268,14 @@ def main():
     debug_log(args, "Escaping user content via hnt-escape...")
     debug_log(args, "hnt-escape command (user):", escape_cmd)
     escaped_user_result = run_command(
-        escape_cmd, stdin_content=user_content_raw, capture_output=True, check=True, text=True
+        escape_cmd,
+        stdin_content=user_content_raw,
+        capture_output=True,
+        check=True,
+        text=True,
     )
     escaped_user_content = escaped_user_result.stdout
     debug_log(args, "Escaped user content length:", len(escaped_user_content))
-
 
     # Construct the final XML input using escaped content
     hnt_llm_input = (
@@ -264,10 +284,79 @@ def main():
     )
     debug_log(args, "Final hnt-llm input length:", len(hnt_llm_input))
     # Log structure and parts for debugging
-    debug_log(args, "Final hnt-llm input structure: <hnt-system>...</hnt-system><hnt-user>...</hnt-user>")
-    debug_log(args, "Final hnt-llm input <hnt-system> length:", len(escaped_system_message))
-    debug_log(args, "Final hnt-llm input <hnt-user> length:", len(escaped_user_content))
+    debug_log(
+        args,
+        "Final hnt-llm input structure: <hnt-system>...</hnt-system><hnt-user>...</hnt-user>",
+    )
+    debug_log(
+        args, "Final hnt-llm input <hnt-system> length:", len(escaped_system_message)
+    )
+    # 4. Create a new chat conversation
+    debug_log(args, "Creating new chat conversation via hnt-chat new...")
+    hnt_chat_new_cmd = ["hnt-chat", "new"]
+    debug_log(args, "hnt-chat new command:", hnt_chat_new_cmd)
+    hnt_chat_new_result = run_command(
+        hnt_chat_new_cmd, capture_output=True, check=True, text=True
+    )
+    conversation_dir = hnt_chat_new_result.stdout.strip()
+    if not conversation_dir or not os.path.isdir(conversation_dir):
+        print(
+            f"Error: hnt-chat new did not return a valid directory path: '{conversation_dir}'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    debug_log(args, "Conversation directory created:", conversation_dir)
 
+    # 5. Add system message to conversation
+    debug_log(args, "Adding system message via hnt-chat add...")
+    hnt_chat_add_system_cmd = ["hnt-chat", "add", "system", "-c", conversation_dir]
+    debug_log(args, "hnt-chat add system command:", hnt_chat_add_system_cmd)
+    run_command(
+        hnt_chat_add_system_cmd,
+        stdin_content=system_message,
+        capture_output=False,  # Don't need filename output
+        check=True,
+        text=True,
+    )
+    debug_log(args, "System message added.")
+
+    # 6. Add user request message to conversation
+    debug_log(args, "Adding user request message via hnt-chat add...")
+    user_request_content = f"<user_request>{instruction}</user_request>"
+    hnt_chat_add_user_cmd = ["hnt-chat", "add", "user", "-c", conversation_dir]
+    debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
+    debug_log(
+        args,
+        "User request content (first 100 chars):\n",
+        textwrap.shorten(user_request_content, width=100, placeholder="..."),
+    )
+    run_command(
+        hnt_chat_add_user_cmd,
+        stdin_content=user_request_content,
+        capture_output=False,  # Don't need filename output
+        check=True,
+        text=True,
+    )
+    debug_log(args, "User request message added.")
+
+    # 7. Add source reference message to conversation
+    debug_log(args, "Adding source reference message via hnt-chat add...")
+    source_reference_content = f"<source_reference>{packed_sources}</source_reference>"
+    # Reuse the command list, it's the same
+    debug_log(args, "hnt-chat add user command (source):", hnt_chat_add_user_cmd)
+    debug_log(
+        args,
+        "Source reference content (first 100 chars):\n",
+        textwrap.shorten(source_reference_content, width=100, placeholder="..."),
+    )
+    run_command(
+        hnt_chat_add_user_cmd,
+        stdin_content=source_reference_content,
+        capture_output=False,  # Don't need filename output
+        check=True,
+        text=True,
+    )
+    debug_log(args, "Source reference message added.")
 
     # Show user query if it came from EDITOR
     if not args.message:
@@ -275,39 +364,38 @@ def main():
         print(instruction)
         print("-" * 40 + "\n")
 
-    # 5. Run hnt-llm, stream and capture output
-    debug_log(args, "Running hnt-llm...")
-    # Construct command WITHOUT -s system_message
-    hnt_llm_cmd = ["hnt-llm"]
+    # 8. Run hnt-chat gen, stream and capture output
+    debug_log(args, "Running hnt-chat gen...")
+    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
     if args.model:
-        hnt_llm_cmd.extend(["--model", args.model])
+        hnt_chat_gen_cmd.extend(["--model", args.model])
         debug_log(args, "Using model:", args.model)
-    if args.debug_unsafe: # Already checked by debug_log, but hnt-llm needs the flag
-        hnt_llm_cmd.append("--debug-unsafe")
-        debug_log(args, "Passing --debug-unsafe to hnt-llm")
-    debug_log(args, "hnt-llm command:", hnt_llm_cmd) # Updated log
-    hnt_llm_output_capture = io.StringIO()
+    if args.debug_unsafe:
+        hnt_chat_gen_cmd.append("--debug-unsafe")
+        debug_log(args, "Passing --debug-unsafe to hnt-chat gen")
+    # if we wanted the filename: hnt_chat_gen_cmd.append("--output-filename")
+    debug_log(args, "hnt-chat gen command:", hnt_chat_gen_cmd)
+
+    llm_output_capture = io.StringIO()  # Renamed from hnt_llm_output_capture
     rich_process = None  # Initialize rich_process outside try
     debug_log(args, "Syntax highlighting enabled:", syntax_highlight_enabled)
     if syntax_highlight_enabled:
         debug_log(args, "Syntax highlight command:", effective_syntax_cmd)
 
     try:
-        debug_log(args, "Starting hnt-llm process via Popen...")
-        # Use Popen for streaming stdout
-        hnt_llm_process = subprocess.Popen(
-            hnt_llm_cmd,
-            stdin=subprocess.PIPE,
+        debug_log(args, "Starting hnt-chat gen process via Popen...")
+        # Use Popen for streaming stdout (hnt-chat gen doesn't need stdin)
+        chat_gen_process = subprocess.Popen(
+            hnt_chat_gen_cmd,
+            stdin=subprocess.DEVNULL,  # Explicitly provide no stdin
             stdout=subprocess.PIPE,
-            stderr=sys.stderr,      # Pipe stderr directly to terminal
+            stderr=sys.stderr,  # Pipe stderr directly to terminal
             text=True,
             bufsize=1,  # Line buffered, might help with streaming
-            # universal_newlines=True # Alternative to text=True
         )
-        debug_log(args, f"hnt-llm process started. PID: {hnt_llm_process.pid}")
+        debug_log(args, f"hnt-chat gen process started. PID: {chat_gen_process.pid}")
 
         # Start syntax highlighter process if enabled
-        # rich_process = None # Moved outside the try block
         if syntax_highlight_enabled:
             debug_log(args, "Starting syntax highlighter process via Popen...")
             try:
@@ -319,10 +407,15 @@ def main():
                     stderr=sys.stderr,  # Pipe rich errors directly to terminal stderr
                     text=True,
                 )
-                debug_log(args, f"Syntax highlighter process started. PID: {rich_process.pid}")
+                debug_log(
+                    args, f"Syntax highlighter process started. PID: {rich_process.pid}"
+                )
             except FileNotFoundError:
                 # Use the actual command that was attempted
-                debug_log(args, f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found.")
+                debug_log(
+                    args,
+                    f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found.",
+                )
                 print(
                     f"Error: Syntax highlighter command '{effective_syntax_cmd[0]}' not found.",
                     file=sys.stderr,
@@ -333,29 +426,29 @@ def main():
                 print(f"Error starting syntax highlighter: {e}", file=sys.stderr)
                 syntax_highlight_enabled = False  # Disable on other errors
         else:
-             debug_log(args, "Syntax highlighting not enabled, skipping highlighter process start.")
+            debug_log(
+                args,
+                "Syntax highlighting not enabled, skipping highlighter process start.",
+            )
 
-        # Write input to hnt-llm's stdin in a separate thread or handle potential blocks
-        # Simple write for now, assuming input isn't excessively large to block pipe
-        debug_log(args, "Writing XML-formatted input to hnt-llm stdin...") # Updated log
-        hnt_llm_process.stdin.write(hnt_llm_input)
-        debug_log(args, "Closing hnt-llm stdin...")
-        hnt_llm_process.stdin.close()  # Signal EOF
-        debug_log(args, "hnt-llm stdin closed.")
-
-        # Stream stdout from hnt-llm, capture it, and pipe to rich if enabled
-        debug_log(args, "Starting hnt-llm stdout reading loop...")
+        # Stream stdout from hnt-chat gen, capture it, and pipe to rich if enabled
+        # No stdin writing needed for hnt-chat gen
+        debug_log(args, "Starting hnt-chat gen stdout reading loop...")
         while True:
-            line = hnt_llm_process.stdout.readline()
+            line = chat_gen_process.stdout.readline()  # Use chat_gen_process
             if not line:
-                debug_log(args, "hnt-llm stdout loop: EOF")
+                debug_log(args, "hnt-chat gen stdout loop: EOF")  # Update log message
                 break
 
             # Log the received line if debugging
-            debug_log(args, f"hnt-llm stdout recv: {repr(line)}")
+            debug_log(
+                args, f"hnt-chat gen stdout recv: {repr(line)}"
+            )  # Update log message
 
             # Always capture the raw output
-            hnt_llm_output_capture.write(line)
+            llm_output_capture.write(
+                line
+            )  # Use llm_output_capture (already renamed in previous step)
 
             # Pipe to syntax highlighter OR print directly
             if syntax_highlight_enabled and rich_process:
@@ -390,34 +483,35 @@ def main():
                     file=sys.stderr,
                 )
 
-        # Wait for hnt-llm process to finish and check return code
-        debug_log(args, "Waiting for hnt-llm process to finish...")
-        hnt_llm_rc = hnt_llm_process.wait()
-        debug_log(args, "hnt-llm process finished with return code:", hnt_llm_rc)
-        if hnt_llm_rc != 0:
-            debug_log(args, "hnt-llm failed.")
+        # Wait for hnt-chat gen process to finish and check return code
+        debug_log(args, "Waiting for hnt-chat gen process to finish...")
+        chat_gen_rc = chat_gen_process.wait()
+        debug_log(args, "hnt-chat gen process finished with return code:", chat_gen_rc)
+        if chat_gen_rc != 0:
+            debug_log(args, "hnt-chat gen failed.")
             # stderr was already piped to terminal
             print(
-                f"\nError: '{' '.join(hnt_llm_cmd)}' failed with exit code {hnt_llm_rc}. See stderr above.",
+                f"\nError: '{' '.join(hnt_chat_gen_cmd)}' failed with exit code {chat_gen_rc}. See stderr above.",
                 file=sys.stderr,
             )
             # Don't exit immediately if rich also needs cleanup/check
-            # sys.exit(hnt_llm_rc) # Moved after potential rich wait
+            # sys.exit(chat_gen_rc) # Moved after potential rich wait
 
     except FileNotFoundError:
         print(
-            f"Error: Command not found during Popen: {hnt_llm_cmd[0]}", file=sys.stderr
+            f"Error: Command not found during Popen: {hnt_chat_gen_cmd[0]}",
+            file=sys.stderr,
         )
         sys.exit(1)
     except Exception as e:
         print(
-            f"An unexpected error occurred while running {' '.join(hnt_llm_cmd)}: {e}",
+            f"An unexpected error occurred while running {' '.join(hnt_chat_gen_cmd)}: {e}",
             file=sys.stderr,
         )
         # Ensure processes are terminated if they are still running
-        if "hnt_llm_process" in locals() and hnt_llm_process.poll() is None:
-            hnt_llm_process.terminate()
-            hnt_llm_process.wait()  # Ensure termination
+        if "chat_gen_process" in locals() and chat_gen_process.poll() is None:
+            chat_gen_process.terminate()
+            chat_gen_process.wait()  # Ensure termination
         if rich_process and rich_process.poll() is None:
             rich_process.terminate()
             rich_process.wait()  # Ensure termination
@@ -436,34 +530,37 @@ def main():
                     file=sys.stderr,
                 )
 
-        # Now check hnt-llm's return code and exit if it failed
+        # Now check hnt-chat gen's return code and exit if it failed
         # Use the previously captured return code
-        if "hnt_llm_rc" in locals() and hnt_llm_rc != 0:
-            sys.exit(hnt_llm_rc)
+        if "chat_gen_rc" in locals() and chat_gen_rc != 0:
+            sys.exit(chat_gen_rc)
 
-    final_hnt_llm_output = hnt_llm_output_capture.getvalue()
-    hnt_llm_output_capture.close()
-    debug_log(args, "Captured hnt-llm output length:", len(final_hnt_llm_output))
-    debug_log(args, "Captured hnt-llm output (first 200 chars):\n", textwrap.shorten(final_hnt_llm_output, width=200, placeholder="..."))
+    final_llm_output = llm_output_capture.getvalue()  # Renamed capture variable
+    llm_output_capture.close()
+    debug_log(args, "Captured hnt-chat gen output length:", len(final_llm_output))
+    debug_log(
+        args,
+        "Captured hnt-chat gen output (first 200 chars):\n",
+        textwrap.shorten(final_llm_output, width=200, placeholder="..."),
+    )
 
-
-    # Check if output is empty (might happen if hnt-llm failed silently or produced nothing)
-    if not final_hnt_llm_output.strip():
-        debug_log(args, "hnt-llm output is empty or whitespace only.")
+    # Check if output is empty (might happen if hnt-chat gen failed silently or produced nothing)
+    if not final_llm_output.strip():
+        debug_log(args, "hnt-chat gen output is empty or whitespace only.")
         print(
-            "Warning: hnt-llm produced no output. Aborting before running hnt-apply.",
+            "Warning: hnt-chat gen produced no output. Aborting before running hnt-apply.",
             file=sys.stderr,
         )
         sys.exit(1)  # Or a specific error code
 
-    # 6. Run hnt-apply
+    # 9. Run hnt-apply (step number updated)
     debug_log(args, "Running hnt-apply...")
     hnt_apply_cmd = ["hnt-apply"] + args.source_files
     debug_log(args, "hnt-apply command:", hnt_apply_cmd)
-    debug_log(args, "Piping captured hnt-llm output to hnt-apply stdin.")
+    debug_log(args, "Piping captured hnt-chat gen output to hnt-apply stdin.")
     run_command(
         hnt_apply_cmd,
-        stdin_content=final_hnt_llm_output,
+        stdin_content=final_llm_output,  # Use the renamed variable
         capture_output=False,
         check=True,
         text=True,

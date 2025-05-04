@@ -16,10 +16,10 @@ then
 	fi
 fi
 
-if ! which hnt-llm > /dev/null 2>&1
+if ! which hnt-chat > /dev/null 2>&1
 then
-	echo "build: hnt-llm not found. compiling..."
-	cd ../llm
+	echo "build: hnt-chat not found. installing..."
+	cd ../chat
 	./build
 	cd -
 fi

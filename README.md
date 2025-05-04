@@ -2,6 +2,8 @@
 
 - [`hnt-llm`](./llm/): simple, performant text backend. pipe text input in,
 receive LLM text response out
+- [`hnt-chat`](./chat/): wrapper around `hnt-llm` for managing conversations and
+message history, using simple conv directories and message markdown files
 - [`llm-pack`](./edit/llm-pack/): take source code filenames as CLI args. write
 LLM packed prompt to stdout
 - [`hnt-apply`](./edit/): take LLM output including TARGET/REPLACE blocks as
@@ -10,7 +12,7 @@ stdin. make edits to those files on the LLM's behalf
 as stdin. write syntax highlighted ver to stdout
 - [`hnt-edit`](./edit/): (very low-budget) aider clone. wrapper that uses
 `llm-pack` to format source code. sends it along with user instructions to
-`hnt-llm`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
+`hnt-chat`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
 to parse the LLM's desired edits
 
 # vague philosophy. here we go again...
