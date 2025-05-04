@@ -7,6 +7,7 @@ import random
 import argparse
 import re
 import subprocess
+import io  # Added for BytesIO
 from pathlib import Path
 
 
@@ -173,7 +174,9 @@ def handle_add_command(args):
     print(relative_filename)
 
 
-def handle_pack_command(args):
+def handle_pack_command(
+    args,
+):  # This function remains mostly the same, just printing to stdout
     """
     Packs messages from a conversation directory into a specific format using hnt-escape.
     """
@@ -205,6 +208,9 @@ def handle_pack_command(args):
                     msg_file_path, "rb"
                 ) as f_in:  # Read as bytes for subprocess pipe
                     # Pipe content through hnt-escape directly to stdout
+                    # Pipe content through hnt-escape directly to stdout
+                    # Note: Using Popen might be slightly better for large files to avoid
+                    # loading all into memory if hnt-escape buffers, but run is simpler here.
                     process = subprocess.run(
                         ["hnt-escape"],
                         stdin=f_in,
@@ -234,6 +240,201 @@ def handle_pack_command(args):
             # print already adds newline and flushes stdout usually
 
         # Silently skip files that don't match the pattern
+
+
+def pack_conversation_to_buffer(conv_dir_path):
+    """
+    Packs messages from a conversation directory into a BytesIO buffer.
+    Returns the BytesIO buffer containing the packed data.
+    """
+    output_buffer = io.BytesIO()
+
+    # List, filter, and sort message files
+    try:
+        message_files = sorted(
+            f for f in conv_dir_path.iterdir() if f.is_file() and f.name.endswith(".md")
+        )
+    except OSError as e:
+        print(f"Error listing files in {conv_dir_path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    filename_pattern = re.compile(r"^(\d+)-(user|assistant|system)\.md$")
+
+    # Iterate and pack matching files
+    for msg_file_path in message_files:
+        match = filename_pattern.match(msg_file_path.name)
+        if match:
+            role = match.group(2)
+
+            # Write opening tag without newline to buffer
+            output_buffer.write(f"<hnt-{role}>".encode("utf-8"))
+
+            try:
+                # Open the message file
+                with open(
+                    msg_file_path, "rb"
+                ) as f_in:  # Read as bytes for subprocess pipe
+                    # Run hnt-escape, piping input and capturing output to buffer
+                    process = subprocess.run(
+                        ["hnt-escape"],
+                        stdin=f_in,
+                        stdout=subprocess.PIPE,  # Capture output
+                        stderr=sys.stderr,  # Pipe errors to our stderr
+                        check=True,  # Raise exception on non-zero exit code
+                    )
+                    output_buffer.write(
+                        process.stdout
+                    )  # Write escaped content to buffer
+
+            except FileNotFoundError:
+                print(
+                    f"\nError: 'hnt-escape' command not found. Make sure it's installed and in your PATH.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            except subprocess.CalledProcessError as e:
+                # Error message already piped to stderr by hnt-escape
+                print(
+                    f"\nError: 'hnt-escape' failed processing {msg_file_path.name} (exit code {e.returncode}).",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            except OSError as e:
+                print(f"\nError reading file {msg_file_path}: {e}", file=sys.stderr)
+                sys.exit(1)
+
+            # Write closing tag with newline to buffer
+            output_buffer.write(f"</hnt-{role}>\n".encode("utf-8"))
+
+        # Silently skip files that don't match the pattern
+
+    output_buffer.seek(0)  # Rewind buffer for reading
+    return output_buffer
+
+
+def _write_message_file(conv_dir_path, role, content):
+    """Helper to write content to a new message file. Returns relative filename."""
+    timestamp_ns = time.time_ns()
+    relative_filename = f"{timestamp_ns}-{role}.md"
+    output_filepath = conv_dir_path / relative_filename
+
+    if output_filepath.exists():
+        # Should be rare due to nanoseconds, but handle defensively
+        print(f"Error: Output file collision: {output_filepath}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(output_filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+        return relative_filename
+    except OSError as e:
+        print(f"Error writing to file {output_filepath}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def handle_gen_command(args):
+    """Handles the 'gen' command to interact with hnt-llm."""
+    base_conv_dir = get_conversations_dir()
+    conv_dir_path = determine_conversation_dir(args, base_conv_dir)
+
+    # 1. Pack the conversation history into a buffer
+    packed_buffer = pack_conversation_to_buffer(conv_dir_path)
+
+    # 2. Prepare the hnt-llm command
+    llm_cmd = ["hnt-llm"]
+    if args.model:
+        llm_cmd.extend(["--model", args.model])
+
+    # 3. Execute hnt-llm, stream output, and potentially capture
+    captured_output_buffer = io.BytesIO()
+    should_write = args.write or args.output_filename
+    relative_filename_written = None  # Track if file was written
+
+    try:
+        # print(f"hnt-chat: running {' '.join(llm_cmd)}...", file=sys.stderr)
+        process = subprocess.Popen(
+            llm_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,  # Always pipe stdout to handle streaming/capture
+            stderr=sys.stderr,  # Stream hnt-llm errors directly
+            bufsize=0,  # Unbuffered for stdin/stdout pipes
+        )
+
+        # Write packed data to hnt-llm's stdin
+        process.stdin.write(packed_buffer.getvalue())
+        process.stdin.close()  # Signal EOF
+
+        # Stream stdout and capture if needed
+        if process.stdout:
+            while True:
+                chunk = process.stdout.read(4096)
+                if not chunk:
+                    break
+                sys.stdout.buffer.write(chunk)  # Stream to our stdout
+                sys.stdout.buffer.flush()
+                if should_write:
+                    captured_output_buffer.write(chunk)  # Capture the output
+            process.stdout.close()
+
+        return_code = process.wait()
+
+        if return_code != 0:
+            print(f"Error: hnt-llm exited with status {return_code}", file=sys.stderr)
+            # Don't write partial output if LLM errored
+            sys.exit(return_code)
+
+        # 4. Write captured output as assistant message if requested
+        if should_write:
+            assistant_content = captured_output_buffer.getvalue().decode(
+                "utf-8", errors="replace"
+            )
+            relative_filename_written = _write_message_file(
+                conv_dir_path, "assistant", assistant_content
+            )
+            # print(
+            #     f"hnt-chat: wrote assistant message {relative_filename_written}",
+            #     file=sys.stderr,
+            # )
+
+    except FileNotFoundError:
+        print(
+            f"Error: '{llm_cmd[0]}' command not found. Make sure it's installed and in your PATH.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except BrokenPipeError:
+        # Handle case where hnt-llm might exit before reading all input or writing all output
+        print(
+            f"Error: Broken pipe communicating with hnt-llm. It might have exited prematurely.",
+            file=sys.stderr,
+        )
+        # Check exit status again if possible
+        if process:
+            rc = process.poll()  # Non-blocking check
+            if rc is not None and rc != 0:
+                print(f"hnt-llm exited abnormally with status {rc}", file=sys.stderr)
+                sys.exit(rc if rc > 0 else 1)
+            elif rc is None:
+                process.wait()  # Wait if somehow still running
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # 5. Print filename if --output-filename was used
+    if args.output_filename and relative_filename_written:
+        # Ensure it's on a new line after potential streaming output
+        if (
+            not sys.stdout.buffer.closed
+            and getattr(sys.stdout.buffer, "tell", lambda: 0)() > 0
+        ):
+            # Check if anything was actually written to stdout stream
+            # and try to see if the last char was a newline (difficult reliably across platforms/buffering)
+            # Simplest robust approach: just print a newline before the filename if unsure.
+            # We check tell() > 0 simple heuristic.
+            # Or maybe just always print newline? Let's try that.
+            pass  # Assume LLM output likely ended with newline, or user wants it appended anyway.
+        print(f"\n{relative_filename_written}")  # Add newline for safety
 
 
 def main():
@@ -280,15 +481,54 @@ def main():
     )
     parser_pack.set_defaults(func=handle_pack_command)
 
+    # 'gen'/'generate'/'llm' command
+    parser_gen = subparsers.add_parser(
+        "gen",
+        aliases=["generate", "llm"],
+        help="Generate text using hnt-llm with conversation context",
+    )
+    parser_gen.add_argument(
+        "-c",
+        "--conversation",
+        type=Path,
+        help="Path to the conversation directory (overrides $HINATA_CHAT_CONVERSATION, defaults to latest)",
+    )
+    parser_gen.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        help="Optional model string to pass to hnt-llm",
+    )
+    parser_gen.add_argument(
+        "-w",
+        "--write",
+        action="store_true",
+        help="Write the generated output as a new assistant message",
+    )
+    parser_gen.add_argument(
+        "--output-filename",
+        action="store_true",
+        help="Implies --write. Also prints the filename of the created assistant message",
+    )
+    parser_gen.set_defaults(func=handle_gen_command)
+
     args = parser.parse_args()
 
     # Execute the function associated with the chosen subcommand
     if hasattr(args, "func"):
-        # Pass args to handlers that need them (add, pack)
-        if args.command in ["add", "add-message", "pack", "package"]:
+        # Pass args to handlers that need them (add, pack, gen)
+        if args.command in [
+            "add",
+            "add-message",
+            "pack",
+            "package",
+            "gen",
+            "generate",
+            "llm",
+        ]:
             args.func(args)
         else:
-            # Handlers like 'new' don't need args object
+            # Handlers like 'new' likely don't need args object
             args.func()
     else:
         # This should not happen if subparsers are required=True
