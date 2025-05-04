@@ -231,14 +231,21 @@ def main():
     debug_log(args, "llm-pack output (packed sources) length:", len(packed_sources))
     debug_log(args, "llm-pack output (first 200 chars):\n", textwrap.shorten(packed_sources, width=200, placeholder="..."))
 
-    # 4. Prepare input for hnt-llm
-    debug_log(args, "Preparing input for hnt-llm...")
-    hnt_llm_input = (
+    # 4. Prepare input for hnt-llm using XML format
+    debug_log(args, "Preparing input for hnt-llm in XML format...")
+    user_content = (
         f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
     )
+    hnt_llm_input = (
+        f"<hnt-system>{system_message}</hnt-system>\n"
+        f"<hnt-user>{user_content}</hnt-user>"
+    )
     debug_log(args, "hnt-llm input length:", len(hnt_llm_input))
-    # Don't log the full input here as it contains everything above, just confirm structure
-    debug_log(args, "hnt-llm input structure: User request + Source reference")
+    # Log structure and parts for debugging
+    debug_log(args, "hnt-llm input structure: <hnt-system>...</hnt-system><hnt-user>...</hnt-user>")
+    debug_log(args, "hnt-llm input <hnt-system> length:", len(system_message))
+    debug_log(args, "hnt-llm input <hnt-user> length:", len(user_content))
+
 
     # Show user query if it came from EDITOR
     if not args.message:
@@ -246,16 +253,17 @@ def main():
         print(instruction)
         print("-" * 40 + "\n")
 
-    # 5. Run hnt-llm -s, stream and capture output
+    # 5. Run hnt-llm, stream and capture output
     debug_log(args, "Running hnt-llm...")
-    hnt_llm_cmd = ["hnt-llm", "-s", system_message]
+    # Construct command WITHOUT -s system_message
+    hnt_llm_cmd = ["hnt-llm"]
     if args.model:
         hnt_llm_cmd.extend(["--model", args.model])
         debug_log(args, "Using model:", args.model)
     if args.debug_unsafe: # Already checked by debug_log, but hnt-llm needs the flag
         hnt_llm_cmd.append("--debug-unsafe")
         debug_log(args, "Passing --debug-unsafe to hnt-llm")
-    debug_log(args, "hnt-llm command:", hnt_llm_cmd)
+    debug_log(args, "hnt-llm command:", hnt_llm_cmd) # Updated log
     hnt_llm_output_capture = io.StringIO()
     rich_process = None  # Initialize rich_process outside try
     debug_log(args, "Syntax highlighting enabled:", syntax_highlight_enabled)
@@ -307,7 +315,7 @@ def main():
 
         # Write input to hnt-llm's stdin in a separate thread or handle potential blocks
         # Simple write for now, assuming input isn't excessively large to block pipe
-        debug_log(args, "Writing input to hnt-llm stdin...")
+        debug_log(args, "Writing XML-formatted input to hnt-llm stdin...") # Updated log
         hnt_llm_process.stdin.write(hnt_llm_input)
         debug_log(args, "Closing hnt-llm stdin...")
         hnt_llm_process.stdin.close()  # Signal EOF
