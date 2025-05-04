@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import random
+import argparse
 from pathlib import Path
 
 
@@ -67,24 +68,144 @@ def create_new_conversation(base_dir):
             sys.exit(1)
 
 
-def main():
-    """
-    Main function to handle command-line arguments.
-    """
-    if len(sys.argv) != 2 or sys.argv[1] != "new":
-        print(f"Usage: {sys.argv[0]} new", file=sys.stderr)
+def find_latest_conversation(base_dir):
+    """Finds the alphabetically latest directory in the base conversations dir."""
+    try:
+        # Use iterdir() for potentially many entries
+        subdirs = sorted(
+            [d for d in base_dir.iterdir() if d.is_dir()], key=lambda p: p.name
+        )
+        if subdirs:
+            return subdirs[-1]
+        else:
+            return None
+    except FileNotFoundError:
+        # Base dir itself doesn't exist, handled by caller checks
+        return None
+    except OSError as e:
+        print(f"Error listing directories in {base_dir}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    command = sys.argv[1]
 
-    if command == "new":
-        conv_base_dir = get_conversations_dir()
-        new_conv_path = create_new_conversation(conv_base_dir)
-        # Print the absolute path to stdout as required
-        print(new_conv_path.resolve())
-    # else: # Placeholder for future commands
-    #     print(f"Error: Unknown command '{command}'", file=sys.stderr)
-    #     sys.exit(1)
+def handle_new_command():
+    conv_base_dir = get_conversations_dir()
+    new_conv_path = create_new_conversation(conv_base_dir)
+    # Print the absolute path to stdout as required
+    print(new_conv_path.resolve())
+
+
+def handle_add_command(args):
+    role = args.role
+    conv_dir_path = args.conversation  # May be None initially
+
+    # 1. Determine conversation directory
+    if conv_dir_path is None:
+        env_conv_dir = os.getenv("HINATA_CHAT_CONVERSATION")
+        if env_conv_dir:
+            conv_dir_path = Path(env_conv_dir)
+        else:
+            # Use default: latest in base dir
+            base_conv_dir = get_conversations_dir()  # Ensures base exists
+            latest_conv = find_latest_conversation(base_conv_dir)
+            if latest_conv:
+                conv_dir_path = latest_conv
+                print(
+                    f"hnt-chat: using latest conversation directory: {conv_dir_path.resolve()}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Error: No conversation directory specified via --conversation or $HINATA_CHAT_CONVERSATION, and no existing conversations found in {base_conv_dir}.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+    # Validate the chosen/found directory
+    if not conv_dir_path.exists():
+        print(
+            f"Error: Conversation directory not found: {conv_dir_path}", file=sys.stderr
+        )
+        sys.exit(1)
+    if not conv_dir_path.is_dir():
+        print(
+            f"Error: Specified conversation path is not a directory: {conv_dir_path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # 2. Read from stdin
+    if sys.stdin.isatty():
+        print("hnt-chat: reading from stdin...", file=sys.stderr)
+    content = sys.stdin.read()
+
+    # 3. Generate filename and check for existence
+    timestamp_ns = time.time_ns()
+    relative_filename = f"{timestamp_ns}-{role}.md"
+    output_filepath = conv_dir_path / relative_filename
+
+    if output_filepath.exists():
+        print(f"Error: Output file already exists: {output_filepath}", file=sys.stderr)
+        sys.exit(1)
+
+    # 4. Write file
+    try:
+        with open(output_filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        print(f"Error writing to file {output_filepath}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # 5. Print relative filename to stdout
+    print(relative_filename)
+
+
+def main():
+    """
+    Main function to handle command-line arguments using argparse.
+    """
+    parser = argparse.ArgumentParser(description="Hinata Chat CLI tool.")
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, help="Sub-command help"
+    )
+
+    # 'new' command
+    parser_new = subparsers.add_parser(
+        "new", help="Create a new conversation directory"
+    )
+    parser_new.set_defaults(func=handle_new_command)
+
+    # 'add'/'add-message' command
+    parser_add = subparsers.add_parser(
+        "add", aliases=["add-message"], help="Add a message to a conversation"
+    )
+    parser_add.add_argument(
+        "role",
+        choices=["user", "assistant", "system"],
+        help="The role of the message author",
+    )
+    parser_add.add_argument(
+        "-c",
+        "--conversation",
+        type=Path,
+        help="Path to the conversation directory (overrides $HINATA_CHAT_CONVERSATION, defaults to latest)",
+    )
+    parser_add.set_defaults(func=handle_add_command)
+
+    # --- Future commands could be added here ---
+
+    args = parser.parse_args()
+
+    # Execute the function associated with the chosen subcommand
+    if hasattr(args, "func"):
+        if args.command == "add" or args.command == "add-message":
+            args.func(args)  # Pass parsed args to add handler
+        else:
+            args.func()  # Other handlers might not need args
+    else:
+        # This should not happen if subparsers are required=True
+        # and all subparsers have set_defaults(func=...)
+        print("Error: Invalid command configuration.", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
