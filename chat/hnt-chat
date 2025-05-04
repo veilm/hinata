@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import time
+import random
+from pathlib import Path
+
+
+def get_conversations_dir():
+    """
+    Determines and ensures the existence of the base directory for conversations.
+    Uses $XDG_CONFIG_HOME/hinata/chat/conversations, defaulting to
+    $HOME/.config/hinata/chat/conversations if $XDG_CONFIG_HOME is not set.
+    """
+    xdg_config_home = os.getenv("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        base_config_dir = Path(xdg_config_home)
+    else:
+        home_dir = Path.home()
+        if not home_dir:
+            print("Error: Could not determine home directory.", file=sys.stderr)
+            sys.exit(1)
+        base_config_dir = home_dir / ".config"
+
+    conversations_dir = base_config_dir / "hinata" / "chat" / "conversations"
+
+    try:
+        conversations_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"Error creating directory {conversations_dir}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    return conversations_dir
+
+
+def create_new_conversation(base_dir):
+    """
+    Creates a new unique conversation directory based on nanosecond timestamp.
+    Handles potential collisions by waiting and retrying.
+    """
+    while True:
+        timestamp_ns = time.time_ns()
+        new_conv_path = base_dir / str(timestamp_ns)
+
+        # Check existence first to potentially avoid unnecessary mkdir attempts
+        if new_conv_path.exists():
+            wait_time = random.uniform(0, 1.0)
+            # print(f"Debug: Path {new_conv_path} exists, waiting {wait_time:.3f}s", file=sys.stderr)
+            time.sleep(wait_time)
+            continue
+
+        try:
+            # Attempt to create the directory
+            # parents=False ensures we don't accidentally recreate the base dir
+            # exist_ok=False ensures it fails if it was created between the .exists() check and now
+            new_conv_path.mkdir(parents=False, exist_ok=False)
+            return new_conv_path
+        except FileExistsError:
+            # Race condition: another process created it between .exists() and mkdir()
+            wait_time = random.uniform(0, 1.0)
+            # print(f"Debug: Race condition for {new_conv_path}, waiting {wait_time:.3f}s", file=sys.stderr)
+            time.sleep(wait_time)
+            # Loop continues to retry
+        except OSError as e:
+            print(f"Error creating directory {new_conv_path}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+
+def main():
+    """
+    Main function to handle command-line arguments.
+    """
+    if len(sys.argv) != 2 or sys.argv[1] != "new":
+        print(f"Usage: {sys.argv[0]} new", file=sys.stderr)
+        sys.exit(1)
+
+    command = sys.argv[1]
+
+    if command == "new":
+        conv_base_dir = get_conversations_dir()
+        new_conv_path = create_new_conversation(conv_base_dir)
+        # Print the absolute path to stdout as required
+        print(new_conv_path.resolve())
+    # else: # Placeholder for future commands
+    #     print(f"Error: Unknown command '{command}'", file=sys.stderr)
+    #     sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
