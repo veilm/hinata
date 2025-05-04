@@ -1,1 +1,13 @@
-sudo cp hnt-chat /usr/local/bin/
+#!/bin/sh -e
+cd "$(dirname "$0")"
+
+if ! which hnt-llm > /dev/null 2>&1
+then
+	echo "build: hnt-llm not found. compiling..."
+	cd ../llm
+	./build
+	cd -
+fi
+
+sudo cp ./hnt-chat /usr/local/bin/
+echo "build: installed hnt-chat"
