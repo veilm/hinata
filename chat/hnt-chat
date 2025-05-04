@@ -230,9 +230,9 @@ def _pack_conversation_stream(conv_dir_path, output_stream):
                     process = subprocess.run(
                         ["hnt-escape"],
                         stdin=f_in,
-                        stdout=subprocess.PIPE, # Capture stdout
-                        stderr=sys.stderr,      # Pipe errors to our stderr
-                        check=True,             # Raise exception on non-zero exit code
+                        stdout=subprocess.PIPE,  # Capture stdout
+                        stderr=sys.stderr,  # Pipe errors to our stderr
+                        check=True,  # Raise exception on non-zero exit code
                     )
                     # Write the captured output to the provided output stream
                     output_stream.write(process.stdout)
@@ -306,6 +306,8 @@ def handle_gen_command(args):
     llm_cmd = ["hnt-llm"]
     if args.model:
         llm_cmd.extend(["--model", args.model])
+    if args.debug_unsafe:
+        llm_cmd.append("--debug-unsafe")  # Pass the flag if present
 
     # 3. Execute hnt-llm, stream output, and potentially capture
     captured_output_buffer = io.BytesIO()
@@ -463,6 +465,11 @@ def main():
         "--output-filename",
         action="store_true",
         help="Implies --write. Also prints the filename of the created assistant message",
+    )
+    parser_gen.add_argument(
+        "--debug-unsafe",
+        action="store_true",
+        help="Pass the --debug-unsafe flag to the hnt-llm subprocess",
     )
     parser_gen.set_defaults(func=handle_gen_command)
 
