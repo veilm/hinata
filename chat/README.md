@@ -68,6 +68,22 @@ cat "$f"
 echo "hello. this is the first message in conv2" | hnt-chat add assistant
 ```
 
+### `hnt-chat gen`
+`gen` generates an LLM assistant message, with the current state of the
+conversation as input. it has the same options as `add` for specifying the
+conversation
+
+it passes the conversation to the `hnt-llm` backend and streams back the LLM
+response to stdout
+
+**Options:**
+- `-w|--write` will save the generation as a role=assistant message in the
+current conversation after it's finished streaming
+- `--output-filename` implies `--write` and will add an additional final line to
+stdout to display the created assistant message's filename
+- `-m|--model MODEL` will pass a model argument to `hnt-llm`. see [available
+model providers](https://github.com/michaelskyba/hinata/tree/main/llm#supported-model-providers)
+
 ### `hnt-chat pack`
-`pack` packs a conversation into one text stream, suitable as XML input for
-hnt-llm`
+`pack` packs a conversation into one text stream, suitably escaped as XML input
+for `hnt-llm`. this is used internally by `hnt-chat gen`
