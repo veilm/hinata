@@ -67,3 +67,7 @@ cat "$f"
 # latest by date/dirname
 echo "hello. this is the first message in conv2" | hnt-chat add assistant
 ```
+
+### `hnt-chat pack`
+`pack` packs a conversation into one text stream, suitable as XML input for
+hnt-llm`
