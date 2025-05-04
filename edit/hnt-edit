@@ -233,18 +233,40 @@ def main():
 
     # 4. Prepare input for hnt-llm using XML format
     debug_log(args, "Preparing input for hnt-llm in XML format...")
-    user_content = (
+    user_content_raw = (
         f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
     )
-    hnt_llm_input = (
-        f"<hnt-system>{system_message}</hnt-system>\n"
-        f"<hnt-user>{user_content}</hnt-user>"
+
+    # Escape system message
+    debug_log(args, "Escaping system message via hnt-escape...")
+    escape_cmd = ["hnt-escape"]
+    debug_log(args, "hnt-escape command (system):", escape_cmd)
+    escaped_system_result = run_command(
+        escape_cmd, stdin_content=system_message, capture_output=True, check=True, text=True
     )
-    debug_log(args, "hnt-llm input length:", len(hnt_llm_input))
+    escaped_system_message = escaped_system_result.stdout
+    debug_log(args, "Escaped system message length:", len(escaped_system_message))
+
+    # Escape user content
+    debug_log(args, "Escaping user content via hnt-escape...")
+    debug_log(args, "hnt-escape command (user):", escape_cmd)
+    escaped_user_result = run_command(
+        escape_cmd, stdin_content=user_content_raw, capture_output=True, check=True, text=True
+    )
+    escaped_user_content = escaped_user_result.stdout
+    debug_log(args, "Escaped user content length:", len(escaped_user_content))
+
+
+    # Construct the final XML input using escaped content
+    hnt_llm_input = (
+        f"<hnt-system>{escaped_system_message}</hnt-system>\n"
+        f"<hnt-user>{escaped_user_content}</hnt-user>"
+    )
+    debug_log(args, "Final hnt-llm input length:", len(hnt_llm_input))
     # Log structure and parts for debugging
-    debug_log(args, "hnt-llm input structure: <hnt-system>...</hnt-system><hnt-user>...</hnt-user>")
-    debug_log(args, "hnt-llm input <hnt-system> length:", len(system_message))
-    debug_log(args, "hnt-llm input <hnt-user> length:", len(user_content))
+    debug_log(args, "Final hnt-llm input structure: <hnt-system>...</hnt-system><hnt-user>...</hnt-user>")
+    debug_log(args, "Final hnt-llm input <hnt-system> length:", len(escaped_system_message))
+    debug_log(args, "Final hnt-llm input <hnt-user> length:", len(escaped_user_content))
 
 
     # Show user query if it came from EDITOR
