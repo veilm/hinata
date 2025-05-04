@@ -423,18 +423,10 @@ def handle_gen_command(args):
 
     # 5. Print filename if --output-filename was used
     if args.output_filename and relative_filename_written:
-        # Ensure it's on a new line after potential streaming output
-        if (
-            not sys.stdout.buffer.closed
-            and getattr(sys.stdout.buffer, "tell", lambda: 0)() > 0
-        ):
-            # Check if anything was actually written to stdout stream
-            # and try to see if the last char was a newline (difficult reliably across platforms/buffering)
-            # Simplest robust approach: just print a newline before the filename if unsure.
-            # We check tell() > 0 simple heuristic.
-            # Or maybe just always print newline? Let's try that.
-            pass  # Assume LLM output likely ended with newline, or user wants it appended anyway.
-        print(f"\n{relative_filename_written}")  # Add newline for safety
+        # Always print a leading newline before the filename when requested.
+        # This avoids issues with checking sys.stdout.buffer.tell() on non-seekable streams (like pipes/terminals)
+        # and ensures the filename appears cleanly separated from the streamed output.
+        print(f"\n{relative_filename_written}")
 
 
 def main():
