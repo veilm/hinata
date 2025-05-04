@@ -773,6 +773,15 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+	// --- Debug: Print Arguments ---
+	if (debug_mode) {
+		fprintf(stderr, "<hnt-llm-argv>\n");
+		for (int i = 0; i < argc; ++i) {
+			fprintf(stderr, "  <arg index=\"%d\">%s</arg>\n", i, argv[i]);
+		}
+		fprintf(stderr, "</hnt-llm-argv>\n");
+	}
+
 	// Check for non-option arguments (currently none expected)
 	if (optind < argc) {
 		fprintf(stderr, "Error: Unexpected non-option arguments found.\n");
@@ -875,6 +884,14 @@ int main(int argc, char* argv[]) {
 	}
 	// fprintf(stderr, "Read %zu bytes from stdin.\n", stdin_len); // Confirm
 	// bytes read
+
+	// --- Debug: Print Stdin ---
+	if (debug_mode) {
+		fprintf(stderr, "<hnt-llm-stdin>");
+		// Use fwrite for potentially large/binary stdin
+		fwrite(stdin_content, 1, stdin_len, stderr);
+		fprintf(stderr, "</hnt-llm-stdin>\n");
+	}
 
 	// --- 5. Parse Stdin for XML Tags and Build Message List ---
 	message_list_head = NULL;  // Initialize message list
