@@ -269,7 +269,7 @@ def main():
             hnt_llm_cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,  # Capture stderr too
+            stderr=sys.stderr,      # Pipe stderr directly to terminal
             text=True,
             bufsize=1,  # Line buffered, might help with streaming
             # universal_newlines=True # Alternative to text=True
@@ -365,17 +365,12 @@ def main():
         hnt_llm_rc = hnt_llm_process.wait()
         debug_log(args, "hnt-llm process finished with return code:", hnt_llm_rc)
         if hnt_llm_rc != 0:
-            debug_log(args, "hnt-llm failed. Reading stderr...")
-            # Read any remaining stderr from hnt-llm
-            stderr_output = ""
-            if hnt_llm_process.stderr:  # Check if stderr was captured
-                stderr_output = hnt_llm_process.stderr.read()
+            debug_log(args, "hnt-llm failed.")
+            # stderr was already piped to terminal
             print(
-                f"\nError: '{' '.join(hnt_llm_cmd)}' failed with exit code {hnt_llm_rc}",
+                f"\nError: '{' '.join(hnt_llm_cmd)}' failed with exit code {hnt_llm_rc}. See stderr above.",
                 file=sys.stderr,
             )
-            if stderr_output:
-                print(f"hnt-llm Stderr:\n{stderr_output}", file=sys.stderr)
             # Don't exit immediately if rich also needs cleanup/check
             # sys.exit(hnt_llm_rc) # Moved after potential rich wait
 
