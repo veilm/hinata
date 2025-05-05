@@ -580,14 +580,117 @@ def main():
     hnt_apply_cmd = ["hnt-apply"] + args.source_files
     debug_log(args, "hnt-apply command:", hnt_apply_cmd)
     debug_log(args, "Piping captured hnt-chat gen output to hnt-apply stdin.")
-    run_command(
-        hnt_apply_cmd,
-        stdin_content=final_llm_output,  # Use the renamed variable
-        capture_output=False,
-        check=True,
-        text=True,
-    )
-    debug_log(args, "hnt-apply finished successfully.")
+
+    hnt_apply_stdout_capture = io.StringIO()
+    hnt_apply_rc = 0
+    try:
+        debug_log(args, "Starting hnt-apply process via Popen...")
+        apply_process = subprocess.Popen(
+            hnt_apply_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr,  # Stream stderr directly
+            text=True,
+            bufsize=1,  # Line buffered potentially
+        )
+        debug_log(args, f"hnt-apply process started. PID: {apply_process.pid}")
+
+        # Write hnt-chat gen output to hnt-apply's stdin
+        debug_log(args, f"Writing {len(final_llm_output)} bytes to hnt-apply stdin...")
+        try:
+            apply_process.stdin.write(final_llm_output)
+            apply_process.stdin.close()  # Signal EOF
+            debug_log(args, "Finished writing to hnt-apply stdin.")
+        except BrokenPipeError:
+            debug_log(
+                args, "hnt-apply stdin pipe broken (process may have exited early?)."
+            )
+        except Exception as e:
+            debug_log(args, f"Error writing to hnt-apply stdin: {e}")
+            # Process might still be running, continue to reading stdout
+
+        # Stream hnt-apply stdout, capture it
+        debug_log(args, "Starting hnt-apply stdout reading loop...")
+        while True:
+            line = apply_process.stdout.readline()
+            if not line:
+                debug_log(args, "hnt-apply stdout loop: EOF")
+                break
+
+            debug_log(args, f"hnt-apply stdout recv: {repr(line)}")
+
+            # Capture
+            hnt_apply_stdout_capture.write(line)
+            # Stream
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+        # Wait for hnt-apply to finish
+        debug_log(args, "Waiting for hnt-apply process to finish...")
+        hnt_apply_rc = apply_process.wait()
+        debug_log(args, "hnt-apply process finished with return code:", hnt_apply_rc)
+
+    except FileNotFoundError:
+        print(f"Error: Command not found: {hnt_apply_cmd[0]}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(
+            f"An unexpected error occurred while running {' '.join(hnt_apply_cmd)}: {e}",
+            file=sys.stderr,
+        )
+        # Ensure process is terminated if it's still running
+        if "apply_process" in locals() and apply_process.poll() is None:
+            apply_process.terminate()
+            apply_process.wait()
+        sys.exit(1)
+
+    # Check hnt-apply's exit code
+    if hnt_apply_rc != 0:
+        captured_apply_stdout = hnt_apply_stdout_capture.getvalue()
+        hnt_apply_stdout_capture.close()  # Close the StringIO buffer
+
+        print(
+            f"\nError: '{' '.join(hnt_apply_cmd)}' failed with exit code {hnt_apply_rc}.",
+            file=sys.stderr,
+        )
+        debug_log(args, "hnt-apply failed. Adding its stdout to the chat conversation.")
+        debug_log(args, "Captured hnt-apply stdout length:", len(captured_apply_stdout))
+
+        # 11. Add hnt-apply's raw stdout as a new user message if it failed
+        hnt_chat_add_user_failure_cmd = [
+            "hnt-chat",
+            "add",
+            "user",
+            "-c",
+            conversation_dir,
+        ]
+        debug_log(
+            args, "hnt-chat add user command (failure):", hnt_chat_add_user_failure_cmd
+        )
+        debug_log(
+            args,
+            "Failure message content (hnt-apply stdout) length:",
+            len(captured_apply_stdout),
+        )
+        try:
+            run_command(
+                hnt_chat_add_user_failure_cmd,
+                stdin_content=captured_apply_stdout,
+                check=True,
+                text=True,
+            )
+            debug_log(args, "hnt-apply failure message added to chat.")
+        except Exception as e:
+            # Log this error, but proceed to exit with hnt-apply's error code
+            print(
+                f"Error adding hnt-apply failure message to chat: {e}", file=sys.stderr
+            )
+            debug_log(args, f"hnt-chat add user failed during error handling: {e}")
+
+        sys.exit(hnt_apply_rc)  # Exit hnt-edit with hnt-apply's error code
+    else:
+        hnt_apply_stdout_capture.close()  # Close the buffer even on success
+        debug_log(args, "hnt-apply finished successfully.")
 
 
 if __name__ == "__main__":
