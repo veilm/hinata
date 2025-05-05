@@ -20,7 +20,7 @@ $ hnt-edit <file1> [file2 ...] [-m|--message user_message] [--model provider/mod
 
 The LLM will read your user message and use your given files for reference,
 potentially making edits to them using
-[an aider-like TARGET/REPLACE format](https://github.com/michaelskyba/hinata/blob/main/edit/prompts/01-targetreplace.md).
+[an aider-like TARGET/REPLACE format](https://github.com/michaelskyba/hinata/blob/main/edit/prompts/main-file_edit.md).
 
 See [the hnt README](https://github.com/michaelskyba/hinata/tree/main/hnt) for
 the list of supported model providers.
