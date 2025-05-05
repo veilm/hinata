@@ -322,7 +322,8 @@ def main():
 
     # 6. Add user request message to conversation
     debug_log(args, "Adding user request message via hnt-chat add...")
-    user_request_content = f"<user_request>{instruction}</user_request>"
+    # \n after instruction because it gets stripped
+    user_request_content = f"<user_request>\n{instruction}\n</user_request>"
     hnt_chat_add_user_cmd = ["hnt-chat", "add", "user", "-c", conversation_dir]
     debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
     debug_log(
