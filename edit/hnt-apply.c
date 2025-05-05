@@ -154,17 +154,17 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (verbose_mode) {
-		printf("hnt-edit: Running: %s\n", llm_pack_cmd);
+		printf("hnt-apply: Running: %s\n", llm_pack_cmd);
 	}
 	char *shared_root = run_command(llm_pack_cmd);
 	if (verbose_mode) {
-		printf("hnt-edit: Shared root: %s\n", shared_root);
+		printf("hnt-apply: Shared root: %s\n", shared_root);
 	}
 	free(llm_pack_cmd);  // Command string no longer needed
 
 	// --- 3. Read LLM generation from stdin ---
 	if (verbose_mode) {
-		printf("hnt-edit: Reading LLM generation from stdin...\n");
+		printf("hnt-apply: Reading LLM generation from stdin...\n");
 	}
 	char *stdin_content = read_stream_to_string(stdin);
 	if (!stdin_content) {
@@ -178,13 +178,13 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 	if (verbose_mode) {
-		printf("hnt-edit: Finished reading stdin.\n");
+		printf("hnt-apply: Finished reading stdin.\n");
 	}
 
 	// --- 4. Parse stdin and process blocks ---
 	if (!verbose_mode &&
 	    *stdin_content != '\0') {  // Only print if there might be blocks
-		printf("hnt-edit: Processing blocks...\n");
+		printf("hnt-apply: Processing blocks...\n");
 	}
 	char *current_pos = stdin_content;
 	const char *block_marker = "```";
@@ -399,20 +399,20 @@ int main(int argc, char *argv[]) {
 
 	// Final summary message
 	if (verbose_mode) {
-		printf("\nhnt-edit: Finished processing %d block(s).\n", block_count);
+		printf("\nhnt-apply: Finished processing %d block(s).\n", block_count);
 	} else if (block_count == 0 && *stdin_content != '\0' &&
 	           overall_status == EXIT_SUCCESS) {
 		// Only print "No valid blocks" if no errors occurred during parsing
 		// attempts
-		printf("\nhnt-edit: No valid blocks found to process.\n");
+		printf("\nhnt-apply: No valid blocks found to process.\n");
 	} else if (overall_status != EXIT_SUCCESS) {
 		fprintf(stderr,
-		        "\nhnt-edit: Finished processing %d block(s) with one or more "
+		        "\nhnt-apply: Finished processing %d block(s) with one or more "
 		        "errors.\n",
 		        block_count);
 	} else {
 		// Successful run, non-verbose, blocks processed
-		printf("\nhnt-edit: Finished processing %d block(s) successfully.\n",
+		printf("\nhnt-apply: Finished processing %d block(s) successfully.\n",
 		       block_count);
 	}
 
@@ -611,7 +611,7 @@ int process_block(const char *shared_root, char **abs_input_paths,
 			// Special case: Empty target and empty file -> replace file content
 			if (verbose_mode) {
 				printf(
-				    "hnt-edit: Applying replace content to effectively empty "
+				    "hnt-apply: Applying replace content to effectively empty "
 				    "file %s\n",
 				    canonical_path);
 			}
