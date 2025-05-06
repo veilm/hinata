@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import io
+import json  # Add json import
 import shlex
 import shutil
 import textwrap
@@ -361,7 +362,9 @@ def main():
 
     # 8. Add source reference message to conversation
     debug_log(args, "Adding source reference message via hnt-chat add...")
-    source_reference_content = f"<source_reference>\n{packed_sources}</source_reference>"
+    source_reference_content = (
+        f"<source_reference>\n{packed_sources}</source_reference>"
+    )
     # Reuse the command list, it's the same
     debug_log(args, "hnt-chat add user command (source):", hnt_chat_add_user_cmd)
     debug_log(
@@ -369,14 +372,41 @@ def main():
         "Source reference content (first 100 chars):\n",
         textwrap.shorten(source_reference_content, width=100, placeholder="..."),
     )
-    run_command(
+    # Capture the output filename for the source reference
+    add_source_ref_result = run_command(
         hnt_chat_add_user_cmd,
         stdin_content=source_reference_content,
-        # capture_output=False, # Don't need filename output - Capture it instead
+        capture_output=True,  # Capture the filename output
         check=True,
         text=True,
     )
-    debug_log(args, "Source reference message added.")
+    source_ref_filename = add_source_ref_result.stdout.strip()
+    debug_log(args, "Source reference message added:", source_ref_filename)
+
+    # 8a. Write source reference filename to hnt-edit.json
+    if source_ref_filename:
+        debug_log(args, "Writing source reference info to hnt-edit.json...")
+        hnt_edit_json_path = Path(conversation_dir) / "hnt-edit.json"
+        json_data = {"source_reference": source_ref_filename}
+        try:
+            with open(hnt_edit_json_path, "w") as f:
+                json.dump(json_data, f, indent=2)  # Use indent for readability
+            debug_log(args, "Successfully wrote to", hnt_edit_json_path)
+        except IOError as e:
+            print(
+                f"Warning: Could not write {hnt_edit_json_path}: {e}", file=sys.stderr
+            )
+            debug_log(args, f"IOError writing {hnt_edit_json_path}: {e}")
+        except Exception as e:
+            print(
+                f"Warning: Unexpected error writing {hnt_edit_json_path}: {e}",
+                file=sys.stderr,
+            )
+            debug_log(args, f"Unexpected error writing {hnt_edit_json_path}: {e}")
+    else:
+        debug_log(
+            args, "Warning: Did not get a filename for the source reference message."
+        )
 
     # Show user query if it came from EDITOR
     if not args.message:
