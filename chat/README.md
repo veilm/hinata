@@ -9,9 +9,9 @@ cd hinata/chat
 ```
 
 ## concept
-- `hnt-chat` organizes conversations into directories, within `$XDG_CONFIG_HOME/hinata/chat/conversations/`
+- `hnt-chat` organizes conversations into directories, within `$XDG_DATA_HOME/hinata/chat/conversations/`
 - each conversation is a directory, identified by a unix timestamp in
-nanoseconds. `$XDG_CONFIG_HOME/hinata/chat/conversations/conversationTimestamp/`
+nanoseconds. `$XDG_DATA_HOME/hinata/chat/conversations/conversationTimestamp/`
 - a conversation is a list of messages
 - each message is composed of a nanosecond ID, a role, and its content. it is
 represented by a file inside the conversation directory
@@ -28,7 +28,7 @@ the conv directory and editing message file content
 
 ```sh
 $ hnt-chat new
-/home/user/.config/hinata/chat/conversations/1710000000123456789
+/home/user/.local/share/hinata/chat/conversations/1710000000123456789
 ```
 
 ### `hnt-chat add`
