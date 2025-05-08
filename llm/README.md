@@ -116,9 +116,6 @@ you can mask the `hnt-escape` binary or just patch the call if you really need a
 standard escape format. but if you think you do, you're likely misunderstanding
 the flow and trying to intercept too late
 
-TODO `hnt-chat` wrapper that can construct history messages from files in a
-session directory, list files, write a new file
-
 ## debugging
 you can use the `--debug-unsafe` flag to examine the raw LLM request/response
 for your query. **This will include your API key in the output.**

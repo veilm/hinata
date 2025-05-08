@@ -27,6 +27,8 @@ typedef struct XmlRange {
 
 // Global flag for debug mode
 static int debug_mode = 0;
+// Global flag for --include-reasoning
+static int include_reasoning_flag = 0;
 // Global flag to track if an API error was detected in the response
 static int api_error_occurred = 0;
 
@@ -39,22 +41,34 @@ static int api_error_occurred = 0;
 #define READ_CHUNK_SIZE 4096  // Size for reading stdin chunks
 
 // Structure to hold unprocessed stream data
+// Enum for output phase tracking when --include-reasoning is active
+typedef enum { PHASE_INIT, PHASE_THINKING, PHASE_RESPONDING } OutputPhase;
+
 struct StreamData {
 	char* buffer;
 	size_t buffer_size;
 	size_t data_len;
+	// Flags and state for --include-reasoning
+	int include_reasoning_mode;
+	OutputPhase current_output_phase;
+	int think_tag_printed;
 };
 
 // Function to process a single SSE data payload (JSON string) - handles
 // different provider formats
-static void process_sse_data(const char* json_data) {
+static void process_sse_data(const char* json_data, struct StreamData* sd) {
 	json_t* root_resp = NULL;
 	json_error_t error;
 
 	// Check for the special [DONE] message
 	if (strcmp(json_data, "[DONE]") == 0) {
-		// End of stream detected
-		// printf("\n[STREAM DONE]\n"); // Optional: indicate stream end
+		// If --include-reasoning is active and <think> was opened but not
+		// closed, close it now.
+		if (sd->include_reasoning_mode && sd->think_tag_printed) {
+			printf("</think>\n");
+			fflush(stdout);
+			sd->think_tag_printed = 0;  // Reset for this stream context
+		}
 		return;
 	}
 
@@ -75,18 +89,110 @@ static void process_sse_data(const char* json_data) {
 		if (json_is_object(first_choice)) {
 			json_t* delta_obj = json_object_get(first_choice, "delta");
 			if (json_is_object(delta_obj)) {
-				json_t* content_str = json_object_get(delta_obj, "content");
-				if (json_is_string(content_str)) {
-					const char* content = json_string_value(content_str);
-					printf("%s", content);
-					fflush(stdout);
+				if (!sd->include_reasoning_mode) {
+					// Default behavior: only process "content"
+					json_t* content_str_obj =
+					    json_object_get(delta_obj, "content");
+					if (content_str_obj && json_is_string(content_str_obj)) {
+						const char* content =
+						    json_string_value(content_str_obj);
+						// Print only if content is non-empty, to match new
+						// behavior style
+						if (content && strlen(content) > 0) {
+							printf("%s", content);
+							fflush(stdout);
+						}
+					}
+				} else {
+					// --include-reasoning behavior
+					json_t* j_content = json_object_get(delta_obj, "content");
+					json_t* j_reasoning =
+					    json_object_get(delta_obj, "reasoning");
+					json_t* j_reasoning_content =
+					    json_object_get(delta_obj, "reasoning_content");
+
+					const char* text_reasoning = NULL;
+					if (j_reasoning_content &&
+					    json_is_string(j_reasoning_content)) {
+						text_reasoning = json_string_value(j_reasoning_content);
+					} else if (j_reasoning && json_is_string(j_reasoning)) {
+						text_reasoning = json_string_value(j_reasoning);
+					}
+
+					const char* text_content = NULL;
+					if (j_content && json_is_string(j_content)) {
+						text_content = json_string_value(j_content);
+					}
+
+					int has_reasoning_token =
+					    (text_reasoning && strlen(text_reasoning) > 0);
+					int has_content_token =
+					    (text_content && strlen(text_content) > 0);
+
+					// Determine if this chunk signals a transition to the
+					// content phase
+					int is_transitioning_to_content = has_content_token;
+					if (!is_transitioning_to_content && j_content != NULL) {
+						// If no actual content token in this chunk, but content
+						// field exists, check if reasoning became null (signal
+						// for transition)
+						int reasoning_is_null_marker = 0;
+						if (j_reasoning && json_is_null(j_reasoning)) {
+							reasoning_is_null_marker = 1;
+						}
+						if (j_reasoning_content &&
+						    json_is_null(j_reasoning_content)) {
+							reasoning_is_null_marker = 1;
+						}
+						if (reasoning_is_null_marker) {
+							is_transitioning_to_content = 1;
+						}
+					}
+
+					if (sd->current_output_phase == PHASE_INIT) {
+						if (has_reasoning_token) {
+							printf("<think>");
+							fflush(stdout);
+							sd->think_tag_printed = 1;
+							sd->current_output_phase = PHASE_THINKING;
+							printf("%s", text_reasoning);
+							fflush(stdout);
+						} else if (is_transitioning_to_content) {
+							// Started directly with content (no prior
+							// reasoning)
+							sd->current_output_phase = PHASE_RESPONDING;
+							if (has_content_token) {
+								printf("%s", text_content);
+								fflush(stdout);
+							}
+						}
+					} else if (sd->current_output_phase == PHASE_THINKING) {
+						if (is_transitioning_to_content) {
+							if (sd->think_tag_printed) {
+								printf("</think>\n");
+								fflush(stdout);
+								sd->think_tag_printed = 0;
+							}
+							sd->current_output_phase = PHASE_RESPONDING;
+							if (has_content_token) {
+								printf("%s", text_content);
+								fflush(stdout);
+							}
+						} else if (has_reasoning_token) {
+							// Still in reasoning phase
+							printf("%s", text_reasoning);
+							fflush(stdout);
+						}
+						// If no reasoning token and not transitioning, it might
+						// be an empty reasoning chunk or metadata. Do nothing.
+					} else if (sd->current_output_phase == PHASE_RESPONDING) {
+						if (has_content_token) {
+							printf("%s", text_content);
+							fflush(stdout);
+						}
+					}
 				}
 			}
-			// Check for finish reason (optional)
-			// json_t *finish_reason = json_object_get(first_choice,
-			// "finish_reason"); Check for finish reason (optional) json_t
-			// *finish_reason = json_object_get(first_choice, "finish_reason");
-			// if (json_is_string(finish_reason)) { ... }
 		}
 	} else {
 		// --- Handle potential errors or unknown formats ---
@@ -376,7 +482,7 @@ static size_t WriteStreamCallback(void* contents, size_t size, size_t nmemb,
 				// Temporarily null-terminate the JSON string for processing
 				char original_char = *line_end;
 				*line_end = '\0';
-				process_sse_data(json_start);
+				process_sse_data(json_start, stream_data);
 				*line_end = original_char;  // Restore original character
 			}
 			// Move to the next line
@@ -392,7 +498,7 @@ static size_t WriteStreamCallback(void* contents, size_t size, size_t nmemb,
 				// variable
 				char original_char = *message_end;
 				*message_end = '\0';
-				process_sse_data(json_start);
+				process_sse_data(json_start, stream_data);
 				*message_end = original_char;
 			}
 		}
@@ -701,8 +807,8 @@ static char* unescape_message_content(const char* original_content) {
 int main(int argc, char* argv[]) {
 	CURL* curl_handle = NULL;  // Initialize curl_handle to NULL
 	CURLcode res = CURLE_OK;   // Initialize res
-	struct StreamData stream_data = {NULL, 0,
-	                                 0};  // Initialize stream data struct
+	struct StreamData stream_data = {
+	    NULL, 0, 0, 0, PHASE_INIT, 0};  // Initialize stream data struct
 	struct curl_slist* headers = NULL;
 	char* api_key = NULL;
 	char auth_header[1024];  // Buffer for the Authorization header
@@ -730,20 +836,32 @@ int main(int argc, char* argv[]) {
 	// --- 1. Parse Command Line Arguments ---
 	int opt;
 	// Define long options
-	static struct option long_options[] = {
-	    {"model", required_argument, 0, 'm'},
-	    {"system", required_argument, 0, 's'},
-	    {"version", no_argument, 0, 'V'},  // Version flag
-	    {"debug-unsafe", no_argument, 0,
-	     'd'},        // Added debug flag (using 'd' internally)
-	    {0, 0, 0, 0}  // End of options marker
-	};
+#define INCLUDE_REASONING_OPT_CODE 256  // Arbitrary value for long-only option
 
 	// Use model_arg to store the argument value, default or from -m
 	// Use system_prompt to store the system prompt argument
 	// Use 'd' internally for the debug flag, no short option exposed to user
 	// Use 'V' for version flag
-	while ((opt = getopt_long(argc, argv, "m:s:V", long_options, NULL)) != -1) {
+	// include_reasoning_flag is set directly by getopt_long
+
+	// Note: getopt_long will set include_reasoning_flag to 1 if
+	// --include-reasoning is present.
+	// We don't need a specific case for it in the switch if we use the flag
+	// pointer method.
+	// However, to keep the style consistent or if we needed to parse an
+	// argument for it, we'd use a char code. For a simple flag, letting
+	// getopt_long set it is fine. Let's use a char code for consistency for
+	// now. Reverting the direct flag setting to use a char code.
+	static struct option long_options_revised[] = {
+	    {"model", required_argument, 0, 'm'},
+	    {"system", required_argument, 0, 's'},
+	    {"version", no_argument, 0, 'V'},
+	    {"debug-unsafe", no_argument, 0, 'd'},
+	    {"include-reasoning", no_argument, 0, INCLUDE_REASONING_OPT_CODE},
+	    {0, 0, 0, 0}};
+
+	while ((opt = getopt_long(argc, argv, "m:s:V", long_options_revised,
+	                          NULL)) != -1) {
 		switch (opt) {
 			case 'V':  // Handle version flag
 				printf("%s\n", VERSION_STRING);
@@ -757,16 +875,20 @@ int main(int argc, char* argv[]) {
 			case 's':  // Handle system prompt argument
 				system_prompt = optarg;
 				break;
+			case INCLUDE_REASONING_OPT_CODE:
+				include_reasoning_flag = 1;
+				break;
 			case '?':
 				// getopt_long already printed an error message.
 				fprintf(
 				    stderr,
 				    "Model format: provider/model_name (e.g., openai/gpt-4o, "
 				    "openrouter/some/model)\n");
-				fprintf(stderr,
-				        "Usage: %s [-m provider/model_name] [-s system_prompt] "
-				        "[--version|-V]\n",
-				        argv[0]);
+				fprintf(
+				    stderr,
+				    "Usage: %s [-m provider/model_name] [-s system_prompt] "
+				    "[--version|-V] [--debug-unsafe] [--include-reasoning]\n",
+				    argv[0]);
 				return 1;
 			default:
 				abort();  // Should not happen
@@ -790,7 +912,7 @@ int main(int argc, char* argv[]) {
 		        "openrouter/some/model)\n");
 		fprintf(stderr,
 		        "Usage: %s [-m provider/model_name] [-s system_prompt] "
-		        "[--version|-V]\n",
+		        "[--version|-V] [--debug-unsafe] [--include-reasoning]\n",
 		        argv[0]);
 		return 1;
 	}
@@ -1257,30 +1379,47 @@ int main(int argc, char* argv[]) {
 	// Optional: Enable verbose output for debugging curl issues
 	// curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
 
+	// --- Initialize stream state for --include-reasoning ---
+	stream_data.include_reasoning_mode = include_reasoning_flag;
+	stream_data.current_output_phase = PHASE_INIT;
+	stream_data.think_tag_printed = 0;
+
 	// --- 9. Perform the request ---
 	res = curl_easy_perform(curl_handle);
 
 	// --- 10. Check for errors ---
 	if (res != CURLE_OK) {
 		// Avoid printing extra newline if stream already printed one before
-		// error
-		if (stream_data.data_len == 0)
-			printf("\n");  // Add newline only if nothing was printed
+		// error. Also, if <think> was opened, ensure it's closed on error.
+		if (stream_data.include_reasoning_mode &&
+		    stream_data.think_tag_printed) {
+			printf("</think>\n");  // Close tag on error if it was opened
+			fflush(stdout);
+			// No need to reset think_tag_printed here as we are exiting.
+		} else if (stream_data.data_len == 0 && !api_error_occurred) {
+			// Only print newline if no data was streamed and no API error
+			// (which prints its own newlines)
+			printf("\n");
+		}
 		fprintf(stderr, "curl_easy_perform() failed: %s\n",
 		        curl_easy_strerror(res));
 	} else {
-		// --- 11. Processing is done in the callback ---
-		// Ensure a final newline after streaming is complete
-		// Check if the last character printed by the callback was a newline
-		// This is tricky as the callback doesn't track this easily.
-		// A simple approach is to always print a newline if the curl call
-		// succeeded. Ensure a final newline *only* if necessary, which is hard
-		// to track. The LLM output/error message itself should contain the
-		// final newline if appropriate. Removing the unconditional
-		// printf("\n");
-
-		// 1745964031 nvm I'm returning it since it seemed to work fine
-		printf("\n");
+		// --- 11. Processing is done in the callback, including [DONE] handling
+		// --- Ensure a final newline after streaming is complete, if not
+		// already handled by an API error or the stream itself. The callback
+		// for [DONE] might close </think>, or normal output might end with a
+		// newline. If an API error occurred, it likely printed a newline. If no
+		// data was streamed at all (e.g. empty response before [DONE]), and no
+		// API error, then print a newline.
+		if (!api_error_occurred && stream_data.data_len == 0 &&
+		    (include_reasoning_flag ? !stream_data.think_tag_printed : 1)) {
+			// The above condition for data_len might be tricky if [DONE] was
+			// the only thing, which clears buffer. A simple printf("\n") here
+			// is generally safe if the LLM doesn't guarantee final newlines.
+			// The original code had printf("\n"); here. Let's keep it for now,
+			// as LLM outputs might not always end with one.
+			printf("\n");
+		}
 	}
 
 	// --- 12. Cleanup ---
