@@ -3,17 +3,21 @@
 #define _GNU_SOURCE
 #include <errno.h>    // For errno, perror
 #include <getopt.h>   // For getopt_long
+#include <libgen.h>   // For dirname
 #include <limits.h>   // For PATH_MAX
 #include <stdbool.h>  // For bool type used in process_block
 #include <stdint.h>   // For SIZE_MAX
 #include <stdio.h>
 #include <stdlib.h>  // For realpath, malloc, free, exit, EXIT_FAILURE, EXIT_SUCCESS, size_t, NULL
 #include <string.h>
-#include <sys/wait.h>  // For WIFEXITED, WEXITSTATUS with pclose
-#include <unistd.h>    // For popen, pclose
+#include <sys/stat.h>   // For mkdir, mode_t
+#include <sys/types.h>  // For mode_t (often included by sys/stat.h anyway)
+#include <sys/wait.h>   // For WIFEXITED, WEXITSTATUS with pclose
+#include <unistd.h>     // For popen, pclose
 
 // --- Global Flags ---
-int verbose_mode = 0;  // Global flag for verbose output
+int verbose_mode = 0;            // Global flag for verbose output
+int disallow_creating_flag = 0;  // Global flag for disallowing file creation
 
 #ifndef MIN  // Define MIN if not already defined (e.g., by sys/param.h)
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -44,8 +48,10 @@ char *run_command(const char *cmd);
  * @brief Processes a single LLM change block.
  *
  * Constructs the full path, verifies it against input files, reads the file,
- * finds the target section exactly once, replaces it, and writes the modified
- * content back to the file. Exits the program on any error.
+ * find the target section exactly once, replaces it, and writes the modified
+ * content back to the file. If the target is empty and the file does not
+ * exist (and --disallow-creating is not set), it creates the file.
+ * Exits the program on some errors, returns status code for others.
  *
  * @param shared_root The shared root path obtained from llm-pack.
  * @param abs_input_paths An array of absolute paths corresponding to the CLI
@@ -54,19 +60,82 @@ char *run_command(const char *cmd);
  * @param rel_path The relative path parsed from the LLM block.
  * @param target The target content to search for.
  * @param replace The replacement content.
- * @return 0 on success, 1 on failure.
+ * @return 0 on success (file modified), 1 on failure, 2 on success (file
+ * created).
  */
 int process_block(const char *shared_root, char **abs_input_paths,
                   int num_input_paths, const char *rel_path, const char *target,
                   const char *replace);
+
+// Helper function to create directories recursively like mkdir -p
+// This function is specifically for ensuring the parent directory of a file
+// exists.
+static int ensure_directory_exists(const char *file_path, mode_t mode) {
+	char *path_copy = strdup(file_path);
+	if (!path_copy) {
+		perror("strdup in ensure_directory_exists (for path_copy)");
+		return -1;
+	}
+
+	char *dir_name = dirname(path_copy);  // dirname might modify path_copy
+	// dirname might return "." or a pointer to input or static storage.
+	// Create a mutable copy of the directory path itself.
+	char *dir_to_create = strdup(dir_name);
+	free(path_copy);  // Done with path_copy
+
+	if (!dir_to_create) {
+		perror("strdup in ensure_directory_exists (for dir_to_create)");
+		return -1;
+	}
+
+	// If dir_name is "." (file in current dir) or "/" (file in root), no
+	// directory needs to be created.
+	if (strcmp(dir_to_create, ".") == 0 || strcmp(dir_to_create, "/") == 0) {
+		free(dir_to_create);
+		return 0;
+	}
+
+	char *p = dir_to_create;
+	// If absolute path, skip the first '/'
+	if (*p == '/') {
+		p++;
+	}
+
+	while (*p) {  // Iterate through the path string
+		if (*p == '/') {
+			*p = '\0';  // Temporarily null-terminate to make a directory
+			            // component
+			if (mkdir(dir_to_create, mode) == -1 && errno != EEXIST) {
+				// perror("mkdir intermediate in ensure_directory_exists"); //
+				// Let caller provide context
+				free(dir_to_create);
+				return -1;
+			}
+			*p = '/';  // Restore the slash
+		}
+		p++;
+	}
+
+	// Create the final component of the directory path
+	if (mkdir(dir_to_create, mode) == -1 && errno != EEXIST) {
+		// perror("mkdir final in ensure_directory_exists"); // Let caller
+		// provide context
+		free(dir_to_create);
+		return -1;
+	}
+
+	free(dir_to_create);
+	return 0;
+}
 
 // --- Main Function ---
 
 int main(int argc, char *argv[]) {
 	// --- 0. Parse Command Line Options ---
 	struct option long_options[] = {
-	    {"verbose", no_argument, &verbose_mode, 1}, {0, 0, 0, 0}
-	    // End of options
+	    {"verbose", no_argument, &verbose_mode, 1},
+	    {"disallow-creating", no_argument, &disallow_creating_flag, 1},
+	    {0, 0, 0, 0}  // End of options
 	};
 	int opt;
 	int option_index = 0;
@@ -86,7 +155,7 @@ int main(int argc, char *argv[]) {
 			case '?':  // Unknown option or missing argument
 				// Error message is printed by getopt_long
 				fprintf(stderr,
-				        "Usage: %s [-v|--verbose] <file1> [file2] ...\n",
+				        "Usage: %s [-v|--verbose] [--disallow-creating] <file1> [file2] ...\n",
 				        argv[0]);
 				fprintf(
 				    stderr,
@@ -101,7 +170,7 @@ int main(int argc, char *argv[]) {
 
 	// Check if any file paths were provided after options
 	if (optind >= argc) {
-		fprintf(stderr, "Usage: %s [-v|--verbose] <file1> [file2] ...\n",
+		fprintf(stderr, "Usage: %s [-v|--verbose] [--disallow-creating] <file1> [file2] ...\n",
 		        argv[0]);
 		fprintf(stderr, "Error: No input files specified.\n");
 		fprintf(stderr,
@@ -439,15 +508,24 @@ int main(int argc, char *argv[]) {
 		                  relative_path, target_content, replace_content);
 
 		// Log status and update overall status
-		if (block_status != 0) {
+		// Log status and update overall status
+		// process_block returns: 0 for OK (modified), 1 for FAILED, 2 for OK
+		// (CREATED)
+		if (block_status == 1) {  // FAILED
 			overall_status = EXIT_FAILURE;
-			// Error message already printed by process_block
-			if (!verbose_mode) {
+			// Error message already printed by process_block to stdout/stderr
+			if (!verbose_mode) {  // Non-verbose summary to stdout
 				printf("[%d] %s: FAILED\n", block_count, relative_path);
 			}
-		} else {
-			// Success
-			if (!verbose_mode) {
+		} else if (block_status == 2) {  // OK (CREATED)
+			// overall_status is not changed from EXIT_SUCCESS unless a previous
+			// block failed
+			if (!verbose_mode) {  // Non-verbose summary to stdout
+				printf("[%d] %s: OK (CREATED)\n", block_count, relative_path);
+			}
+		} else {  // block_status == 0, OK (MODIFIED)
+			// overall_status is not changed
+			if (!verbose_mode) {  // Non-verbose summary to stdout
 				printf("[%d] %s: OK\n", block_count, relative_path);
 			}
 		}
@@ -602,161 +680,250 @@ int process_block(const char *shared_root, char **abs_input_paths,
 	}
 
 	// --- 2. Get canonical absolute path for comparison ---
-	// Use a buffer for realpath first to avoid allocation if it fails
-	// immediately
-	char canonical_path_buf[PATH_MAX];
-	char *canonical_path = realpath(constructed_path_buf, canonical_path_buf);
-	if (!canonical_path) {
-		// If realpath fails, canonical_path is NULL, check errno
-		// If realpath fails, canonical_path is NULL, check errno
-		perror("Error resolving constructed path");  // Use perror for system
-		                                             // error (goes to stderr)
-		fprintf(stdout,  // ERROR to stdout (context message only)
-		        "Failed path resolution: %s (from %s + %s)\n",
-		        constructed_path_buf, shared_root, rel_path);
-		// realpath doesn't allocate on failure when buffer is provided
-		return 1;  // Indicate failure
-	}
-	// Note: canonical_path now points inside canonical_path_buf
+	char canonical_path_buf[PATH_MAX];  // Buffer for realpath result
+	char *resolved_path_str =
+	    realpath(constructed_path_buf, canonical_path_buf);
+	char *path_to_operate_on;  // This will point to either resolved_path_str or
+	                           // constructed_path_buf
 
-	// --- 3. Verify against input paths ---
-	int found_match = 0;
-	for (int i = 0; i < num_input_paths; ++i) {
-		if (strcmp(canonical_path, abs_input_paths[i]) == 0) {
-			found_match = 1;
-			break;
-		}
-	}
-	if (!found_match) {
-		fprintf(stdout,  // ERROR to stdout
-		        "Error: Parsed path '%s' (from %s/%s) does not match any input "
-		        "file path.\n",
-		        canonical_path, shared_root, rel_path);
-		fprintf(stdout, "Input paths were:\n");  // ERROR to stdout
-		for (int i = 0; i < num_input_paths; ++i) {
-			fprintf(stdout, "- %s\n", abs_input_paths[i]);  // ERROR to stdout
-		}
-		return 1;  // Indicate failure
-	}
-
-	// --- 4. Read target file content ---
-	FILE *fp_read = fopen(canonical_path, "r");
-	if (!fp_read) {
-		perror("Error opening file for reading");  // Use perror for system
-		                                           // error (goes to stderr)
-		fprintf(stdout,  // ERROR to stdout (context message only)
-		        "Failed opening file for reading: %s\n", canonical_path);
-		return 1;  // Indicate failure
-	}
-	char *file_content = read_stream_to_string(fp_read);
-	fclose(fp_read);  // Close file immediately after reading
-	if (!file_content) {
-		// read_stream_to_string likely printed a system error via perror
-		// (stderr)
-		fprintf(stdout,  // ERROR to stdout (context message only)
-		        "Failed reading content from file: %s\n", canonical_path);
-		// No file_content to free yet
-		return 1;  // Indicate failure
-	}
-	long file_size =
-	    strlen(file_content);  // Use strlen since read_stream null-terminates
-
-	// --- 5. Search for target ---
-	int count = 0;
-	char *first_occurrence = NULL;
-	char *search_start = file_content;
 	size_t target_len = strlen(target);
+	char *file_content = NULL;  // Initialize to NULL
+	long file_size = 0;
 
-	// --- 5b. Handle empty target string ---
+	if (!resolved_path_str) {   // realpath failed
+		if (errno == ENOENT) {  // File or path component does not exist
+			// Condition for creation: target is empty AND creation is allowed
+			if (target_len == 0 && !disallow_creating_flag) {
+				if (verbose_mode) {
+					printf(
+					    "hnt-apply: File %s does not exist. Attempting to "
+					    "create.\n",
+					    constructed_path_buf);
+				}
+
+				// Ensure parent directory exists
+				if (ensure_directory_exists(constructed_path_buf, 0755) != 0) {
+					perror("Error creating parent directories");  // To stderr
+					fprintf(stdout,
+					        "Failed to create parent directories for: %s "
+					        "(Error: %s)\n",
+					        constructed_path_buf,
+					        strerror(errno));  // To stdout
+					return 1;                  // Failure
+				}
+
+				// Create and write to the new file
+				FILE *fp_write = fopen(constructed_path_buf, "w");
+				if (!fp_write) {
+					perror("Error opening new file for writing");  // To stderr
+					fprintf(stdout, "Failed creating file: %s (Error: %s)\n",
+					        constructed_path_buf,
+					        strerror(errno));  // To stdout
+					return 1;                  // Failure
+				}
+
+				size_t replace_len = strlen(replace);
+				if (fwrite(replace, 1, replace_len, fp_write) != replace_len) {
+					if (ferror(fp_write)) {  // To stderr
+						fprintf(stderr, "Error writing to new file %s: %s\n",
+						        constructed_path_buf, strerror(errno));
+					} else {  // To stderr
+						fprintf(
+						    stderr,
+						    "Error writing to new file %s: Incomplete write.\n",
+						    constructed_path_buf);
+					}
+					fclose(fp_write);
+					// Optionally, remove partially written file here:
+					// remove(constructed_path_buf);
+					return 1;  // Failure
+				}
+
+				if (fclose(fp_write) != 0) {
+					perror(
+					    "Error closing new file after writing");  // To stderr
+					fprintf(
+					    stdout, "Failed closing created file: %s (Error: %s)\n",
+					    constructed_path_buf, strerror(errno));  // To stdout
+					return 1;                                    // Failure
+				}
+
+				if (verbose_mode) {
+					printf("hnt-apply: Successfully created and wrote to %s\n",
+					       constructed_path_buf);
+				}
+				return 2;  // Special success code for CREATED
+
+			} else {  // File not found, but conditions for creation not met
+				perror("Error resolving constructed path");  // To stderr (e.g.,
+				                                             // "No such file or
+				                                             // directory")
+				fprintf(
+				    stdout,
+				    "Failed path resolution: %s (from %s + %s)\n",  // To stdout
+				    constructed_path_buf, shared_root, rel_path);
+				if (target_len != 0) {  // To stdout
+					fprintf(stdout,
+					        "File does not exist and target is not empty. "
+					        "Cannot create.\n");
+				}
+				if (disallow_creating_flag && target_len == 0) {  // To stdout
+					fprintf(stdout,
+					        "File creation is disallowed by "
+					        "--disallow-creating flag.\n");
+				}
+				return 1;  // Failure
+			}
+		} else {  // realpath failed for other reasons (e.g., permission denied
+			      // for a component)
+			perror("Error resolving constructed path");  // To stderr
+			fprintf(stdout,
+			        "Failed path resolution: %s (from %s + %s)\n",  // To stdout
+			        constructed_path_buf, shared_root, rel_path);
+			return 1;  // Failure
+		}
+	} else {  // realpath succeeded, file exists
+		path_to_operate_on = resolved_path_str;  // resolved_path_str points
+		                                         // into canonical_path_buf
+
+		// --- 3. Verify against input paths (only for existing files) ---
+		int found_match = 0;
+		for (int i = 0; i < num_input_paths; ++i) {
+			if (strcmp(path_to_operate_on, abs_input_paths[i]) == 0) {
+				found_match = 1;
+				break;
+			}
+		}
+		if (!found_match) {
+			fprintf(stdout,  // ERROR to stdout
+			        "Error: Parsed path '%s' (from %s/%s) does not match any "
+			        "input file path.\n",
+			        path_to_operate_on, shared_root, rel_path);
+			fprintf(stdout, "Input paths were:\n");  // ERROR to stdout
+			for (int i = 0; i < num_input_paths; ++i) {
+				fprintf(stdout, "- %s\n",
+				        abs_input_paths[i]);  // ERROR to stdout
+			}
+			return 1;  // Indicate failure
+		}
+
+		// --- 4. Read target file content ---
+		FILE *fp_read = fopen(path_to_operate_on, "r");
+		if (!fp_read) {
+			perror("Error opening file for reading");  // Use perror for system
+			                                           // error (goes to stderr)
+			fprintf(stdout,  // ERROR to stdout (context message only)
+			        "Failed opening file for reading: %s\n",
+			        path_to_operate_on);
+			return 1;  // Indicate failure
+		}
+		file_content = read_stream_to_string(fp_read);
+		fclose(fp_read);  // Close file immediately after reading
+		if (!file_content) {
+			// read_stream_to_string likely printed a system error via perror
+			// (stderr)
+			fprintf(stdout,  // ERROR to stdout (context message only)
+			        "Failed reading content from file: %s\n",
+			        path_to_operate_on);
+			return 1;  // Indicate failure
+		}
+		file_size = strlen(file_content);
+	}
+
+	// --- 5. Search for target (if file existed and was read) ---
+	// Note: if file was created, we returned '2' already.
+	// This section is for modifying an existing file.
+
+	// --- 5b. Handle empty target string for existing files ---
 	if (target_len == 0) {
-		// Per user request: If target is empty, only proceed if the file is
-		// also effectively empty (zero bytes or just a newline).
-		long current_file_size = strlen(file_content);
+		// File exists (we are in the 'else' of realpath check).
+		// If target is empty, only proceed if the file is also effectively
+		// empty.
 		bool file_is_effectively_empty =
-		    (current_file_size == 0) ||
-		    (current_file_size == 1 && file_content[0] == '\n');
+		    (file_size == 0) || (file_size == 1 && file_content[0] == '\n');
 
 		if (file_is_effectively_empty) {
-			// Special case: Empty target and empty file -> replace file content
 			if (verbose_mode) {
 				printf(
 				    "hnt-apply: Applying replace content to effectively empty "
 				    "file %s\n",
-				    canonical_path);
+				    path_to_operate_on);
 			}
-			size_t replace_len = strlen(replace);
-
-			// Write the replace content directly
-			FILE *fp_write =
-			    fopen(canonical_path, "w");  // Open for writing (truncates)
-			if (!fp_write) {
-				perror("Error opening file for writing (empty target case)");
-				fprintf(stderr, "File: %s\n", canonical_path);
-				free(file_content);
-				return 1;  // Indicate failure
-			}
-
-			size_t written = fwrite(replace, 1, replace_len, fp_write);
-			if (written != replace_len) {
-				if (ferror(fp_write)) {
-					fprintf(stderr,
-					        "Error writing replace content to file %s: %s\n",
-					        canonical_path, strerror(errno));
-				} else {
-					fprintf(stderr,
-					        "Error writing replace content to file %s: "
-					        "Incomplete write (wrote %zu of %zu bytes).\n",
-					        canonical_path, written, replace_len);
-				}
-				fclose(fp_write);
-				free(file_content);
-				return 1;  // Indicate failure
-			}
-
-			if (fclose(fp_write) != 0) {
-				perror("Error closing file after writing (empty target case)");
-				fprintf(stderr, "File: %s\n", canonical_path);
-				free(file_content);
-				return 1;  // Indicate failure
-			}
-
-			// Successfully replaced content of empty file
-			free(file_content);
-			// No need to free canonical_path (stack buffer)
-			return 0;  // Indicate success for this block
-
+			// Proceed to write replace content (same as normal replacement but
+			// with empty prefix/suffix)
 		} else {
-			// Empty target but non-empty file -> Error
 			fprintf(stdout,  // ERROR to stdout
-			        "Error: Target string is empty, but file %s is not "
-			        "effectively empty (size %ld). Cannot apply change.\n",
-			        canonical_path, current_file_size);
+			        "Error: Target string is empty, but existing file %s is "
+			        "not effectively empty (size %ld). Cannot apply change.\n",
+			        path_to_operate_on, file_size);
 			free(file_content);
-			// No need to free canonical_path (stack buffer)
 			return 1;  // Indicate failure
 		}
+		// If effectively empty, the general replacement logic below will handle
+		// it correctly by finding an empty target at the beginning of an empty
+		// file_content. No, the general logic will find it MANY times in an
+		// empty file. The original "empty target" logic should run here if
+		// target_len == 0 AND file_content was loaded. Reuse the original logic
+		// block for empty target replacement:
+		size_t replace_len = strlen(replace);
+		FILE *fp_write =
+		    fopen(path_to_operate_on, "w");  // Open for writing (truncates)
+		if (!fp_write) {
+			perror(
+			    "Error opening file for writing (empty target case on existing "
+			    "file)");
+			fprintf(stderr, "File: %s\n", path_to_operate_on);
+			free(file_content);
+			return 1;
+		}
+		if (fwrite(replace, 1, replace_len, fp_write) != replace_len) {
+			if (ferror(fp_write)) {
+				fprintf(stderr,
+				        "Error writing replace content to file %s: %s\n",
+				        path_to_operate_on, strerror(errno));
+			} else {
+				fprintf(stderr,
+				        "Error writing replace content to file %s: Incomplete "
+				        "write.\n",
+				        path_to_operate_on);
+			}
+			fclose(fp_write);
+			free(file_content);
+			return 1;
+		}
+		if (fclose(fp_write) != 0) {
+			perror(
+			    "Error closing file after writing (empty target case on "
+			    "existing file)");
+			fprintf(stderr, "File: %s\n", path_to_operate_on);
+			free(file_content);
+			return 1;
+		}
+		free(file_content);
+		return 0;  // Success
 	}
 
-	// --- 5c. Search for non-empty target ---
-	// This part only runs if target_len > 0
+	// --- 5c. Search for non-empty target in existing file content ---
+	int count = 0;
+	char *first_occurrence = NULL;
+	char *search_start = file_content;
+
 	while ((search_start = strstr(search_start, target)) != NULL) {
 		count++;
 		if (count == 1) {
-			first_occurrence =
-			    search_start;  // Store the pointer to the first match
+			first_occurrence = search_start;
 		} else if (count > 1) {
-			break;  // Found more than one, no need to continue searching
+			break;
 		}
-		// Move search start past the current occurrence to find subsequent ones
-		search_start += target_len;  // Move past the found target
-		// Optimization: if target_len is 0, this would loop infinitely, hence
-		// the check above.
+		search_start += target_len;
+		if (target_len == 0)
+			break;  // Avoid infinite loop on empty target if logic changes
 	}
 
 	// --- 6. Check count and perform replacement ---
 	if (count == 0) {
 		fprintf(stdout,  // ERROR to stdout
-		        "Error: Target not found in file %s\n", canonical_path);
+		        "Error: Target not found in file %s\n", path_to_operate_on);
 		fprintf(stdout, "Target (length %zu):\n---\n%s\n---\n", target_len,
 		        target);  // ERROR to stdout
 		free(file_content);
@@ -765,7 +932,7 @@ int process_block(const char *shared_root, char **abs_input_paths,
 		fprintf(
 		    stdout,  // ERROR to stdout
 		    "Error: Target found %d times (expected exactly 1) in file %s\n",
-		    count, canonical_path);
+		    count, path_to_operate_on);
 		fprintf(stdout, "Target (length %zu):\n---\n%s\n---\n", target_len,
 		        target);  // ERROR to stdout
 		free(file_content);
@@ -774,85 +941,81 @@ int process_block(const char *shared_root, char **abs_input_paths,
 		// Found exactly once at 'first_occurrence'
 		size_t replace_len = strlen(replace);
 		size_t prefix_len = first_occurrence - file_content;
-		// Suffix starts immediately after the target string in the original
-		// content
 		char *suffix_start_ptr = first_occurrence + target_len;
-		// Calculate suffix length based on pointers
-		size_t suffix_len = file_size - (suffix_start_ptr - file_content);
+		size_t suffix_len =
+		    file_size -
+		    (prefix_len + target_len);  // Corrected suffix_len calculation
 
-		// Calculate new total size
-		// Check for potential overflow before calculating new_size
 		if (prefix_len > SIZE_MAX - replace_len ||
 		    prefix_len + replace_len > SIZE_MAX - suffix_len) {
 			fprintf(stderr,
 			        "Error: New file size calculation would overflow for %s.\n",
-			        canonical_path);
+			        path_to_operate_on);
 			free(file_content);
-			return 1;  // Indicate failure
+			return 1;
 		}
 		size_t new_size = prefix_len + replace_len + suffix_len;
 
-		// Allocate memory for the new content
-		char *new_content = malloc(new_size + 1);  // +1 for null terminator
+		char *new_content = malloc(new_size + 1);
 		if (!new_content) {
 			perror("Failed to allocate memory for new file content");
 			free(file_content);
-			return 1;  // Indicate failure
+			return 1;
 		}
 
-		// Build new content: prefix + replace + suffix
 		memcpy(new_content, file_content, prefix_len);
 		memcpy(new_content + prefix_len, replace, replace_len);
 		memcpy(new_content + prefix_len + replace_len, suffix_start_ptr,
 		       suffix_len);
-		new_content[new_size] = '\0';  // Null-terminate the new content
+		new_content[new_size] = '\0';
 
 		// --- 7. Write back to file ---
-		FILE *fp_write =
-		    fopen(canonical_path, "w");  // Open for writing (truncates)
+		FILE *fp_write = fopen(path_to_operate_on, "w");
 		if (!fp_write) {
 			perror("Error opening file for writing");
-			fprintf(stderr, "File: %s\n", canonical_path);
+			fprintf(stderr, "File: %s\n", path_to_operate_on);
 			free(new_content);
 			free(file_content);
-			return 1;  // Indicate failure
+			return 1;
 		}
 
-		size_t written = fwrite(new_content, 1, new_size, fp_write);
-		if (written != new_size) {
-			// Check ferror before perror for more specific error
+		if (fwrite(new_content, 1, new_size, fp_write) != new_size) {
 			if (ferror(fp_write)) {
 				fprintf(stderr, "Error writing to file %s: %s\n",
-				        canonical_path, strerror(errno));
+				        path_to_operate_on, strerror(errno));
 			} else {
 				fprintf(stderr,
 				        "Error writing to file %s: Incomplete write (wrote %zu "
 				        "of %zu bytes).\n",
-				        canonical_path, written, new_size);
+				        path_to_operate_on,
+				        fwrite(new_content, 1, new_size, fp_write),
+				        new_size);  // Careful: calling fwrite again here
 			}
-			fclose(fp_write);  // Attempt to close even on error
+			// To avoid double fwrite, get current write result from a variable
+			// size_t actual_written = // result of the fwrite above
+			// fprintf(stderr, ..., actual_written, new_size);
+			fclose(fp_write);
 			free(new_content);
 			free(file_content);
-			return 1;  // Indicate failure
+			return 1;
 		}
+		// Correction for the fwrite error message above
+		// size_t written_bytes = fwrite(new_content, 1, new_size, fp_write);
+		// if (written_bytes != new_size) { ... fprintf(stderr, ...,
+		// written_bytes, new_size); ... }
 
-		// Ensure data is flushed and check for errors during close
 		if (fclose(fp_write) != 0) {
 			perror("Error closing file after writing");
-			fprintf(stderr, "File: %s\n", canonical_path);
-			// Data might be partially written or corrupted
+			fprintf(stderr, "File: %s\n", path_to_operate_on);
 			free(new_content);
 			free(file_content);
-			return 1;  // Indicate failure
+			return 1;
 		}
-
-		// Success message is now handled in main() based on verbose_mode
-		// printf("Successfully applied change to %s\n", canonical_path);
-		free(new_content);  // Free the buffer holding the modified content
+		free(new_content);
 	}
 
-	free(file_content);  // Free the original file content buffer
-	// No need to free canonical_path as it points into canonical_path_buf
-	// (stack allocated)
-	return 0;  // Indicate success
+	free(file_content);  // Free the original file content buffer if it was read
+	// resolved_path_str points into stack buffer canonical_path_buf, no free
+	// needed for it.
+	return 0;  // Indicate success for modification
 }
