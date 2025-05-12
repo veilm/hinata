@@ -15,10 +15,12 @@ completion_info = {"completed": False}
 # Event to signal the PTY draining thread to stop.
 drain_stop_event = threading.Event()
 
+
 def handle_sigusr1(signum, frame):
     """Signal handler for SIGUSR1. Records command completion."""
     completion_info["completed"] = True
     # No longer storing time, just completion status.
+
 
 def drain_pty_output(master_fd):
     """
@@ -43,7 +45,8 @@ def drain_pty_output(master_fd):
             # If select timed out, loop again to check drain_stop_event.
     except Exception:
         # Catch-all for unexpected errors in the drainer thread.
-        pass # Simply let the thread exit.
+        pass  # Simply let the thread exit.
+
 
 def main():
     # Register the signal handler for SIGUSR1.
@@ -54,10 +57,18 @@ def main():
 
     # Create temporary files (they won't be deleted automatically)
     # Use 'w+' for cmd_file to write to it, 'w' isn't needed for others initially
-    cmd_tmpfile = tempfile.NamedTemporaryFile(mode='w+', delete=False, prefix="ptycmd-", suffix=".sh")
-    stdout_tmpfile = tempfile.NamedTemporaryFile(delete=False, prefix="ptycmd-", suffix=".stdout")
-    stderr_tmpfile = tempfile.NamedTemporaryFile(delete=False, prefix="ptycmd-", suffix=".stderr")
-    exit_status_tmpfile = tempfile.NamedTemporaryFile(delete=False, prefix="ptycmd-", suffix=".exit")
+    cmd_tmpfile = tempfile.NamedTemporaryFile(
+        mode="w+", delete=False, prefix="ptycmd-", suffix=".sh"
+    )
+    stdout_tmpfile = tempfile.NamedTemporaryFile(
+        delete=False, prefix="ptycmd-", suffix=".stdout"
+    )
+    stderr_tmpfile = tempfile.NamedTemporaryFile(
+        delete=False, prefix="ptycmd-", suffix=".stderr"
+    )
+    exit_status_tmpfile = tempfile.NamedTemporaryFile(
+        delete=False, prefix="ptycmd-", suffix=".exit"
+    )
 
     # Immediately close the file handles for stdout/stderr/exit_status, we only need their names for redirection.
     stdout_tmpfile.close()
@@ -81,11 +92,10 @@ def main():
         os.unlink(exit_status_file_path)
         sys.exit(1)
 
-
     # Write the user command to the command temp file
-    cmd_tmpfile.write(user_command + "\n") # Add newline for safety
+    cmd_tmpfile.write(user_command + "\n")  # Add newline for safety
     cmd_tmpfile.flush()
-    cmd_tmpfile.close() # Close it after writing
+    cmd_tmpfile.close()  # Close it after writing
 
     # Construct the shell command for execution within the PTY
     # . cmd_file > stdout_file 2> stderr_file ; echo $? > exit_status_file ; kill -SIGUSR1 parent_pid
@@ -113,7 +123,9 @@ def main():
             # for stdin, stdout, stderr.
             try:
                 # Execute the command using /bin/sh.
-                os.execvpe("/bin/sh", ["/bin/sh", "-c", full_command_for_shell], os.environ)
+                os.execvpe(
+                    "/bin/sh", ["/bin/sh", "-c", full_command_for_shell], os.environ
+                )
             except Exception as e:
                 # If execvpe fails, child must exit. Write error to its stderr (PTY slave).
                 sys.stderr.write(f"Child execvpe failed: {e}\n")
@@ -129,16 +141,16 @@ def main():
             while not completion_info["completed"]:
                 try:
                     signal.pause()  # Atomically wait for any signal.
-                except InterruptedError: # Standard in Python 3.3+
+                except InterruptedError:  # Standard in Python 3.3+
                     # Another signal (not SIGUSR1) was caught. Loop to check completion_info.
                     pass
                 except OSError as e:
                     # For broader compatibility (e.g., older Python or specific OS behavior)
                     # check for EINTR if InterruptedError is not specific enough.
                     if e.errno == errno.EINTR:
-                        pass # Interrupted by a signal, loop.
+                        pass  # Interrupted by a signal, loop.
                     else:
-                        raise # Re-raise other OSErrors.
+                        raise  # Re-raise other OSErrors.
 
             # SIGUSR1 received; command execution finished.
             print("\nSignal received: Command finished.")
@@ -159,14 +171,14 @@ def main():
         if drain_thread:  # Check if drain_thread object was created.
             drain_stop_event.set()
             if drain_thread.is_alive():
-                drain_thread.join(timeout=1.0) # Short timeout for drainer to exit.
+                drain_thread.join(timeout=1.0)  # Short timeout for drainer to exit.
 
         # Close the master PTY file descriptor if it was opened.
         if master_fd >= 0:  # Check if master_fd seems valid.
             try:
                 os.close(master_fd)
             except OSError:
-                pass # e.g., Bad file descriptor if already closed.
+                pass  # e.g., Bad file descriptor if already closed.
 
         # Manage the child process: ensure it's terminated and reaped.
         if child_pid > 0:  # If child was successfully forked.
@@ -177,22 +189,23 @@ def main():
                     os.kill(child_pid, signal.SIGKILL)  # Force kill.
                 except ProcessLookupError:  # Child already exited.
                     pass
-                except OSError: # Other errors (e.g., permission - unlikely).
+                except OSError:  # Other errors (e.g., permission - unlikely).
                     pass
-            
+
             # Always attempt to reap the child to prevent zombies.
             try:
                 # Blocking wait for child to exit.
                 os.waitpid(child_pid, 0)
-            except ChildProcessError: # Child already reaped or PID invalid.
+            except ChildProcessError:  # Child already reaped or PID invalid.
                 pass
-            except InterruptedError: # waitpid can also be interrupted.
+            except InterruptedError:  # waitpid can also be interrupted.
                 # If interrupted, a zombie might be left. In a real application,
                 # might need to loop here. For this script, we proceed.
                 pass
-            except OSError: # Other OS-level errors with waitpid.
+            except OSError:  # Other OS-level errors with waitpid.
                 pass
         # Note: Temporary files are NOT deleted here as per requirements.
+
 
 if __name__ == "__main__":
     main()

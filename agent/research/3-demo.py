@@ -13,19 +13,20 @@ import logging
 # Configure logging to file
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    filename='pty.log',
-    filemode='wb'  # Use binary mode for raw bytes
+    format="%(asctime)s %(levelname)s: %(message)s",
+    filename="pty.log",
+    filemode="wb",  # Use binary mode for raw bytes
 )
 # Prevent logging module from adding its own formatting to the raw data
 log_handler = logging.getLogger().handlers[0]
-log_handler.setFormatter(logging.Formatter('%(message)s'))
+log_handler.setFormatter(logging.Formatter("%(message)s"))
 
 # --- Low-level PTY data logging functions ---
 
+
 def log_pty_write(master_fd: int, data: bytes):
     """Writes data to the PTY master and logs it."""
-    logging.debug(b"WRITE >>> " + data.replace(b'\n', b'\\n'))
+    logging.debug(b"WRITE >>> " + data.replace(b"\n", b"\\n"))
     try:
         os.write(master_fd, data)
     except OSError as e:
@@ -37,17 +38,19 @@ def log_pty_read(master_fd: int, n: int) -> bytes:
     try:
         data = os.read(master_fd, n)
         if data:
-            logging.debug(b"READ <<< " + data.replace(b'\n', b'\\n'))
+            logging.debug(b"READ <<< " + data.replace(b"\n", b"\\n"))
         return data
     except OSError as e:
         # Can happen if the PTY closes unexpectedly, or EIO
         print(f"Error reading from PTY: {e}", file=sys.stderr)
-        return b''
+        return b""
+
 
 # --- Main PTY handling logic ---
 
+
 def run_pty_demo():
-    command = ['/bin/bash', '--norc', '--noprofile']
+    command = ["/bin/bash", "--norc", "--noprofile"]
 
     # Create a new PTY pair
     master_fd, slave_fd = pty.openpty()
@@ -75,7 +78,7 @@ def run_pty_demo():
         # Set PTY slave attributes (optional, but good practice)
         # Use attributes similar to a standard terminal
         attrs = termios.tcgetattr(slave_fd)
-        attrs[3] &= ~termios.ECHO # Turn off echo for cleaner output capture
+        attrs[3] &= ~termios.ECHO  # Turn off echo for cleaner output capture
         termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
 
         # Redirect stdin, stdout, stderr to the PTY slave
@@ -91,7 +94,7 @@ def run_pty_demo():
             os.execvp(command[0], command)
         except OSError as e:
             print(f"Error executing command: {e}", file=sys.stderr)
-            sys.exit(1) # Exit child process on exec error
+            sys.exit(1)  # Exit child process on exec error
 
     else:
         # --- Parent Process ---
@@ -112,7 +115,7 @@ def run_pty_demo():
                 if not r:
                     break
                 initial_data = log_pty_read(master_fd, 1024)
-                if not initial_data: # EOF or error
+                if not initial_data:  # EOF or error
                     break
                 # Optionally print initial data: print(f"Initial: {initial_data!r}")
 
@@ -121,7 +124,7 @@ def run_pty_demo():
             log_pty_write(master_fd, cmd_to_run)
 
             # Read the output of the command
-            read_timeout = 1.0 # seconds
+            read_timeout = 1.0  # seconds
             start_time = time.time()
             while time.time() - start_time < read_timeout:
                 r, _, _ = select.select([master_fd], [], [], 0.1)
@@ -133,19 +136,22 @@ def run_pty_demo():
                     captured_output += data
                     # Basic check: if we see our command echoed and a newline,
                     # assume the next line is the result. This is fragile.
-                    if cmd_to_run in captured_output and b'\n' in captured_output.split(cmd_to_run, 1)[1]:
-                         # Add a small delay to catch trailing prompt/newline
-                         time.sleep(0.1)
-                         # Try one last read
-                         r, _, _ = select.select([master_fd], [], [], 0)
-                         if r:
-                             final_data = log_pty_read(master_fd, 1024)
-                             if final_data:
-                                 captured_output += final_data
-                         break # Assume we got the output
+                    if (
+                        cmd_to_run in captured_output
+                        and b"\n" in captured_output.split(cmd_to_run, 1)[1]
+                    ):
+                        # Add a small delay to catch trailing prompt/newline
+                        time.sleep(0.1)
+                        # Try one last read
+                        r, _, _ = select.select([master_fd], [], [], 0)
+                        if r:
+                            final_data = log_pty_read(master_fd, 1024)
+                            if final_data:
+                                captured_output += final_data
+                        break  # Assume we got the output
                 else:
                     # No data within the inner timeout, maybe command finished
-                    pass # Continue outer loop until read_timeout
+                    pass  # Continue outer loop until read_timeout
 
             print("Sending 'exit' command...")
             log_pty_write(master_fd, b"exit\n")
@@ -155,7 +161,7 @@ def run_pty_demo():
                 r, _, _ = select.select([master_fd], [], [], 0.5)
                 if r:
                     data = log_pty_read(master_fd, 1024)
-                    if not data: # EOF is the expected way to exit this loop
+                    if not data:  # EOF is the expected way to exit this loop
                         print("PTY closed (EOF).")
                         break
                     # Optionally print final data: print(f"Final: {data!r}")
@@ -172,19 +178,21 @@ def run_pty_demo():
                 pid_H, status = os.waitpid(pid, 0)
                 print(f"Child process {pid_H} exited with status {status}.")
             except ChildProcessError:
-                 print("Child process already finished.") # Can happen if read hit EOF early
+                print(
+                    "Child process already finished."
+                )  # Can happen if read hit EOF early
 
             # Close the master fd
             os.close(master_fd)
             print("Master PTY FD closed.")
 
         print("\n--- Captured Output (raw) ---")
-        print(captured_output.decode('utf-8', errors='replace'))
+        print(captured_output.decode("utf-8", errors="replace"))
         print("-----------------------------\n")
 
         # Try to parse the captured output to find the result of 'pwd'
         # This is heuristic and depends on shell behavior (echo, prompts)
-        lines = captured_output.strip().split(b'\r\n')
+        lines = captured_output.strip().split(b"\r\n")
         pwd_result = "Not found"
         try:
             # Find the line after the 'pwd' command echo
@@ -193,23 +201,29 @@ def run_pty_demo():
                 # The next non-empty line *might* be the path
                 for i in range(cmd_index + 1, len(lines)):
                     potential_result = lines[i].strip()
-                    if potential_result: # Check if it's not empty
-                         # Basic sanity check: does it look like a path?
-                         if potential_result.startswith(b'/') or potential_result.startswith(b'~'):
-                            pwd_result = potential_result.decode('utf-8', errors='replace')
+                    if potential_result:  # Check if it's not empty
+                        # Basic sanity check: does it look like a path?
+                        if potential_result.startswith(
+                            b"/"
+                        ) or potential_result.startswith(b"~"):
+                            pwd_result = potential_result.decode(
+                                "utf-8", errors="replace"
+                            )
                             break
         except (ValueError, IndexError):
             # If 'pwd' echo wasn't found or no lines after it
-             # Fallback: Assume the last non-empty line before potential prompt might be it
-             for line in reversed(lines):
-                 line = line.strip()
-                 if line and line != cmd_to_run.strip() and not line.endswith(b'#'): # Avoid prompts
-                    pwd_result = line.decode('utf-8', errors='replace')
+            # Fallback: Assume the last non-empty line before potential prompt might be it
+            for line in reversed(lines):
+                line = line.strip()
+                if (
+                    line and line != cmd_to_run.strip() and not line.endswith(b"#")
+                ):  # Avoid prompts
+                    pwd_result = line.decode("utf-8", errors="replace")
                     break
-
 
         print(f"Parsed 'pwd' result: {pwd_result}")
         print(f"\nRaw PTY communication logged to: pty.log")
+
 
 if __name__ == "__main__":
     run_pty_demo()
