@@ -6,7 +6,6 @@ import subprocess
 import sys
 import tempfile
 import io
-import json  # Add json import
 import shlex
 import shutil
 import textwrap
@@ -383,26 +382,25 @@ def main():
     source_ref_filename = add_source_ref_result.stdout.strip()
     debug_log(args, "Source reference message added:", source_ref_filename)
 
-    # 8a. Write source reference filename to hnt-edit.json
+    # 8a. Write source reference path to source_reference.txt
     if source_ref_filename:
-        debug_log(args, "Writing source reference info to hnt-edit.json...")
-        hnt_edit_json_path = Path(conversation_dir) / "hnt-edit.json"
-        json_data = {"source_reference": source_ref_filename}
+        debug_log(args, "Writing source reference path to source_reference.txt...")
+        source_ref_txt_path = Path(conversation_dir) / "source_reference.txt"
         try:
-            with open(hnt_edit_json_path, "w") as f:
-                json.dump(json_data, f, indent=2)  # Use indent for readability
-            debug_log(args, "Successfully wrote to", hnt_edit_json_path)
+            with open(source_ref_txt_path, "w") as f:
+                f.write(source_ref_filename)  # Write the path directly
+            debug_log(args, "Successfully wrote to", source_ref_txt_path)
         except IOError as e:
             print(
-                f"Warning: Could not write {hnt_edit_json_path}: {e}", file=sys.stderr
+                f"Warning: Could not write {source_ref_txt_path}: {e}", file=sys.stderr
             )
-            debug_log(args, f"IOError writing {hnt_edit_json_path}: {e}")
+            debug_log(args, f"IOError writing {source_ref_txt_path}: {e}")
         except Exception as e:
             print(
-                f"Warning: Unexpected error writing {hnt_edit_json_path}: {e}",
+                f"Warning: Unexpected error writing {source_ref_txt_path}: {e}",
                 file=sys.stderr,
             )
-            debug_log(args, f"Unexpected error writing {hnt_edit_json_path}: {e}")
+            debug_log(args, f"Unexpected error writing {source_ref_txt_path}: {e}")
     else:
         debug_log(
             args, "Warning: Did not get a filename for the source reference message."
