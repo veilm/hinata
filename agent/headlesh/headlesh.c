@@ -18,6 +18,7 @@
 #define OUT_FIFO_TEMPLATE "/tmp/headlesh_out_%d"  // %d for client PID
 #define DAEMON_LOG_FILE "/var/log/headlesh/main.log"
 #define BUFFER_SIZE 4096  // For general I/O and command construction
+#define HEADLESH_EXIT_CMD_PAYLOAD "__HEADLESH_INTERNAL_EXIT_CMD__"
 
 // Globals for server cleanup
 const char* g_cmd_fifo_path_ptr = CMD_FIFO_PATH;
@@ -352,6 +353,23 @@ void start_server_mode() {
 				size_t command_script_len =
 				    bytes_read - (client_out_fifo_path_len + 1);
 
+				// Check for special exit command before regular processing
+				if (command_script_len == strlen(HEADLESH_EXIT_CMD_PAYLOAD) &&
+				    strncmp(command_script_content, HEADLESH_EXIT_CMD_PAYLOAD,
+				            command_script_len) == 0) {
+					fprintf(stdout,
+					        "Server: Received exit command from client (via "
+					        "FIFO %s). "
+					        "Shutting down.\n",
+					        client_out_fifo_path_str);
+					fflush(stdout);
+					server_running = 0;  // Signal server to stop
+					close(
+					    cmd_fifo_fd);  // Close this specific client connection
+					cmd_fifo_fd = -1;  // Mark as closed
+					continue;  // Go to top of loop, which will then exit
+				}
+
 				// If command script is empty, that's okay. Bash will source an
 				// empty file. Client will get an empty response immediately.
 				if (command_script_len == 0) {
@@ -649,10 +667,80 @@ void exec_client_mode() {    // Changed signature
 	signal(SIGTERM, SIG_DFL);
 }
 
+// Function for the client to send an exit command to the server
+void send_exit_command() {
+	char client_out_fifo_path[256];  // Dummy path, not actually created
+	char server_full_cmd[BUFFER_SIZE];
+	int cmd_fifo_fd_client;
+
+	// 1. Create a "dummy" client output FIFO path string.
+	// The server expects this format, but won't use the path for an exit
+	// command.
+	snprintf(client_out_fifo_path, sizeof(client_out_fifo_path),
+	         "/tmp/headlesh_exit_dummy_%d", getpid());
+
+	// 2. Prepare the full message for the server
+	// (dummy_fifo_path\nexit_payload)
+	size_t len_fifo_path = strlen(client_out_fifo_path);
+	size_t len_exit_payload = strlen(HEADLESH_EXIT_CMD_PAYLOAD);
+
+	if (len_fifo_path + 1 + len_exit_payload >= BUFFER_SIZE) {
+		fprintf(
+		    stderr,
+		    "Client (exit): Internal error - exit command message too long.\n");
+		exit(EXIT_FAILURE);
+	}
+	strcpy(server_full_cmd, client_out_fifo_path);
+	server_full_cmd[len_fifo_path] = '\n';
+	memcpy(server_full_cmd + len_fifo_path + 1, HEADLESH_EXIT_CMD_PAYLOAD,
+	       len_exit_payload);
+	size_t total_len_to_send = len_fifo_path + 1 + len_exit_payload;
+
+	// 3. Open server's CMD_FIFO for writing
+	cmd_fifo_fd_client = open(CMD_FIFO_PATH, O_WRONLY);
+	if (cmd_fifo_fd_client == -1) {
+		if (errno == ENOENT) {
+			fprintf(stderr,
+			        "Client (exit): Failed to connect. Is headlesh server "
+			        "running? (FIFO %s not found)\n",
+			        CMD_FIFO_PATH);
+		} else {
+			perror("Client (exit): Failed to open command FIFO for writing");
+		}
+		exit(EXIT_FAILURE);
+	}
+
+	// 4. Write the exit command
+	signal(SIGPIPE, SIG_IGN);  // Ignore SIGPIPE, check write errors
+	ssize_t written =
+	    write(cmd_fifo_fd_client, server_full_cmd, total_len_to_send);
+	if (close(cmd_fifo_fd_client) == -1) {
+		// perror("Client (exit): Failed to close command FIFO"); // Minor,
+		// non-fatal
+	}
+
+	if (written == -1) {
+		perror("Client (exit): Failed to write exit command to server FIFO");
+		exit(EXIT_FAILURE);
+	}
+	if ((size_t)written < total_len_to_send) {
+		fprintf(stderr,
+		        "Client (exit): Partial write of exit command to server FIFO "
+		        "(%zd of %zu bytes).\n",
+		        written, total_len_to_send);
+		exit(EXIT_FAILURE);
+	}
+
+	printf("Exit command sent to headlesh server.\n");
+	exit(EXIT_SUCCESS);
+}
+
 int main(int argc, char* argv[]) {
 	if (argc < 2) {
-		fprintf(stderr, "Usage: %s start | %s exec (command read from stdin)\n",
-		        argv[0], argv[0]);
+		fprintf(
+		    stderr,
+		    "Usage: %s start | %s exec (command read from stdin) | %s exit\n",
+		    argv[0], argv[0], argv[0]);
 		return EXIT_FAILURE;
 	}
 
@@ -669,10 +757,18 @@ int main(int argc, char* argv[]) {
 			return EXIT_FAILURE;
 		}
 		exec_client_mode();  // No longer passes argc, argv
+	} else if (strcmp(argv[1], "exit") == 0) {
+		if (argc != 2) {
+			fprintf(stderr, "Usage: %s exit\n", argv[0]);
+			return EXIT_FAILURE;
+		}
+		send_exit_command();
 	} else {
 		fprintf(stderr, "Unknown command: %s\n", argv[1]);
-		fprintf(stderr, "Usage: %s start | %s exec (command read from stdin)\n",
-		        argv[0], argv[0]);
+		fprintf(
+		    stderr,
+		    "Usage: %s start | %s exec (command read from stdin) | %s exit\n",
+		    argv[0], argv[0], argv[0]);
 		return EXIT_FAILURE;
 	}
 
