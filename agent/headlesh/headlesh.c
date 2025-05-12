@@ -21,7 +21,9 @@
 #define SESSION_LOG_FILE_NAME "server.log"
 
 #define OUT_FIFO_TEMPLATE "/tmp/headlesh_out_%d"  // %d for client PID
-#define BUFFER_SIZE 4096  // For general I/O and command construction
+#define ERR_FIFO_TEMPLATE \
+	"/tmp/headlesh_err_%d"  // %d for client PID for stderr
+#define BUFFER_SIZE 4096    // For general I/O and command construction
 #define HEADLESH_EXIT_CMD_PAYLOAD "__HEADLESH_INTERNAL_EXIT_CMD__"
 
 // Globals for server cleanup - specific to one daemon instance
@@ -34,8 +36,12 @@ pid_t g_bash_pid = -1;  // PID of the bash process for this session
 // Globals for client cleanup (used by signal handler)
 static char
     s_client_out_fifo_path[256];  // Static buffer for client's output FIFO path
+static char
+    s_client_err_fifo_path[256];  // Static buffer for client's error FIFO path
 static volatile sig_atomic_t s_client_out_fifo_created =
     0;  // Flag for client signal handler
+static volatile sig_atomic_t s_client_err_fifo_created =
+    0;  // Flag for client signal handler for error FIFO
 
 void print_error_and_exit(const char* msg) {
 	// In daemon mode, after stderr is redirected (e.g., to a log file or
@@ -602,28 +608,27 @@ void start_server_mode(const char* session_id) {
 			if (bytes_read > 0) {
 				// buffer[bytes_read] = '\0'; // Null-terminate incoming message
 				// - not safe if buffer full
-				char* newline_pos = memchr(buffer, '\n', bytes_read);
-
-				if (newline_pos == NULL) {
+				// Message format:
+				// client_out_fifo_path\nclient_err_fifo_path\ncommand_script
+				char* first_newline_pos = memchr(buffer, '\n', bytes_read);
+				if (first_newline_pos == NULL) {
 					fprintf(stdout,
 					        "Session Server (%s): Malformed message (no "
-					        "newline for FIFO path).\n",
+					        "first newline for stdout FIFO path).\n",
 					        session_id);
 					fflush(stdout);
-					// Close and reopen to reset state and wait for a new,
-					// well-formed client message.
 					close(cmd_fifo_fd);
 					cmd_fifo_fd = -1;
 					continue;
 				}
 
-				size_t client_out_fifo_path_len = newline_pos - buffer;
+				size_t client_out_fifo_path_len = first_newline_pos - buffer;
 				char client_out_fifo_path_str[256];
 				if (client_out_fifo_path_len >=
 				    sizeof(client_out_fifo_path_str)) {
 					fprintf(stdout,
-					        "Session Server (%s): Client FIFO path too long in "
-					        "message.\n",
+					        "Session Server (%s): Client stdout FIFO path too "
+					        "long.\n",
 					        session_id);
 					fflush(stdout);
 					close(cmd_fifo_fd);
@@ -634,30 +639,69 @@ void start_server_mode(const char* session_id) {
 				       client_out_fifo_path_len);
 				client_out_fifo_path_str[client_out_fifo_path_len] = '\0';
 
-				char* command_script_content = newline_pos + 1;
-				size_t command_script_len =
+				char* rest_after_first_newline = first_newline_pos + 1;
+				ssize_t remaining_bytes_after_first_newline =
 				    bytes_read - (client_out_fifo_path_len + 1);
+				if (remaining_bytes_after_first_newline < 0)
+					remaining_bytes_after_first_newline =
+					    0;  // Should not happen if first_newline_pos is valid
+
+				char* second_newline_pos =
+				    memchr(rest_after_first_newline, '\n',
+				           remaining_bytes_after_first_newline);
+				if (second_newline_pos == NULL) {
+					fprintf(stdout,
+					        "Session Server (%s): Malformed message (no "
+					        "second newline for stderr FIFO path).\n",
+					        session_id);
+					fflush(stdout);
+					close(cmd_fifo_fd);
+					cmd_fifo_fd = -1;
+					continue;
+				}
+
+				size_t client_err_fifo_path_len =
+				    second_newline_pos - rest_after_first_newline;
+				char client_err_fifo_path_str[256];
+				if (client_err_fifo_path_len >=
+				    sizeof(client_err_fifo_path_str)) {
+					fprintf(stdout,
+					        "Session Server (%s): Client stderr FIFO path too "
+					        "long.\n",
+					        session_id);
+					fflush(stdout);
+					close(cmd_fifo_fd);
+					cmd_fifo_fd = -1;
+					continue;
+				}
+				memcpy(client_err_fifo_path_str, rest_after_first_newline,
+				       client_err_fifo_path_len);
+				client_err_fifo_path_str[client_err_fifo_path_len] = '\0';
+
+				char* command_script_content = second_newline_pos + 1;
+				size_t command_script_len =
+				    remaining_bytes_after_first_newline -
+				    (client_err_fifo_path_len + 1);
 
 				if (command_script_len == strlen(HEADLESH_EXIT_CMD_PAYLOAD) &&
 				    strncmp(command_script_content, HEADLESH_EXIT_CMD_PAYLOAD,
 				            command_script_len) == 0) {
 					fprintf(stdout,
 					        "Session Server (%s): Received exit command (via "
-					        "%s). Shutting down.\n",
+					        "stdout FIFO %s). Shutting down.\n",
 					        session_id, client_out_fifo_path_str);
 					fflush(stdout);
-					server_running = 0;  // Signal server to stop
-					// cmd_fifo_fd will be closed outside loop, no need to
-					// close/reopen here
-					continue;  // Go to top of loop, which will then exit based
-					           // on server_running
+					server_running = 0;
+					continue;
 				}
 
 				if (command_script_len == 0) {
-					fprintf(stdout,
-					        "Session Server (%s): Received empty command "
-					        "script for client FIFO %s.\n",
-					        session_id, client_out_fifo_path_str);
+					fprintf(
+					    stdout,
+					    "Session Server (%s): Received empty command script "
+					    "for client FIFOs %s (stdout), %s (stderr).\n",
+					    session_id, client_out_fifo_path_str,
+					    client_err_fifo_path_str);
 					fflush(stdout);
 				}
 
@@ -694,18 +738,19 @@ void start_server_mode(const char* session_id) {
 					continue;
 				}
 
-				int len_needed =
-				    snprintf(bash_cmd_buffer, BUFFER_SIZE,
-				             "{ . %s ; } > %s 2>&1 ; rm -f %s\n",
-				             tmp_script_path_template, client_out_fifo_path_str,
-				             tmp_script_path_template);
+				int len_needed = snprintf(
+				    bash_cmd_buffer, BUFFER_SIZE,
+				    "{ . %s ; } > %s 2> %s ; rm -f %s\n",
+				    tmp_script_path_template, client_out_fifo_path_str,
+				    client_err_fifo_path_str, tmp_script_path_template);
 
 				if (len_needed < 0 || len_needed >= BUFFER_SIZE) {
 					fprintf(stdout,
 					        "Session Server (%s): Formatted command for bash "
-					        "too long. Temp script: '%s', Client FIFO: '%s'\n",
+					        "too long. Temp script: '%s', Client stdout FIFO: "
+					        "'%s', Client stderr FIFO: '%s'\n",
 					        session_id, tmp_script_path_template,
-					        client_out_fifo_path_str);
+					        client_out_fifo_path_str, client_err_fifo_path_str);
 					fflush(stdout);
 					unlink(tmp_script_path_template);
 					close(cmd_fifo_fd);
@@ -715,9 +760,10 @@ void start_server_mode(const char* session_id) {
 
 				fprintf(stdout,
 				        "Session Server (%s): Sending command to bash: { . %s "
-				        "; } > %s 2>&1 ; rm -f %s\n",
+				        "; } > %s 2> %s ; rm -f %s\n",
 				        session_id, tmp_script_path_template,
-				        client_out_fifo_path_str, tmp_script_path_template);
+				        client_out_fifo_path_str, client_err_fifo_path_str,
+				        tmp_script_path_template);
 				fflush(stdout);
 
 				ssize_t written_to_bash =
@@ -779,23 +825,33 @@ void start_server_mode(const char* session_id) {
 
 void client_cleanup_signal_handler(int sig) {
 	if (s_client_out_fifo_created) {
-		unlink(s_client_out_fifo_path);  // Attempt to clean up FIFO
+		unlink(s_client_out_fifo_path);  // Attempt to clean up stdout FIFO
+		s_client_out_fifo_created = 0;   // Avoid double unlink
+	}
+	if (s_client_err_fifo_created) {
+		unlink(s_client_err_fifo_path);  // Attempt to clean up stderr FIFO
+		s_client_err_fifo_created = 0;   // Avoid double unlink
 	}
 	// Default behavior for the signal (e.g., terminate)
 	signal(sig, SIG_DFL);
 	raise(sig);
 }
 
+#include <sys/select.h>  // For select()
+
 void exec_client_mode(const char* session_id) {
 	int session_cmd_fifo_fd_client;  // To write to the specific session's
 	                                 // CMD_FIFO
-	int out_fifo_fd_client;          // To read output from this client's unique
-	                                 // OUT_FIFO
+	int out_fifo_fd_client =
+	    -1;  // To read output from this client's unique OUT_FIFO
+	int err_fifo_fd_client =
+	    -1;  // To read error from this client's unique ERR_FIFO
 	char client_cmd_payload[BUFFER_SIZE];  // Buffer for command read from stdin
 
 	char server_full_cmd[BUFFER_SIZE];  // For: client_out_fifo_path + \n +
+	                                    // client_err_fifo_path + \n +
 	                                    // client_cmd_payload
-	char read_buf[BUFFER_SIZE];  // For reading output from out_fifo_fd_client
+	char read_buf[BUFFER_SIZE];         // For reading output from FIFOs
 	char target_session_cmd_fifo_path[PATH_MAX];  // Path to the target
 	                                              // session's command FIFO
 
@@ -852,45 +908,60 @@ void exec_client_mode(const char* session_id) {
 	// An empty command (current_cmd_len == 0) is allowed. Server will handle
 	// it.
 
-	// 2. Create unique output FIFO for this client
+	// 2. Create unique output and error FIFOs for this client
 	snprintf(s_client_out_fifo_path, sizeof(s_client_out_fifo_path),
 	         OUT_FIFO_TEMPLATE, getpid());
-	unlink(s_client_out_fifo_path);  // Remove if leftover from a previous crash
+	unlink(s_client_out_fifo_path);
 	if (mkfifo(s_client_out_fifo_path, 0666) == -1) {
 		perror("Client: mkfifo for output FIFO failed");
 		exit(EXIT_FAILURE);
 	}
-	s_client_out_fifo_created = 1;  // Mark FIFO as created for signal handler
+	s_client_out_fifo_created = 1;
+
+	snprintf(s_client_err_fifo_path, sizeof(s_client_err_fifo_path),
+	         ERR_FIFO_TEMPLATE, getpid());
+	unlink(s_client_err_fifo_path);
+	if (mkfifo(s_client_err_fifo_path, 0666) == -1) {
+		perror("Client: mkfifo for error FIFO failed");
+		unlink(s_client_out_fifo_path);  // cleanup stdout FIFO
+		s_client_out_fifo_created = 0;
+		exit(EXIT_FAILURE);
+	}
+	s_client_err_fifo_created = 1;
+
 	signal(SIGINT, client_cleanup_signal_handler);
 	signal(SIGTERM, client_cleanup_signal_handler);
 
 	// 3. Prepare the full message for the server
-	// (output_fifo_path\ncommand_payload)
-	size_t len_fifo_path = strlen(s_client_out_fifo_path);
-	// current_cmd_len is strlen(client_cmd_payload) effectively (length of data
-	// read from stdin) Check total length against server's read buffer and our
-	// client-side send buffer. total_len_to_send = len_fifo_path + 1 ('\n') +
-	// current_cmd_len. This must be < BUFFER_SIZE for server to process
-	// correctly.
-	if (len_fifo_path + 1 + current_cmd_len >= BUFFER_SIZE) {
+	// (output_fifo_path\nerror_fifo_path\ncommand_payload)
+	size_t len_out_fifo_path = strlen(s_client_out_fifo_path);
+	size_t len_err_fifo_path = strlen(s_client_err_fifo_path);
+
+	// Total length to send = len_out_fifo_path + '\n' + len_err_fifo_path +
+	// '\n' + current_cmd_len
+	if (len_out_fifo_path + 1 + len_err_fifo_path + 1 + current_cmd_len >=
+	    BUFFER_SIZE) {
 		fprintf(stderr,
-		        "Client (session %s): Combined FIFO path and command too long "
+		        "Client (session %s): Combined FIFO paths and command too long "
 		        "for server buffer.\n",
 		        session_id);
-		unlink(
-		    s_client_out_fifo_path);  // Manually clean up client's output FIFO
+		if (s_client_out_fifo_created) unlink(s_client_out_fifo_path);
+		if (s_client_err_fifo_created) unlink(s_client_err_fifo_path);
 		s_client_out_fifo_created = 0;
+		s_client_err_fifo_created = 0;
 		exit(EXIT_FAILURE);
 	}
-	strcpy(server_full_cmd, s_client_out_fifo_path);
-	server_full_cmd[len_fifo_path] = '\n';
-	// client_cmd_payload contains the command script read from stdin.
-	// current_cmd_len is its length. It's already null-terminated.
-	// Use memcpy to copy exactly current_cmd_len bytes of script content.
-	memcpy(server_full_cmd + len_fifo_path + 1, client_cmd_payload,
-	       current_cmd_len);  // current_cmd_len ensures we don't copy potential
-	                          // garbage if payload was null
-	size_t total_len_to_send = len_fifo_path + 1 + current_cmd_len;
+
+	char* ptr = server_full_cmd;
+	memcpy(ptr, s_client_out_fifo_path, len_out_fifo_path);
+	ptr += len_out_fifo_path;
+	*ptr++ = '\n';
+	memcpy(ptr, s_client_err_fifo_path, len_err_fifo_path);
+	ptr += len_err_fifo_path;
+	*ptr++ = '\n';
+	memcpy(ptr, client_cmd_payload, current_cmd_len);
+
+	size_t total_len_to_send = (ptr - server_full_cmd) + current_cmd_len;
 
 	// 4. Open the target session's CMD_FIFO for writing
 	session_cmd_fifo_fd_client = open(target_session_cmd_fifo_path, O_WRONLY);
@@ -908,26 +979,29 @@ void exec_client_mode(const char* session_id) {
 			         session_id, target_session_cmd_fifo_path);
 			perror(err_msg);
 		}
-		unlink(s_client_out_fifo_path);  // Clean up client's output FIFO
+		if (s_client_out_fifo_created) unlink(s_client_out_fifo_path);
+		if (s_client_err_fifo_created) unlink(s_client_err_fifo_path);
 		s_client_out_fifo_created = 0;
+		s_client_err_fifo_created = 0;
 		exit(EXIT_FAILURE);
 	}
 
-	// 5. Write the full command (output FIFO path + actual command) to the
-	// session's CMD_FIFO
+	// 5. Write the full command (output FIFO path + error FIFO path + actual
+	// command) to the session's CMD_FIFO
 	signal(SIGPIPE, SIG_IGN);  // Ignore SIGPIPE, check write errors
 	ssize_t written =
 	    write(session_cmd_fifo_fd_client, server_full_cmd, total_len_to_send);
 
 	if (close(session_cmd_fifo_fd_client) == -1) {
 		// perror("Client: Failed to close session command FIFO (after write)");
-		// // Minor, non-fatal for client op
 	}
 
 	if (written == -1) {
 		perror("Client: Failed to write command to session FIFO");
-		unlink(s_client_out_fifo_path);  // Clean up client's output FIFO
+		if (s_client_out_fifo_created) unlink(s_client_out_fifo_path);
+		if (s_client_err_fifo_created) unlink(s_client_err_fifo_path);
 		s_client_out_fifo_created = 0;
+		s_client_err_fifo_created = 0;
 		exit(EXIT_FAILURE);
 	}
 	if ((size_t)written < total_len_to_send) {
@@ -936,54 +1010,144 @@ void exec_client_mode(const char* session_id) {
 		        "%zu bytes).\n",
 		        session_id, target_session_cmd_fifo_path, written,
 		        total_len_to_send);
-		unlink(s_client_out_fifo_path);  // Clean up client's output FIFO
+		if (s_client_out_fifo_created) unlink(s_client_out_fifo_path);
+		if (s_client_err_fifo_created) unlink(s_client_err_fifo_path);
 		s_client_out_fifo_created = 0;
+		s_client_err_fifo_created = 0;
 		exit(EXIT_FAILURE);
 	}
-	// printf("Client: Command sent to server. Waiting for output on %s...\n",
-	// s_client_out_fifo_path);
 
-	// 6. Open client's output FIFO for reading (blocks until server's bash
-	// redirects to it)
-	out_fifo_fd_client = open(s_client_out_fifo_path, O_RDONLY);
+	// 6. Open client's output and error FIFOs for reading (blocks until
+	// server's bash redirects to them)
+	out_fifo_fd_client =
+	    open(s_client_out_fifo_path,
+	         O_RDONLY | O_NONBLOCK);  // Open non-blocking initially
 	if (out_fifo_fd_client == -1) {
 		perror("Client: Failed to open output FIFO for reading");
-		unlink(s_client_out_fifo_path);  // Manually clean up
-		s_client_out_fifo_created = 0;
+		// client_cleanup_signal_handler will take care of unlinking FIFOs on
+		// exit
 		exit(EXIT_FAILURE);
 	}
-	// printf("Client: Output FIFO opened. Streaming output:\n");
 
-	// 7. Read from output FIFO and tee to stdout
-	ssize_t bytes_read_output;
-	while ((bytes_read_output =
-	            read(out_fifo_fd_client, read_buf, sizeof(read_buf) - 1)) > 0) {
-		// Should write bytes_read_output, not assuming null term.
-		if (write(STDOUT_FILENO, read_buf, bytes_read_output) !=
-		    bytes_read_output) {
-			perror("Client: Failed to write to stdout");
-			// Continue trying to read from FIFO to let server side finish
+	err_fifo_fd_client =
+	    open(s_client_err_fifo_path,
+	         O_RDONLY | O_NONBLOCK);  // Open non-blocking initially
+	if (err_fifo_fd_client == -1) {
+		perror("Client: Failed to open error FIFO for reading");
+		close(out_fifo_fd_client);  // Close the one we opened
+		// client_cleanup_signal_handler will take care of unlinking FIFOs on
+		// exit
+		exit(EXIT_FAILURE);
+	}
+
+	// 7. Read from output and error FIFOs using select() and tee to
+	// stdout/stderr
+	fd_set read_fds;
+	int max_fd =
+	    (out_fifo_fd_client > err_fifo_fd_client ? out_fifo_fd_client
+	                                             : err_fifo_fd_client) +
+	    1;
+	int out_eof = 0,
+	    err_eof = 0;  // Flags to track if FIFOs are closed by writer
+
+	// Once a writer (bash redirection) opens the FIFO, we can switch to
+	// blocking reads or continue with select. For simplicity with select, just
+	// keep it non-blocking. A better approach might be to block on open, then
+	// use select, or use select with timeout. For now, ensure fds are not -1.
+
+	fcntl(out_fifo_fd_client, F_SETFL,
+	      fcntl(out_fifo_fd_client, F_GETFL) & ~O_NONBLOCK);
+	fcntl(err_fifo_fd_client, F_SETFL,
+	      fcntl(err_fifo_fd_client, F_GETFL) & ~O_NONBLOCK);
+
+	while (!out_eof || !err_eof) {
+		FD_ZERO(&read_fds);
+		if (!out_eof) FD_SET(out_fifo_fd_client, &read_fds);
+		if (!err_eof) FD_SET(err_fifo_fd_client, &read_fds);
+
+		if (out_eof && err_eof) break;  // Both closed, exit loop
+
+		int activity = select(max_fd, &read_fds, NULL, NULL,
+		                      NULL);  // No timeout, block indefinitely
+
+		if (activity < 0) {
+			if (errno == EINTR) continue;  // Interrupted by signal
+			perror("Client: select() error");
+			break;
+		}
+
+		if (!out_eof && FD_ISSET(out_fifo_fd_client, &read_fds)) {
+			ssize_t bytes_read =
+			    read(out_fifo_fd_client, read_buf, sizeof(read_buf));
+			if (bytes_read > 0) {
+				if (write(STDOUT_FILENO, read_buf, bytes_read) != bytes_read) {
+					perror("Client: Failed to write to stdout");
+					// Decide if this is fatal or continue
+				}
+			} else if (bytes_read == 0) {  // EOF
+				out_eof = 1;
+				close(out_fifo_fd_client);
+				out_fifo_fd_client = -1;
+			} else {  // Error
+				if (errno != EAGAIN &&
+				    errno !=
+				        EWOULDBLOCK) {  // EAGAIN/EWOULDBLOCK for non-blocking
+					perror("Client: Error reading from output FIFO");
+					out_eof = 1;  // Treat as EOF on error
+					close(out_fifo_fd_client);
+					out_fifo_fd_client = -1;
+				}
+			}
+		}
+
+		if (!err_eof && FD_ISSET(err_fifo_fd_client, &read_fds)) {
+			ssize_t bytes_read =
+			    read(err_fifo_fd_client, read_buf, sizeof(read_buf));
+			if (bytes_read > 0) {
+				if (write(STDERR_FILENO, read_buf, bytes_read) != bytes_read) {
+					perror("Client: Failed to write to stderr");
+					// Decide if this is fatal or continue
+				}
+			} else if (bytes_read == 0) {  // EOF
+				err_eof = 1;
+				close(err_fifo_fd_client);
+				err_fifo_fd_client = -1;
+			} else {  // Error
+				if (errno != EAGAIN && errno != EWOULDBLOCK) {
+					perror("Client: Error reading from error FIFO");
+					err_eof = 1;  // Treat as EOF on error
+					close(err_fifo_fd_client);
+					err_fifo_fd_client = -1;
+				}
+			}
 		}
 	}
-	if (bytes_read_output == -1) {
-		perror("Client: Error reading from output FIFO");
-	}
-	fflush(stdout);  // Ensure all output is flushed
+
+	fflush(stdout);
+	fflush(stderr);
 
 	// 8. Cleanup client-side resources
-	close(out_fifo_fd_client);
-	unlink(s_client_out_fifo_path);
-	s_client_out_fifo_created = 0;  // Mark as cleaned up
-	// printf("\nClient: Command for session %s finished and output FIFO cleaned
-	// up.\n", session_id); Restore default signal handlers
+	if (out_fifo_fd_client != -1) close(out_fifo_fd_client);
+	if (err_fifo_fd_client != -1) close(err_fifo_fd_client);
+
+	if (s_client_out_fifo_created) {
+		unlink(s_client_out_fifo_path);
+		s_client_out_fifo_created = 0;
+	}
+	if (s_client_err_fifo_created) {
+		unlink(s_client_err_fifo_path);
+		s_client_err_fifo_created = 0;
+	}
+
+	// Restore default signal handlers
 	signal(SIGINT, SIG_DFL);
 	signal(SIGTERM, SIG_DFL);
 }
 
 // Function for the client to send an exit command to a specific session server
 void send_exit_command(const char* session_id) {
-	char client_out_fifo_path[256];  // Dummy path, not actually used by server
-	                                 // for exit
+	char client_out_fifo_path[256];  // Dummy stdout path
+	char client_err_fifo_path[256];  // Dummy stderr path
 	char server_full_cmd[BUFFER_SIZE];
 	int session_cmd_fifo_fd_client;
 	char target_session_cmd_fifo_path[PATH_MAX];
@@ -993,33 +1157,41 @@ void send_exit_command(const char* session_id) {
 	         "%s/%s/%s", HEADLESH_SESSIONS_DIR, session_id,
 	         SESSION_CMD_FIFO_NAME);
 
-	// 1. Create a "dummy" client output FIFO path string.
-	// The server expects this format for all commands, but won't use the path
-	// for an exit command.
+	// 1. Create "dummy" client output and error FIFO path strings.
+	// The server expects this format (stdout_path\nstderr_path\ncommand) for
+	// all commands, but won't use the paths for an exit command.
 	snprintf(client_out_fifo_path, sizeof(client_out_fifo_path),
-	         "/tmp/headlesh_exit_dummy_for_session_%s_%d", session_id,
+	         "/tmp/headlesh_exit_dummy_out_for_session_%s_%d", session_id,
+	         getpid());
+	snprintf(client_err_fifo_path, sizeof(client_err_fifo_path),
+	         "/tmp/headlesh_exit_dummy_err_for_session_%s_%d", session_id,
 	         getpid());
 
 	// 2. Prepare the full message for the server
-	// (dummy_fifo_path\nexit_payload)
-	size_t len_fifo_path = strlen(client_out_fifo_path);
+	// (dummy_out_fifo_path\ndummy_err_fifo_path\nexit_payload)
+	size_t len_out_fifo_path = strlen(client_out_fifo_path);
+	size_t len_err_fifo_path = strlen(client_err_fifo_path);
 	size_t len_exit_payload = strlen(HEADLESH_EXIT_CMD_PAYLOAD);
 
-	if (len_fifo_path + 1 + len_exit_payload >= BUFFER_SIZE) {
+	if (len_out_fifo_path + 1 + len_err_fifo_path + 1 + len_exit_payload >=
+	    BUFFER_SIZE) {
 		fprintf(stderr,
 		        "Client (exit for session %s): Internal error - exit command "
 		        "message too long.\n",
 		        session_id);
 		exit(EXIT_FAILURE);
 	}
-	strcpy(server_full_cmd, client_out_fifo_path);
-	server_full_cmd[len_fifo_path] = '\n';
-	memcpy(server_full_cmd + len_fifo_path + 1, HEADLESH_EXIT_CMD_PAYLOAD,
-	       len_exit_payload);
-	// server_full_cmd[len_fifo_path + 1 + len_exit_payload] = '\0'; //
-	// Implicitly null-terminated by buffer size for safety, but length sent is
-	// key
-	size_t total_len_to_send = len_fifo_path + 1 + len_exit_payload;
+
+	char* ptr = server_full_cmd;
+	memcpy(ptr, client_out_fifo_path, len_out_fifo_path);
+	ptr += len_out_fifo_path;
+	*ptr++ = '\n';
+	memcpy(ptr, client_err_fifo_path, len_err_fifo_path);
+	ptr += len_err_fifo_path;
+	*ptr++ = '\n';
+	memcpy(ptr, HEADLESH_EXIT_CMD_PAYLOAD, len_exit_payload);
+
+	size_t total_len_to_send = (ptr - server_full_cmd) + len_exit_payload;
 
 	// 3. Open the target session's CMD_FIFO for writing
 	session_cmd_fifo_fd_client = open(target_session_cmd_fifo_path, O_WRONLY);
