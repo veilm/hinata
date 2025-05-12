@@ -198,7 +198,7 @@ void cleanup_server_resources(void) {
 void server_signal_handler(int sig) {
 	server_log("Caught signal %d. Initiating shutdown.", sig);
 	server_running = 0;  // This will break the main server loop
-	// Cleanup will be handled by atexit
+	                     // Cleanup will be handled by atexit
 }
 
 void setup_server_signal_handlers(void) {
