@@ -30,8 +30,8 @@
 static char g_session_dir_path[PATH_MAX];
 static char g_session_cmd_fifo_path[PATH_MAX];
 static char g_session_lock_file_path[PATH_MAX];
-int g_lock_fd = -1;     // File descriptor for the session's lock file
-pid_t g_bash_pid = -1;  // PID of the bash process for this session
+int g_lock_fd = -1;      // File descriptor for the session's lock file
+pid_t g_shell_pid = -1;  // PID of the shell process for this session
 
 // Globals for client cleanup (used by signal handler)
 static char
@@ -57,25 +57,25 @@ void cleanup_server_resources(void) {
 	fprintf(
 	    stdout,
 	    "Session Server: Cleaning up resources for session...\n");  // To log
-	if (g_bash_pid > 0) {
+	if (g_shell_pid > 0) {
 		fprintf(stdout,
-		        "Session Server: Terminating bash process (PID: %d)...\n",
-		        g_bash_pid);  // To log
-		kill(g_bash_pid, SIGTERM);
-		sleep(1);  // Give bash a moment to terminate
+		        "Session Server: Terminating shell process (PID: %d)...\n",
+		        g_shell_pid);  // To log
+		kill(g_shell_pid, SIGTERM);
+		sleep(1);  // Give shell a moment to terminate
 		int status;
-		if (waitpid(g_bash_pid, &status, WNOHANG) ==
+		if (waitpid(g_shell_pid, &status, WNOHANG) ==
 		    0) {  // Check if terminated
 			fprintf(stdout,
 			        "Session Server: Bash process did not terminate "
 			        "gracefully, sending SIGKILL.\n");  // To log
-			kill(g_bash_pid, SIGKILL);
-			waitpid(g_bash_pid, NULL, 0);  // Wait for SIGKILL to be processed
+			kill(g_shell_pid, SIGKILL);
+			waitpid(g_shell_pid, NULL, 0);  // Wait for SIGKILL to be processed
 		} else {
 			fprintf(stdout,
 			        "Session Server: Bash process terminated.\n");  // To log
 		}
-		g_bash_pid = -1;
+		g_shell_pid = -1;
 	}
 
 	if (g_session_cmd_fifo_path[0] != '\0') {
@@ -237,10 +237,10 @@ static int construct_session_log_file_path(char* path_buffer,
 }
 
 void start_server_mode(const char* session_id) {
-	int bash_stdin_pipe[2];
+	int shell_stdin_pipe[2];
 	int cmd_fifo_fd = -1;      // FD for the session's command FIFO
 	char buffer[BUFFER_SIZE];  // For reading commands from session's CMD_FIFO
-	char bash_cmd_buffer[BUFFER_SIZE];    // For formatting commands to bash
+	char shell_cmd_buffer[BUFFER_SIZE];   // For formatting commands to shell
 	char daemon_log_file_path[PATH_MAX];  // For the session's log path
 
 	// 0. Setup session paths and directories
@@ -511,72 +511,72 @@ void start_server_mode(const char* session_id) {
 	signal(SIGTERM, server_signal_handler);
 	signal(SIGPIPE, SIG_IGN);  // Ignore SIGPIPE, check write() errors instead
 
-	// 4. Create pipe for bash's stdin
-	if (pipe(bash_stdin_pipe) == -1) {
+	// 4. Create pipe for shell's stdin
+	if (pipe(shell_stdin_pipe) == -1) {
 		print_error_and_exit(
-		    "Session Server: pipe for bash_stdin failed");  // Exits, calls
-		                                                    // atexit
+		    "Session Server: pipe for shell_stdin failed");  // Exits, calls
+		                                                     // atexit
 	}
 
-	// 5. Fork bash process for this session
-	g_bash_pid = fork();
-	if (g_bash_pid == -1) {
+	// 5. Fork shell process for this session
+	g_shell_pid = fork();
+	if (g_shell_pid == -1) {
 		print_error_and_exit(
-		    "Session Server: fork for bash process failed");  // Exits, calls
-		                                                      // atexit
+		    "Session Server: fork for shell process failed");  // Exits, calls
+		                                                       // atexit
 	}
 
-	if (g_bash_pid == 0) {          // Child process (bash)
-		close(bash_stdin_pipe[1]);  // Close write end
-		if (dup2(bash_stdin_pipe[0], STDIN_FILENO) == -1) {
+	if (g_shell_pid == 0) {          // Child process (shell)
+		close(shell_stdin_pipe[1]);  // Close write end
+		if (dup2(shell_stdin_pipe[0], STDIN_FILENO) == -1) {
 			// Cannot reliably log here to session log as FDs are not inherited
 			// in the same state. perror("Bash child: dup2 stdin failed");
 			_exit(EXIT_FAILURE);  // Use _exit, not exit, to bypass atexit
 			                      // handlers
 		}
-		close(bash_stdin_pipe[0]);
+		close(shell_stdin_pipe[0]);
 
 		if (g_lock_fd != -1)
 			close(g_lock_fd);  // Bash doesn't need session lock file FD
 
-		// cmd_fifo_fd would be -1 here (not opened by bash child)
+		// cmd_fifo_fd would be -1 here (not opened by shell child)
 		// No need to close cmd_fifo_fd for the session.
 
 		execlp("bash", "bash", NULL);
 		// If execlp returns, it's an error
-		// perror("Bash child: execlp bash failed");
+		// perror("Bash child: execlp shell failed");
 		_exit(EXIT_FAILURE);
 	} else {  // Parent process (session daemon server logic)
-		close(bash_stdin_pipe[0]);  // Close read end
-		int bash_stdin_writer_fd = bash_stdin_pipe[1];
+		close(shell_stdin_pipe[0]);  // Close read end
+		int shell_stdin_writer_fd = shell_stdin_pipe[1];
 
 		fprintf(stdout,
 		        "Session Server (%s): Bash process forked with PID %d. "
 		        "Entering command loop.\n",
-		        session_id, g_bash_pid);
+		        session_id, g_shell_pid);
 		fflush(stdout);
 
 		int server_running = 1;
 		while (server_running) {
 			int status;
-			pid_t result = waitpid(g_bash_pid, &status, WNOHANG);
-			if (result == g_bash_pid) {  // Bash exited
+			pid_t result = waitpid(g_shell_pid, &status, WNOHANG);
+			if (result == g_shell_pid) {  // Bash exited
 				fprintf(stdout,
 				        "Session Server (%s): Bash process (PID %d) exited.\n",
-				        session_id, g_bash_pid);
+				        session_id, g_shell_pid);
 				fflush(stdout);
-				g_bash_pid = -1;     // Mark as exited
+				g_shell_pid = -1;    // Mark as exited
 				server_running = 0;  // Stop server loop
 				break;
 			} else if (result == -1 &&
-			           errno != ECHILD) {  // ECHILD means bash_pid was invalid
+			           errno != ECHILD) {  // ECHILD means shell_pid was invalid
 				                           // (e.g. already reaped)
 				perror(
-				    "Session Server: waitpid for bash process failed");  // To
-				                                                         // log
-				                                                         // file
+				    "Session Server: waitpid for shell process failed");  // To
+				                                                          // log
+				                                                          // file
 				fflush(stdout);
-				g_bash_pid = -1;
+				g_shell_pid = -1;
 				server_running = 0;
 				break;
 			}
@@ -739,14 +739,14 @@ void start_server_mode(const char* session_id) {
 				}
 
 				int len_needed = snprintf(
-				    bash_cmd_buffer, BUFFER_SIZE,
+				    shell_cmd_buffer, BUFFER_SIZE,
 				    "{ . %s ; } > %s 2> %s ; rm -f %s\n",
 				    tmp_script_path_template, client_out_fifo_path_str,
 				    client_err_fifo_path_str, tmp_script_path_template);
 
 				if (len_needed < 0 || len_needed >= BUFFER_SIZE) {
 					fprintf(stdout,
-					        "Session Server (%s): Formatted command for bash "
+					        "Session Server (%s): Formatted command for shell "
 					        "too long. Temp script: '%s', Client stdout FIFO: "
 					        "'%s', Client stderr FIFO: '%s'\n",
 					        session_id, tmp_script_path_template,
@@ -759,38 +759,38 @@ void start_server_mode(const char* session_id) {
 				}
 
 				fprintf(stdout,
-				        "Session Server (%s): Sending command to bash: { . %s "
+				        "Session Server (%s): Sending command to shell: { . %s "
 				        "; } > %s 2> %s ; rm -f %s\n",
 				        session_id, tmp_script_path_template,
 				        client_out_fifo_path_str, client_err_fifo_path_str,
 				        tmp_script_path_template);
 				fflush(stdout);
 
-				ssize_t written_to_bash =
-				    write(bash_stdin_writer_fd, bash_cmd_buffer,
-				          strlen(bash_cmd_buffer));
-				if (written_to_bash == -1) {
+				ssize_t written_to_shell =
+				    write(shell_stdin_writer_fd, shell_cmd_buffer,
+				          strlen(shell_cmd_buffer));
+				if (written_to_shell == -1) {
 					if (errno == EPIPE) {  // Bash likely exited
 						fprintf(stdout,
-						        "Session Server (%s): Write to bash failed "
-						        "(EPIPE), bash may have exited.\n",
+						        "Session Server (%s): Write to shell failed "
+						        "(EPIPE), shell may have exited.\n",
 						        session_id);
 						fflush(stdout);
 					} else {
 						perror(
-						    "Session Server: Write to bash_stdin_writer_fd "
+						    "Session Server: Write to shell_stdin_writer_fd "
 						    "failed");  // To log
 						fflush(stdout);
 					}
 					server_running =
-					    0;  // Stop server loop, bash is gone or pipe broken
-					// No need to unlink tmp_script_path_template, bash command
+					    0;  // Stop server loop, shell is gone or pipe broken
+					// No need to unlink tmp_script_path_template, shell command
 					// includes `rm -f`
 				}
 				// Successfully processed one command. The current cmd_fifo_fd
 				// for the session remains open. Client specific FIFOs
 				// (client_out_fifo_path_str) are handled by clients and the
-				// bash command.
+				// shell command.
 			} else if (bytes_read ==
 			           0) {  // EOF on session's CMD_FIFO (all writers closed)
 				fprintf(stdout,
@@ -812,12 +812,12 @@ void start_server_mode(const char* session_id) {
 		}  // end while(server_running)
 
 		if (cmd_fifo_fd != -1) close(cmd_fifo_fd);
-		close(bash_stdin_writer_fd);  // Close write end of pipe to bash
+		close(shell_stdin_writer_fd);  // Close write end of pipe to shell
 		fprintf(stdout,
 		        "Session Server (%s): Daemon shutting down gracefully.\n",
 		        session_id);
 		fflush(stdout);
-		// atexit handler (cleanup_server_resources) will manage g_bash_pid,
+		// atexit handler (cleanup_server_resources) will manage g_shell_pid,
 		// session FIFO unlinking, session lock file, and session dir.
 		exit(EXIT_SUCCESS);  // Normal daemon exit for this session
 	}
@@ -1018,7 +1018,7 @@ void exec_client_mode(const char* session_id) {
 	}
 
 	// 6. Open client's output and error FIFOs for reading (blocks until
-	// server's bash redirects to them)
+	// server's shell redirects to them)
 	out_fifo_fd_client =
 	    open(s_client_out_fifo_path,
 	         O_RDONLY | O_NONBLOCK);  // Open non-blocking initially
@@ -1050,7 +1050,7 @@ void exec_client_mode(const char* session_id) {
 	int out_eof = 0,
 	    err_eof = 0;  // Flags to track if FIFOs are closed by writer
 
-	// Once a writer (bash redirection) opens the FIFO, we can switch to
+	// Once a writer (shell redirection) opens the FIFO, we can switch to
 	// blocking reads or continue with select. For simplicity with select, just
 	// keep it non-blocking. A better approach might be to block on open, then
 	// use select, or use select with timeout. For now, ensure fds are not -1.
