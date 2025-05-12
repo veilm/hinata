@@ -1,0 +1,7 @@
+#!/bin/sh
+
+gcc \
+	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
+	headlesh.c -o ./headlesh
+
+sudo cp ./headlesh /usr/local/bin/
