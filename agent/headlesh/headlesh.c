@@ -13,9 +13,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define CMD_FIFO_PATH "/tmp/headlesh3_cmd_fifo"
-#define LOCK_FILE_PATH "/tmp/headlesh3.lock"
-#define OUT_FIFO_TEMPLATE "/tmp/headlesh3_out_%d"  // %d for client PID
+#define CMD_FIFO_PATH "/tmp/headlesh_cmd_fifo"
+#define LOCK_FILE_PATH "/tmp/headlesh.lock"
+#define OUT_FIFO_TEMPLATE "/tmp/headlesh_out_%d"  // %d for client PID
+#define DAEMON_LOG_FILE "/var/log/headlesh/main.log"
 #define BUFFER_SIZE 4096  // For general I/O and command construction
 
 // Globals for server cleanup
@@ -31,8 +32,9 @@ static volatile sig_atomic_t s_client_out_fifo_created =
     0;  // Flag for client signal handler
 
 void print_error_and_exit(const char* msg) {
-	// In daemon mode, after stderr is closed, this will go to /dev/null.
-	// For a production daemon, this should write to syslog.
+	// In daemon mode, after stderr is redirected (e.g., to a log file or
+	// /dev/null), perror will write to that redirected target. For a robust
+	// daemon, syslog is often preferred over a simple file log.
 	perror(msg);
 	exit(EXIT_FAILURE);
 }
@@ -133,57 +135,111 @@ void start_server_mode() {
 	}
 
 	// ---- Child Process 1 (continues to become daemon) ----
-	if (setsid() < 0) { /* In actual daemon, log to syslog here */
-		exit(EXIT_FAILURE);
+	if (setsid() < 0) {
+		print_error_and_exit("Server: setsid failed");
 	}
 
 	signal(SIGHUP,
 	       SIG_IGN);  // Ignore SIGHUP often sent when session leader exits
 
 	pid = fork();  // Second fork
-	if (pid < 0) { /* Log to syslog */
-		exit(EXIT_FAILURE);
+	if (pid < 0) {
+		print_error_and_exit("Server: fork (2) failed");
 	}
 	if (pid > 0) {  // Parent of second fork (session leader) exits
 		exit(EXIT_SUCCESS);
 	}
 
 	// ---- Grandchild Process (Actual Daemon) ----
-	if (chdir("/") < 0) { /* Log to syslog */
-		exit(EXIT_FAILURE);
+	if (chdir("/") < 0) {
+		print_error_and_exit("Server: chdir failed");
 	}
 	umask(0);
 
-	// Close standard file descriptors and redirect to /dev/null
-	close(STDIN_FILENO);
-	close(STDOUT_FILENO);
-	close(STDERR_FILENO);
-	int fd_null = open("/dev/null", O_RDWR);
-	if (fd_null != -1) {
-		dup2(fd_null, STDIN_FILENO);
-		dup2(fd_null, STDOUT_FILENO);
-		dup2(fd_null, STDERR_FILENO);
-		if (fd_null > STDERR_FILENO) close(fd_null);
-	} else {
-		// Failed to open /dev/null, difficult to report this error.
+	// Redirect standard file descriptors for the daemon
+	int log_fd = open(DAEMON_LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0644);
+	if (log_fd == -1) {
+		// If log file cannot be opened, this is a critical failure.
+		// Errors print to original stderr because redirection hasn't happened
+		// yet.
+		print_error_and_exit(
+		    "Server: Failed to open log file " DAEMON_LOG_FILE);
+	}
+
+	// Redirect stdout to the log file
+	if (close(STDOUT_FILENO) == -1) {
+		dprintf(log_fd, "Server: Failed to close STDOUT_FILENO: %s\n",
+		        strerror(errno));
+	}
+	if (dup2(log_fd, STDOUT_FILENO) == -1) {
+		dprintf(log_fd, "Server: Failed to dup2 STDOUT_FILENO: %s\n",
+		        strerror(errno));
+		close(log_fd);
 		exit(EXIT_FAILURE);
 	}
 
+	// Redirect stderr to the log file
+	if (close(STDERR_FILENO) == -1) {
+		fprintf(stdout, "Server: Failed to close STDERR_FILENO: %s\n",
+		        strerror(errno));  // To log file
+	}
+	if (dup2(log_fd, STDERR_FILENO) == -1) {
+		fprintf(stdout, "Server: Failed to dup2 STDERR_FILENO: %s\n",
+		        strerror(errno));  // To log file
+		if (log_fd != STDOUT_FILENO)
+			close(log_fd);  // STDOUT_FILENO is already log_fd, check if
+			                // original log_fd is different
+		exit(EXIT_FAILURE);
+	}
+
+	if (log_fd != STDOUT_FILENO && log_fd != STDERR_FILENO) {
+		close(log_fd);
+	}
+	// At this point, STDOUT and STDERR are directed to DAEMON_LOG_FILE.
+
+	// Redirect stdin to /dev/null
+	if (close(STDIN_FILENO) == -1) {
+		perror("Server: Failed to close STDIN_FILENO");  // Goes to log file
+	}
+	int fd_stdin = open("/dev/null", O_RDWR);
+	if (fd_stdin == -1) {
+		perror(
+		    "Server: Failed to open /dev/null for STDIN");  // Goes to log file
+		exit(EXIT_FAILURE);
+	}
+	if (dup2(fd_stdin, STDIN_FILENO) == -1) {
+		perror("Server: Failed to dup2 STDIN_FILENO");  // Goes to log file
+		if (fd_stdin != STDIN_FILENO) close(fd_stdin);
+		exit(EXIT_FAILURE);
+	}
+	if (fd_stdin != STDIN_FILENO) {
+		close(fd_stdin);
+	}
+	// End of FD redirection. Log daemon startup.
+	fprintf(stdout, "Server daemon starting. PID: %d. Logging to %s.\n",
+	        getpid(), DAEMON_LOG_FILE);
+	fflush(stdout);
+
 	// Write daemon's PID to the lock file
-	if (ftruncate(g_lock_fd, 0) == -1) { /* Log to syslog */
-		cleanup_server_resources();
+	if (ftruncate(g_lock_fd, 0) == -1) {
+		perror("Server: ftruncate lock_fd failed");  // To log file
+		cleanup_server_resources();  // Manually, as atexit not yet set
 		exit(EXIT_FAILURE);
 	}
 	char pid_str[32];
 	snprintf(pid_str, sizeof(pid_str), "%d\n", getpid());
-	if (write(g_lock_fd, pid_str, strlen(pid_str)) == -1) { /* Log to syslog */
-		cleanup_server_resources();
+	if (write(g_lock_fd, pid_str, strlen(pid_str)) == -1) {
+		perror("Server: write PID to lock_fd failed");  // To log file
+		cleanup_server_resources();                     // Manually
 		exit(EXIT_FAILURE);
 	}
 	// Note: g_lock_fd remains open and locked.
 
 	// Register cleanup and signal handlers *IN THE DAEMON PROCESS*
-	if (atexit(cleanup_server_resources) != 0) { /* Log to syslog */
+	if (atexit(cleanup_server_resources) != 0) {
+		perror("Server: atexit registration failed");  // To log file
+		cleanup_server_resources();  // Attempt manual cleanup if atexit
+		                             // registration fails
 		exit(EXIT_FAILURE);
 	}
 	signal(SIGINT, server_signal_handler);
@@ -191,14 +247,14 @@ void start_server_mode() {
 	signal(SIGPIPE, SIG_IGN);  // Ignore SIGPIPE, check write() errors instead
 
 	// 4. Create pipe for bash's stdin
-	if (pipe(bash_stdin_pipe) == -1) { /* Log to syslog */
-		exit(EXIT_FAILURE);
+	if (pipe(bash_stdin_pipe) == -1) {
+		print_error_and_exit("Server: pipe for bash_stdin failed");
 	}
 
 	// 5. Fork bash process
 	g_bash_pid = fork();
-	if (g_bash_pid == -1) { /* Log to syslog */
-		exit(EXIT_FAILURE);
+	if (g_bash_pid == -1) {
+		print_error_and_exit("Server: fork for bash process failed");
 	}
 
 	if (g_bash_pid == 0) {          // Child process (bash)
@@ -405,7 +461,7 @@ void exec_client_mode(int argc, char* argv[]) {
 	if (cmd_fifo_fd_client == -1) {
 		if (errno == ENOENT) {
 			fprintf(stderr,
-			        "Client: Failed to connect. Is headlesh3 server running? "
+			        "Client: Failed to connect. Is headlesh server running? "
 			        "(FIFO %s not found)\n",
 			        CMD_FIFO_PATH);
 		} else {
