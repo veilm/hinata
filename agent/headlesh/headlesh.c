@@ -739,14 +739,14 @@ int main(int argc, char* argv[]) {
 	if (argc < 2) {
 		fprintf(
 		    stderr,
-		    "Usage: %s start | %s exec (command read from stdin) | %s exit\n",
+		    "Usage: %s create | %s exec (command read from stdin) | %s exit\n",
 		    argv[0], argv[0], argv[0]);
 		return EXIT_FAILURE;
 	}
 
-	if (strcmp(argv[1], "start") == 0) {
+	if (strcmp(argv[1], "create") == 0) {
 		if (argc != 2) {
-			fprintf(stderr, "Usage: %s start\n", argv[0]);
+			fprintf(stderr, "Usage: %s create\n", argv[0]);
 			return EXIT_FAILURE;
 		}
 		start_server_mode();
@@ -767,7 +767,7 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "Unknown command: %s\n", argv[1]);
 		fprintf(
 		    stderr,
-		    "Usage: %s start | %s exec (command read from stdin) | %s exit\n",
+		    "Usage: %s create | %s exec (command read from stdin) | %s exit\n",
 		    argv[0], argv[0], argv[0]);
 		return EXIT_FAILURE;
 	}
