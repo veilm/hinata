@@ -67,13 +67,13 @@ void cleanup_server_resources(void) {
 		if (waitpid(g_shell_pid, &status, WNOHANG) ==
 		    0) {  // Check if terminated
 			fprintf(stdout,
-			        "Session Server: Bash process did not terminate "
+			        "Session Server: Shell process did not terminate "
 			        "gracefully, sending SIGKILL.\n");  // To log
 			kill(g_shell_pid, SIGKILL);
 			waitpid(g_shell_pid, NULL, 0);  // Wait for SIGKILL to be processed
 		} else {
 			fprintf(stdout,
-			        "Session Server: Bash process terminated.\n");  // To log
+			        "Session Server: Shell process terminated.\n");  // To log
 		}
 		g_shell_pid = -1;
 	}
@@ -236,7 +236,7 @@ static int construct_session_log_file_path(char* path_buffer,
 	return 0;  // Success
 }
 
-void start_server_mode(const char* session_id) {
+void start_server_mode(const char* session_id, const char* shell_program_arg) {
 	int shell_stdin_pipe[2];
 	int cmd_fifo_fd = -1;      // FD for the session's command FIFO
 	char buffer[BUFFER_SIZE];  // For reading commands from session's CMD_FIFO
@@ -519,6 +519,10 @@ void start_server_mode(const char* session_id) {
 	}
 
 	// 5. Fork shell process for this session
+	const char* effective_shell =
+	    (shell_program_arg && shell_program_arg[0] != '\0') ? shell_program_arg
+	                                                        : "bash";
+
 	g_shell_pid = fork();
 	if (g_shell_pid == -1) {
 		print_error_and_exit(
@@ -530,39 +534,40 @@ void start_server_mode(const char* session_id) {
 		close(shell_stdin_pipe[1]);  // Close write end
 		if (dup2(shell_stdin_pipe[0], STDIN_FILENO) == -1) {
 			// Cannot reliably log here to session log as FDs are not inherited
-			// in the same state. perror("Bash child: dup2 stdin failed");
+			// in the same state. perror("Shell child: dup2 stdin failed");
 			_exit(EXIT_FAILURE);  // Use _exit, not exit, to bypass atexit
 			                      // handlers
 		}
 		close(shell_stdin_pipe[0]);
 
 		if (g_lock_fd != -1)
-			close(g_lock_fd);  // Bash doesn't need session lock file FD
+			close(g_lock_fd);  // Shell doesn't need session lock file FD
 
 		// cmd_fifo_fd would be -1 here (not opened by shell child)
 		// No need to close cmd_fifo_fd for the session.
 
-		execlp("bash", "bash", NULL);
+		// Use effective_shell for both the command and argv[0]
+		execlp(effective_shell, effective_shell, NULL);
 		// If execlp returns, it's an error
-		// perror("Bash child: execlp shell failed");
+		// perror("Shell child: execlp shell failed");
 		_exit(EXIT_FAILURE);
 	} else {  // Parent process (session daemon server logic)
 		close(shell_stdin_pipe[0]);  // Close read end
 		int shell_stdin_writer_fd = shell_stdin_pipe[1];
 
 		fprintf(stdout,
-		        "Session Server (%s): Bash process forked with PID %d. "
+		        "Session Server (%s): %s process forked with PID %d. "
 		        "Entering command loop.\n",
-		        session_id, g_shell_pid);
+		        session_id, effective_shell, g_shell_pid);
 		fflush(stdout);
 
 		int server_running = 1;
 		while (server_running) {
 			int status;
 			pid_t result = waitpid(g_shell_pid, &status, WNOHANG);
-			if (result == g_shell_pid) {  // Bash exited
+			if (result == g_shell_pid) {  // Shell exited
 				fprintf(stdout,
-				        "Session Server (%s): Bash process (PID %d) exited.\n",
+				        "Session Server (%s): Shell process (PID %d) exited.\n",
 				        session_id, g_shell_pid);
 				fflush(stdout);
 				g_shell_pid = -1;    // Mark as exited
@@ -770,7 +775,7 @@ void start_server_mode(const char* session_id) {
 				    write(shell_stdin_writer_fd, shell_cmd_buffer,
 				          strlen(shell_cmd_buffer));
 				if (written_to_shell == -1) {
-					if (errno == EPIPE) {  // Bash likely exited
+					if (errno == EPIPE) {  // Shell likely exited
 						fprintf(stdout,
 						        "Session Server (%s): Write to shell failed "
 						        "(EPIPE), shell may have exited.\n",
@@ -1364,8 +1369,8 @@ int main(int argc, char* argv[]) {
 		fprintf(stderr, "Usage: %s <command> [args...]\n", argv[0]);
 		fprintf(stderr, "Commands:\n");
 		fprintf(stderr,
-		        "  create <session_id>                      : Create and start "
-		        "a new session daemon.\n");
+		        "  create <session_id> [shell_path]         : Create and start "
+		        "a new session daemon (default shell: bash).\n");
 		fprintf(stderr,
 		        "  exec <session_id>                        : Execute command "
 		        "(from stdin) in a session.\n");
@@ -1381,11 +1386,20 @@ int main(int argc, char* argv[]) {
 	const char* command = argv[1];
 
 	if (strcmp(command, "create") == 0) {
-		if (argc != 3) {
-			fprintf(stderr, "Usage: %s create <session_id>\n", argv[0]);
+		if (argc < 3 || argc > 4) {
+			fprintf(stderr, "Usage: %s create <session_id> [shell_path]\n",
+			        argv[0]);
 			return EXIT_FAILURE;
 		}
 		const char* session_id = argv[2];
+		const char* shell_to_use = "bash";  // Default shell
+		if (argc == 4) {
+			shell_to_use = argv[3];
+			if (strlen(shell_to_use) == 0) {  // Treat empty string as default
+				shell_to_use = "bash";
+			}
+		}
+
 		// Basic validation for session_id (e.g., not empty, no slashes)
 		if (strlen(session_id) == 0 || strchr(session_id, '/') != NULL) {
 			fprintf(
@@ -1393,8 +1407,15 @@ int main(int argc, char* argv[]) {
 			    "Error: Invalid session_id. Cannot be empty or contain '/'.\n");
 			return EXIT_FAILURE;
 		}
+		// Basic validation for shell_to_use (e.g., no slashes if it's meant to
+		// be from PATH, though execlp handles this) For simplicity, we'll let
+		// execlp handle path resolution or direct path usage. An empty string
+		// shell_to_use will now default to "bash" inside start_server_mode as a
+		// fallback, but we handle it here too.
+
 		start_server_mode(
-		    session_id);  // This function will daemonize and then call exit()
+		    session_id,
+		    shell_to_use);  // This function will daemonize and then call exit()
 	} else if (strcmp(command, "exec") == 0) {
 		if (argc != 3) {
 			fprintf(stderr,
@@ -1422,7 +1443,7 @@ int main(int argc, char* argv[]) {
 		// Print usage again
 		fprintf(stderr, "Usage: %s <command> [args...]\n", argv[0]);
 		fprintf(stderr, "Commands:\n");
-		fprintf(stderr, "  create <session_id>\n");
+		fprintf(stderr, "  create <session_id> [shell_path]\n");
 		fprintf(stderr, "  exec <session_id> (command from stdin)\n");
 		fprintf(stderr, "  exit <session_id>\n");
 		fprintf(stderr, "  list\n");
