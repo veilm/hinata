@@ -29,3 +29,11 @@ features (e.g. memory)
 - Maintain benchmarks on included prompts and scaffolding on private code (rvm,
 iqd, etc.) for reference and for maliciously farming and baiting engagement on X
 - Be reasonable in the design of backends. like Aider not like Open WebUI
+
+## credit
+other projects used for inspiration:
+- [Aider](https://aider.chat/)
+- [Cursor](https://www.cursor.com/)
+- [openai-python](https://github.com/openai/openai-python)
+- [simonw/llm](https://github.com/simonw/llm)
+- [Streamdown](https://github.com/day50-dev/Streamdown)
