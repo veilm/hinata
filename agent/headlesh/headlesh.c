@@ -352,7 +352,12 @@ void start_server_mode() {
 
 				if (len_needed < 0 || len_needed >= BUFFER_SIZE) {
 					// Command too long to format, log this.
-					// syslog(LOG_ERR, "Formatted command for bash too long.");
+					fprintf(
+					    stdout,
+					    "Server: Formatted command for bash too long. "
+					    "Unformatted command was: '%s', Client FIFO: '%s'\n",
+					    command_str_ptr, client_out_fifo_path_str);
+					fflush(stdout);
 					// Can't easily notify client. Best to drop.
 					close(cmd_fifo_fd);  // Force client to see issue by closing
 					                     // connection
@@ -360,6 +365,10 @@ void start_server_mode() {
 					continue;
 				}
 
+				fprintf(stdout, "Server: Sending to bash command: %s",
+				        bash_cmd_buffer);  // bash_cmd_buffer already contains a
+				                           // newline
+				fflush(stdout);
 				ssize_t written = write(bash_stdin_writer_fd, bash_cmd_buffer,
 				                        strlen(bash_cmd_buffer));
 				if (written == -1) {
