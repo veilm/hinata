@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L  // For kill, ftruncate, etc.
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>  // For PATH_MAX if needed, though not directly used for buffer sizing an example
@@ -74,6 +76,7 @@ void cleanup_server_resources(void) {
 }
 
 void server_signal_handler(int sig) {
+	(void)sig;  // Mark as unused to prevent compiler warnings
 	// printf("\nServer: Caught signal %d, initiating shutdown...\n", sig);
 	// atexit handler (cleanup_server_resources) will be called.
 	exit(EXIT_FAILURE);  // Trigger atexit
@@ -426,7 +429,7 @@ void exec_client_mode(int argc, char* argv[]) {
 		unlink(s_client_out_fifo_path);
 		exit(EXIT_FAILURE);
 	}
-	if (written < total_len_to_send) {
+	if ((size_t)written < total_len_to_send) {
 		fprintf(stderr,
 		        "Client: Partial write to server FIFO (%zd of %zu bytes).\n",
 		        written, total_len_to_send);
