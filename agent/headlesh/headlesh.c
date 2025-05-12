@@ -285,10 +285,14 @@ void start_server_mode() {
 			int status;
 			pid_t result = waitpid(g_bash_pid, &status, WNOHANG);
 			if (result == g_bash_pid) {  // Bash exited
+				fprintf(stdout, "Server: Bash process exited.\n");
+				fflush(stdout);
 				g_bash_pid = -1;
 				server_running = 0;  // Stop server
 				break;
 			} else if (result == -1 && errno != ECHILD) {
+				perror("Server: waitpid for bash process failed");
+				fflush(stdout);  // perror goes to log via stderr
 				g_bash_pid = -1;
 				server_running = 0;
 				break;
@@ -298,99 +302,167 @@ void start_server_mode() {
 				cmd_fifo_fd = open(CMD_FIFO_PATH, O_RDONLY);
 				if (cmd_fifo_fd == -1) {
 					if (errno == EINTR) continue;
+					perror(
+					    "Server: Failed to open command FIFO for reading in "
+					    "loop");
+					fflush(stdout);
 					server_running = 0;
 					break;  // Critical error
 				}
 			}
 
-			ssize_t bytes_read = read(cmd_fifo_fd, buffer, BUFFER_SIZE - 1);
+			ssize_t bytes_read =
+			    read(cmd_fifo_fd, buffer,
+			         BUFFER_SIZE - 1);  // Leave space for potential null term
 			if (bytes_read > 0) {
-				buffer[bytes_read] = '\0';  // Null-terminate incoming message
+				// buffer[bytes_read] = '\0'; // Null-terminate incoming message
+				// Use memchr to find the first newline, respecting bytes_read
+				char* newline_pos = memchr(buffer, '\n', bytes_read);
 
-				char* client_out_fifo_path_str = buffer;
-				char* command_str_ptr = strchr(buffer, '\n');
-
-				if (command_str_ptr == NULL || *(command_str_ptr + 1) == '\0') {
-					// Malformed command (no newline, or command part is empty)
-					// syslog(LOG_WARNING, "Malformed/empty command from
-					// client."); For simplicity, just ignore and continue. To
-					// prevent blocking on a bad client indefinitely, could
-					// close and reopen cmd_fifo_fd. But if client holds write
-					// end open, open(O_RDONLY) won't unblock on a new client.
-					// Current model: one client connects, sends, server
-					// processes. If client disconnects, read gets EOF.
-					close(cmd_fifo_fd);  // Close and reopen to handle bad
-					                     // client or allow new one
-					cmd_fifo_fd = -1;
-					continue;
-				}
-				*command_str_ptr =
-				    '\0';           // Null-terminate client_out_fifo_path_str
-				command_str_ptr++;  // Move to start of actual command content
-
-				// Remove trailing newline from command_str_ptr if present
-				size_t actual_cmd_len = strlen(command_str_ptr);
-				if (actual_cmd_len > 0 &&
-				    command_str_ptr[actual_cmd_len - 1] == '\n') {
-					command_str_ptr[actual_cmd_len - 1] = '\0';
-				}
-				if (strlen(command_str_ptr) ==
-				    0) {  // Command is empty after stripping newline
-					// syslog equivalent
+				if (newline_pos == NULL) {
+					fprintf(stdout,
+					        "Server: Malformed message from client (no newline "
+					        "separator for FIFO path).\n");
+					fflush(stdout);
+					// This client sent bad data. Close and reopen to wait for a
+					// new (hopefully good) client.
 					close(cmd_fifo_fd);
 					cmd_fifo_fd = -1;
 					continue;
 				}
 
-				// Prepare command for bash: (actual_command) > client_out_fifo
-				// 2>&1 Ensure client_out_fifo_path_str is a safe path. For now,
-				// trust client. Production: validate client_out_fifo_path_str
-				// (e.g., ensure it's in /tmp).
-				int len_needed = snprintf(
-				    bash_cmd_buffer, BUFFER_SIZE, "{ %s ; } > %s 2>&1\n",
-				    command_str_ptr, client_out_fifo_path_str);
-
-				if (len_needed < 0 || len_needed >= BUFFER_SIZE) {
-					// Command too long to format, log this.
-					fprintf(
-					    stdout,
-					    "Server: Formatted command for bash too long. "
-					    "Unformatted command was: '%s', Client FIFO: '%s'\n",
-					    command_str_ptr, client_out_fifo_path_str);
+				size_t client_out_fifo_path_len = newline_pos - buffer;
+				char client_out_fifo_path_str
+				    [256];  // Assuming path won't exceed this.
+				            // s_client_out_fifo_path in client is 256.
+				if (client_out_fifo_path_len >=
+				    sizeof(client_out_fifo_path_str)) {
+					fprintf(stdout,
+					        "Server: Client FIFO path too long in message.\n");
 					fflush(stdout);
-					// Can't easily notify client. Best to drop.
-					close(cmd_fifo_fd);  // Force client to see issue by closing
-					                     // connection
+					close(cmd_fifo_fd);
+					cmd_fifo_fd = -1;
+					continue;
+				}
+				memcpy(client_out_fifo_path_str, buffer,
+				       client_out_fifo_path_len);
+				client_out_fifo_path_str[client_out_fifo_path_len] = '\0';
+
+				char* command_script_content = newline_pos + 1;
+				size_t command_script_len =
+				    bytes_read - (client_out_fifo_path_len + 1);
+
+				// If command script is empty, that's okay. Bash will source an
+				// empty file. Client will get an empty response immediately.
+				if (command_script_len == 0) {
+					fprintf(stdout,
+					        "Server: Received empty command script for client "
+					        "FIFO %s.\n",
+					        client_out_fifo_path_str);
+					fflush(stdout);
+				}
+
+				char tmp_script_path_template[] =
+				    "/tmp/headlesh_cmd_script_XXXXXX";
+				int tmp_script_fd = mkstemp(tmp_script_path_template);
+				if (tmp_script_fd == -1) {
+					perror(
+					    "Server: mkstemp for command script failed");  // Logged
+					// Cannot notify client easily. Drop connection to signal
+					// issue.
+					close(cmd_fifo_fd);
 					cmd_fifo_fd = -1;
 					continue;
 				}
 
-				fprintf(stdout, "Server: Sending to bash command: %s",
-				        bash_cmd_buffer);  // bash_cmd_buffer already contains a
-				                           // newline
-				fflush(stdout);
-				ssize_t written = write(bash_stdin_writer_fd, bash_cmd_buffer,
-				                        strlen(bash_cmd_buffer));
-				if (written == -1) {
-					if (errno == EPIPE) {  // Bash likely exited
-						                   // syslog equivalent
-					} else {
-						// syslog equivalent
-					}
-					server_running = 0;  // Stop server loop
+				ssize_t written_to_script = write(
+				    tmp_script_fd, command_script_content, command_script_len);
+				if (close(tmp_script_fd) == -1) {
+					perror("Server: close temp script fd failed");  // Logged
 				}
+
+				if (written_to_script == -1 ||
+				    (size_t)written_to_script < command_script_len) {
+					perror(
+					    "Server: Failed to write full command to temporary "
+					    "script file");                // Logged
+					unlink(tmp_script_path_template);  // Clean up
+					close(cmd_fifo_fd);
+					cmd_fifo_fd = -1;
+					continue;
+				}
+
+				// Prepare command for bash: { . SCRIPT_PATH ; } > CLIENT_FIFO
+				// 2>&1 ; rm -f SCRIPT_PATH
+				int len_needed =
+				    snprintf(bash_cmd_buffer, BUFFER_SIZE,
+				             "{ . %s ; } > %s 2>&1 ; rm -f %s\n",
+				             tmp_script_path_template, client_out_fifo_path_str,
+				             tmp_script_path_template);
+
+				if (len_needed < 0 || len_needed >= BUFFER_SIZE) {
+					fprintf(stdout,
+					        "Server: Formatted command for bash too long. "
+					        "Temp script: '%s', Client FIFO: '%s'\n",
+					        tmp_script_path_template, client_out_fifo_path_str);
+					fflush(stdout);
+					unlink(tmp_script_path_template);  // Clean up temp script
+					close(cmd_fifo_fd);
+					cmd_fifo_fd = -1;
+					continue;
+				}
+
+				// The temporary script will be removed by bash after execution.
+				// Command: { . SCRIPT_PATH ; } > CLIENT_FIFO 2>&1 ; rm -f
+				// SCRIPT_PATH
+
+				fprintf(
+				    stdout,
+				    "Server: Sending to bash: { . %s ; } > %s 2>&1 ; rm -f %s "
+				    "(bash will remove script: %s)\n",
+				    tmp_script_path_template, client_out_fifo_path_str,
+				    tmp_script_path_template, tmp_script_path_template);
+				fflush(stdout);
+
+				ssize_t written_to_bash =
+				    write(bash_stdin_writer_fd, bash_cmd_buffer,
+				          strlen(bash_cmd_buffer));
+				if (written_to_bash == -1) {
+					if (errno == EPIPE) {  // Bash likely exited
+						fprintf(stdout,
+						        "Server: Write to bash failed (EPIPE), bash "
+						        "may have exited.\n");
+						fflush(stdout);
+					} else {
+						perror("Server: Write to bash_stdin_writer_fd failed");
+						fflush(stdout);
+					}
+					server_running =
+					    0;  // Stop server loop, bash is gone or pipe broken
+				}
+				// Successfully processed one command. The current cmd_fifo_fd
+				// remains open waiting for more data or for the client to close
+				// its end (resulting in read returning 0).
 			} else if (bytes_read ==
 			           0) {  // EOF on CMD_FIFO (client closed write end)
+				fprintf(stdout,
+				        "Server: Client closed CMD_FIFO. Reopening for next "
+				        "client.\n");
+				fflush(stdout);
 				close(cmd_fifo_fd);
 				cmd_fifo_fd = -1;  // Mark for reopening (waits for new client)
 			} else {               // bytes_read < 0
 				if (errno == EINTR) continue;
+				perror("Server: read from CMD_FIFO failed");
+				fflush(stdout);
 				server_running = 0;  // Critical error
 			}
 		}  // end while(server_running)
 
 		if (cmd_fifo_fd != -1) close(cmd_fifo_fd);
 		close(bash_stdin_writer_fd);
+		fprintf(stdout, "Server: Daemon shutting down gracefully.\n");
+		fflush(stdout);
 		// atexit handler will manage g_bash_pid, FIFO unlinking, and lock file.
 		exit(EXIT_SUCCESS);  // Normal daemon exit
 	}
@@ -405,36 +477,62 @@ void client_cleanup_signal_handler(int sig) {
 	raise(sig);
 }
 
-void exec_client_mode(int argc, char* argv[]) {
+void exec_client_mode() {    // Changed signature
 	int cmd_fifo_fd_client;  // To write to server's CMD_FIFO
 	int out_fifo_fd_client;  // To read output from client's OUT_FIFO
-	char client_cmd_payload[BUFFER_SIZE];  // For command sent by client
-	                                       // initially.
-	char server_full_cmd[BUFFER_SIZE];     // For client_out_fifo_path + \n +
-	                                       // client_cmd_payload
+	char client_cmd_payload[BUFFER_SIZE];  // Buffer for stdin command
+
+	char server_full_cmd[BUFFER_SIZE];  // For client_out_fifo_path + \n +
+	                                    // client_cmd_payload
 	char read_buf[BUFFER_SIZE];  // For reading output from out_fifo_fd_client
 
-	// 1. Construct the actual command string to be executed
-	size_t current_cmd_len = 0;
-	for (int i = 2; i < argc; i++) {
-		size_t arg_len = strlen(argv[i]);
-		if (current_cmd_len + arg_len + (i > 2 ? 1 : 0) + 1 + 1 >=
-		    sizeof(client_cmd_payload)) {  // +1 space, +1 newline, +1 null
-			fprintf(stderr, "Client: Command string too long.\n");
+	// 1. Read the command from stdin
+	size_t total_bytes_read_stdin = 0;
+	ssize_t last_read_size = 0;  // Initialize to avoid uninitialized read in
+	                             // `if` condition below for some paths
+
+	// Reading from stdin first
+	while (total_bytes_read_stdin < BUFFER_SIZE - 1) {
+		last_read_size =
+		    read(STDIN_FILENO, client_cmd_payload + total_bytes_read_stdin,
+		         BUFFER_SIZE - 1 - total_bytes_read_stdin);
+		if (last_read_size == -1) {
+			if (errno == EINTR) continue;
+			perror("Client: Read from stdin failed");
 			exit(EXIT_FAILURE);
 		}
-		if (i > 2) {
-			client_cmd_payload[current_cmd_len++] = ' ';
+		if (last_read_size == 0) {  // EOF
+			break;
 		}
-		strcpy(client_cmd_payload + current_cmd_len, argv[i]);
-		current_cmd_len += arg_len;
+		total_bytes_read_stdin += last_read_size;
 	}
-	if (current_cmd_len == 0) {
-		fprintf(stderr, "Client: No command specified.\n");
-		exit(EXIT_FAILURE);
+	client_cmd_payload[total_bytes_read_stdin] = '\0';
+
+	// Check if input was truncated: buffer is full, and the last read operation
+	// was successful (not EOF or error)
+	if (total_bytes_read_stdin == BUFFER_SIZE - 1 && last_read_size > 0) {
+		char dummy_buf[1];
+		ssize_t peek = read(STDIN_FILENO, dummy_buf, 1);
+		if (peek > 0) {
+			fprintf(
+			    stderr,
+			    "Client: Command from stdin too long (exceeds %zu bytes).\n",
+			    (size_t)BUFFER_SIZE - 1);
+			exit(EXIT_FAILURE);
+		} else if (peek == -1 &&
+		           errno !=
+		               EINTR) {  // EINTR on peek is fine, means we couldn't
+			                     // check but won't assume too long.
+			perror("Client: Error checking for oversized stdin command");
+			exit(EXIT_FAILURE);
+		}
+		// If peek == 0 (EOF) or peek == -1 && errno == EINTR, command fit
+		// exactly or check was interrupted.
 	}
-	client_cmd_payload[current_cmd_len++] = '\n';
-	client_cmd_payload[current_cmd_len] = '\0';
+
+	size_t current_cmd_len = total_bytes_read_stdin;
+	// An empty command (current_cmd_len == 0) is allowed. Server will handle
+	// it.
 
 	// 2. Create unique output FIFO for this client
 	snprintf(s_client_out_fifo_path, sizeof(s_client_out_fifo_path),
@@ -448,21 +546,30 @@ void exec_client_mode(int argc, char* argv[]) {
 	signal(SIGINT, client_cleanup_signal_handler);
 	signal(SIGTERM, client_cleanup_signal_handler);
 
-	// 3. Prepare the full message for the server (output_fifo_path\ncommand\n)
+	// 3. Prepare the full message for the server
+	// (output_fifo_path\ncommand_payload)
 	size_t len_fifo_path = strlen(s_client_out_fifo_path);
-	// Check total length against server's read buffer (BUFFER_SIZE)
-	// current_cmd_len already includes its trailing \n.
-	if (len_fifo_path + 1 + current_cmd_len >= sizeof(server_full_cmd)) {
-		fprintf(
-		    stderr,
-		    "Client: Combined FIFO path and command too long for server.\n");
-		s_client_out_fifo_created = 0;  // Unset before manual unlink
-		unlink(s_client_out_fifo_path);
+	// current_cmd_len is strlen(client_cmd_payload) effectively (length of data
+	// read from stdin) Check total length against server's read buffer
+	// (BUFFER_SIZE for server's 'buffer') and our client-side send buffer
+	// 'server_full_cmd' (also BUFFER_SIZE). total_len_to_send = len_fifo_path +
+	// 1 (\n) + current_cmd_len. This must be < BUFFER_SIZE for server to
+	// null-terminate if it wants to.
+	if (len_fifo_path + 1 + current_cmd_len >= BUFFER_SIZE) {
+		fprintf(stderr,
+		        "Client: Combined FIFO path and command too long for server "
+		        "buffer.\n");
+		unlink(s_client_out_fifo_path);  // Manually clean up before exit
+		s_client_out_fifo_created = 0;
 		exit(EXIT_FAILURE);
 	}
 	strcpy(server_full_cmd, s_client_out_fifo_path);
 	server_full_cmd[len_fifo_path] = '\n';
-	strcpy(server_full_cmd + len_fifo_path + 1, client_cmd_payload);
+	// client_cmd_payload contains the command script read from stdin.
+	// current_cmd_len is its length. It's already null-terminated.
+	// Use memcpy to copy exactly current_cmd_len bytes of script content.
+	memcpy(server_full_cmd + len_fifo_path + 1, client_cmd_payload,
+	       current_cmd_len);
 	size_t total_len_to_send = len_fifo_path + 1 + current_cmd_len;
 
 	// 4. Open server's CMD_FIFO for writing
@@ -476,8 +583,8 @@ void exec_client_mode(int argc, char* argv[]) {
 		} else {
 			perror("Client: Failed to open command FIFO for writing");
 		}
+		unlink(s_client_out_fifo_path);  // Manually clean up
 		s_client_out_fifo_created = 0;
-		unlink(s_client_out_fifo_path);
 		exit(EXIT_FAILURE);
 	}
 
@@ -490,16 +597,16 @@ void exec_client_mode(int argc, char* argv[]) {
 	}  // Non-fatal for this op
 	if (written == -1) {
 		perror("Client: Failed to write command to server FIFO");
+		unlink(s_client_out_fifo_path);  // Manually clean up
 		s_client_out_fifo_created = 0;
-		unlink(s_client_out_fifo_path);
 		exit(EXIT_FAILURE);
 	}
 	if ((size_t)written < total_len_to_send) {
 		fprintf(stderr,
 		        "Client: Partial write to server FIFO (%zd of %zu bytes).\n",
 		        written, total_len_to_send);
+		unlink(s_client_out_fifo_path);  // Manually clean up
 		s_client_out_fifo_created = 0;
-		unlink(s_client_out_fifo_path);
 		exit(EXIT_FAILURE);
 	}
 	// printf("Client: Command sent to server. Waiting for output on %s...\n",
@@ -510,8 +617,8 @@ void exec_client_mode(int argc, char* argv[]) {
 	out_fifo_fd_client = open(s_client_out_fifo_path, O_RDONLY);
 	if (out_fifo_fd_client == -1) {
 		perror("Client: Failed to open output FIFO for reading");
+		unlink(s_client_out_fifo_path);  // Manually clean up
 		s_client_out_fifo_created = 0;
-		unlink(s_client_out_fifo_path);
 		exit(EXIT_FAILURE);
 	}
 	// printf("Client: Output FIFO opened. Streaming output:\n");
@@ -534,11 +641,8 @@ void exec_client_mode(int argc, char* argv[]) {
 
 	// 8. Cleanup client-side resources
 	close(out_fifo_fd_client);
-	s_client_out_fifo_created = 0;  // Mark as cleaned up before explicit unlink
-	if (unlink(s_client_out_fifo_path) == -1) {
-		// perror("Client: Failed to unlink output FIFO"); // Minor issue if
-		// this fails
-	}
+	unlink(s_client_out_fifo_path);
+	s_client_out_fifo_created = 0;  // Mark as cleaned up
 	// printf("\nClient: Command finished and output FIFO cleaned up.\n");
 	// Restore default signal handlers
 	signal(SIGINT, SIG_DFL);
@@ -547,8 +651,8 @@ void exec_client_mode(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
 	if (argc < 2) {
-		fprintf(stderr, "Usage: %s start | %s exec <command...>\n", argv[0],
-		        argv[0]);
+		fprintf(stderr, "Usage: %s start | %s exec (command read from stdin)\n",
+		        argv[0], argv[0]);
 		return EXIT_FAILURE;
 	}
 
@@ -559,15 +663,16 @@ int main(int argc, char* argv[]) {
 		}
 		start_server_mode();
 	} else if (strcmp(argv[1], "exec") == 0) {
-		if (argc < 3) {
-			fprintf(stderr, "Usage: %s exec <command...>\n", argv[0]);
+		if (argc != 2) {  // exec takes no arguments now
+			fprintf(stderr, "Usage: %s exec (command read from stdin)\n",
+			        argv[0]);
 			return EXIT_FAILURE;
 		}
-		exec_client_mode(argc, argv);
+		exec_client_mode();  // No longer passes argc, argv
 	} else {
 		fprintf(stderr, "Unknown command: %s\n", argv[1]);
-		fprintf(stderr, "Usage: %s start | %s exec <command...>\n", argv[0],
-		        argv[0]);
+		fprintf(stderr, "Usage: %s start | %s exec (command read from stdin)\n",
+		        argv[0], argv[0]);
 		return EXIT_FAILURE;
 	}
 
