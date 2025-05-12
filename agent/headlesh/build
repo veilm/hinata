@@ -4,6 +4,5 @@ gcc \
 	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
 	headlesh.c -o ./headlesh
 
-sudo mkdir -p /var/log/headlesh
-sudo chmod a+w /var/log/headlesh
+mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/hinata/headlesh"
 sudo cp ./headlesh /usr/local/bin/

@@ -16,7 +16,7 @@
 #define CMD_FIFO_PATH "/tmp/headlesh_cmd_fifo"
 #define LOCK_FILE_PATH "/tmp/headlesh.lock"
 #define OUT_FIFO_TEMPLATE "/tmp/headlesh_out_%d"  // %d for client PID
-#define DAEMON_LOG_FILE "/var/log/headlesh/main.log"
+// DAEMON_LOG_FILE is now determined at runtime.
 #define BUFFER_SIZE 4096  // For general I/O and command construction
 #define HEADLESH_EXIT_CMD_PAYLOAD "__HEADLESH_INTERNAL_EXIT_CMD__"
 
@@ -85,11 +85,72 @@ void server_signal_handler(int sig) {
 	exit(EXIT_FAILURE);  // Trigger atexit
 }
 
+// Helper function to construct the log file path
+// Returns 0 on success, -1 on error.
+// path_buffer will contain the log file path on success.
+static int construct_log_file_path(char* path_buffer, size_t buffer_size) {
+	const char* xdg_data_home_val = getenv("XDG_DATA_HOME");
+	const char* home_dir_val;
+	char base_dir[PATH_MAX];
+
+	if (xdg_data_home_val && xdg_data_home_val[0] != '\0') {
+		// XDG_DATA_HOME is set and not empty
+		if (strlen(xdg_data_home_val) >= sizeof(base_dir)) {
+			fprintf(stderr, "Error: XDG_DATA_HOME path is too long.\n");
+			return -1;
+		}
+		strcpy(base_dir, xdg_data_home_val);
+	} else {
+		// XDG_DATA_HOME is not set or is empty, use default $HOME/.local/share
+		home_dir_val = getenv("HOME");
+		if (home_dir_val && home_dir_val[0] != '\0') {
+			int written = snprintf(base_dir, sizeof(base_dir),
+			                       "%s/.local/share", home_dir_val);
+			if (written < 0 || (size_t)written >= sizeof(base_dir)) {
+				fprintf(stderr,
+				        "Error: HOME path is too long for constructing default "
+				        "XDG data directory.\n");
+				return -1;
+			}
+		} else {
+			// HOME is not set. This is problematic.
+			fprintf(stderr,
+			        "Error: Neither XDG_DATA_HOME nor HOME environment "
+			        "variables are set. Cannot determine log directory.\n");
+			return -1;  // Indicate failure to construct path
+		}
+	}
+
+	// Now, append "/hinata/headlesh/server.log" to base_dir
+	int res = snprintf(path_buffer, buffer_size,
+	                   "%s/hinata/headlesh/server.log", base_dir);
+
+	if (res < 0 || (size_t)res >= buffer_size) {
+		fprintf(stderr,
+		        "Error: Constructed log file path is too long or snprintf "
+		        "error.\n");
+		return -1;  // Indicate failure
+	}
+
+	return 0;  // Success
+}
+
 void start_server_mode() {
 	int bash_stdin_pipe[2];
 	int cmd_fifo_fd = -1;
-	char buffer[BUFFER_SIZE];           // For reading commands from CMD_FIFO
-	char bash_cmd_buffer[BUFFER_SIZE];  // For formatting commands to bash
+	char buffer[BUFFER_SIZE];             // For reading commands from CMD_FIFO
+	char bash_cmd_buffer[BUFFER_SIZE];    // For formatting commands to bash
+	char daemon_log_file_path[PATH_MAX];  // For the dynamically determined log
+	                                      // path
+
+	// Determine log file path first. Errors go to current stderr.
+	if (construct_log_file_path(daemon_log_file_path,
+	                            sizeof(daemon_log_file_path)) != 0) {
+		// Error message already printed by construct_log_file_path
+		fprintf(stderr,
+		        "Server: Failed to initialize log file path. Aborting.\n");
+		exit(EXIT_FAILURE);
+	}
 
 	// 1. Setup lock file (before daemonizing fork, so errors are visible)
 	g_lock_fd = open(LOCK_FILE_PATH, O_CREAT | O_RDWR, 0666);
@@ -158,13 +219,16 @@ void start_server_mode() {
 	umask(0);
 
 	// Redirect standard file descriptors for the daemon
-	int log_fd = open(DAEMON_LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0644);
+	int log_fd =
+	    open(daemon_log_file_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
 	if (log_fd == -1) {
 		// If log file cannot be opened, this is a critical failure.
 		// Errors print to original stderr because redirection hasn't happened
 		// yet.
-		print_error_and_exit(
-		    "Server: Failed to open log file " DAEMON_LOG_FILE);
+		char err_msg_buf[PATH_MAX + 100];
+		snprintf(err_msg_buf, sizeof(err_msg_buf),
+		         "Server: Failed to open log file %s", daemon_log_file_path);
+		print_error_and_exit(err_msg_buf);
 	}
 
 	// Redirect stdout to the log file
@@ -218,7 +282,7 @@ void start_server_mode() {
 	}
 	// End of FD redirection. Log daemon startup.
 	fprintf(stdout, "Server daemon starting. PID: %d. Logging to %s.\n",
-	        getpid(), DAEMON_LOG_FILE);
+	        getpid(), daemon_log_file_path);
 	fflush(stdout);
 
 	// Write daemon's PID to the lock file
