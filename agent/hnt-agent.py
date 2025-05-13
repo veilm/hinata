@@ -294,8 +294,8 @@ def main():
             print("-" * 40 + "\n", file=sys.stdout)
             sys.stdout.flush()
 
-        # 6. Run hnt-chat gen to get LLM message
-        debug_log(args, "Running hnt-chat gen...")
+        # 6. Run hnt-chat gen to get INITIAL LLM message
+        debug_log(args, "Running hnt-chat gen for initial message...")
         hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
         if args.model:
             hnt_chat_gen_cmd.extend(["--model", args.model])
@@ -303,189 +303,243 @@ def main():
         if args.debug_unsafe:
             hnt_chat_gen_cmd.append("--debug-unsafe")
             debug_log(args, "Passing --debug-unsafe to hnt-chat gen")
-        debug_log(args, "hnt-chat gen command:", hnt_chat_gen_cmd)
+        debug_log(args, "hnt-chat gen command (initial):", hnt_chat_gen_cmd)
 
         gen_process_result = run_command(
             hnt_chat_gen_cmd, capture_output=True, check=True, text=True
-        )
+        )  # sys.exit on error, caught by outer try/except
         llm_message_raw = gen_process_result.stdout
-        debug_log(args, "Captured hnt-chat gen output length:", len(llm_message_raw))
+        debug_log(
+            args, "Captured hnt-chat gen output length (initial):", len(llm_message_raw)
+        )
         debug_log(
             args,
-            "LLM Raw Message (first 200 chars):\n",
+            "LLM Raw Message (initial, first 200 chars):\n",
             textwrap.shorten(llm_message_raw, width=200, placeholder="..."),
         )
 
         if not llm_message_raw.strip():
-            debug_log(args, "hnt-chat gen output is empty or whitespace only.")
+            debug_log(args, "Initial hnt-chat gen output is empty or whitespace only.")
             print(
-                "Warning: LLM produced no output. Continuing to hnt-shell-apply.",
+                "Warning: LLM produced no initial output. Exiting.",
                 file=sys.stderr,
             )
-
-        # 6a. Pipe LLM message to hlmd-st (if found) -> hnt-agent's stdout
-        debug_log(args, "Displaying LLM message (via syntax highlighter if enabled)...")
-        sys.stdout.write("\n--- LLM Response ---\n")
-        if syntax_highlight_enabled:
-            debug_log(args, "Using syntax highlighter command:", effective_syntax_cmd)
-            try:
-                highlight_process = subprocess.Popen(
-                    effective_syntax_cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=sys.stdout,
-                    stderr=sys.stderr,
-                    text=True,
-                )
-                highlight_process.communicate(input=llm_message_raw)
-                if highlight_process.returncode != 0:
-                    debug_log(
-                        args,
-                        f"Syntax highlighter exited with code {highlight_process.returncode}",
-                    )
-            except FileNotFoundError:
+            # original_exit_code remains 0, script will exit cleanly via finally.
+        else:
+            # Start the interaction loop
+            while True:
+                # Display current LLM message (adapting original 6a)
                 debug_log(
                     args,
-                    f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found. Printing raw.",
+                    "Displaying LLM message (via syntax highlighter if enabled)...",
                 )
-                print(
-                    f"Warning: Syntax highlighter '{effective_syntax_cmd[0]}' not found. Printing raw output.",
-                    file=sys.stderr,
-                )
-                sys.stdout.write(llm_message_raw)
-            except Exception as e:
-                debug_log(args, f"Error running syntax highlighter: {e}. Printing raw.")
-                print(
-                    f"Warning: Error during syntax highlighting: {e}. Printing raw output.",
-                    file=sys.stderr,
-                )
-                sys.stdout.write(llm_message_raw)
-        else:
-            sys.stdout.write(llm_message_raw)
-
-        if llm_message_raw and not llm_message_raw.endswith("\n"):
-            sys.stdout.write("\n")
-        sys.stdout.flush()
-
-        print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
-
-        # Confirmation before running hnt-shell-apply
-        if not args.no_confirm:
-            try:
-                print("")  # Ensure prompt is on a new line
-                user_choice_apply = (
-                    input("proceed to hnt-shell-apply (y/n)? ").strip().lower()
-                )
-                if user_choice_apply != "y":
-                    print("Aborted by user before hnt-shell-apply.", file=sys.stderr)
-                    sys.exit(
-                        0
-                    )  # User chose to abort, this is a clean exit; finally block will run
-            except EOFError:
-                print(
-                    "\nEOFError: No input received for hnt-shell-apply confirmation. Aborting.",
-                    file=sys.stderr,
-                )
-                # Exit with non-zero because we couldn't get confirmation in an interactive-expected mode.
-                sys.exit(1)  # finally block will run
-
-        # 7. Pipe the raw LLM message to hnt-shell-apply and capture its output
-        debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
-        # Pass session_name to hnt-shell-apply
-        hnt_shell_apply_cmd = ["hnt-shell-apply", session_name]
-        debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
-
-        shell_apply_process = run_command(
-            hnt_shell_apply_cmd,
-            stdin_content=llm_message_raw,
-            capture_output=True,
-            check=False,  # Manually check returncode
-            text=True,
-        )
-
-        shell_apply_stdout = shell_apply_process.stdout
-        shell_apply_stderr = shell_apply_process.stderr
-        shell_apply_rc = shell_apply_process.returncode
-
-        debug_log(args, f"hnt-shell-apply exited with code {shell_apply_rc}")
-        if shell_apply_stdout:
-            debug_log(
-                args,
-                "hnt-shell-apply stdout (first 200 chars):\n",
-                textwrap.shorten(shell_apply_stdout, width=200, placeholder="..."),
-            )
-        if shell_apply_stderr:
-            debug_log(
-                args,
-                "hnt-shell-apply stderr (first 200 chars):\n",
-                textwrap.shorten(shell_apply_stderr, width=200, placeholder="..."),
-            )
-
-        # 8. Print hnt-shell-apply's stdout and stderr.
-        if shell_apply_stdout:
-            sys.stdout.write("\n--- Output from hnt-shell-apply ---\n")
-            sys.stdout.write(shell_apply_stdout)
-            if not shell_apply_stdout.endswith("\n"):
-                sys.stdout.write("\n")
-        sys.stdout.flush()
-
-        if shell_apply_stderr:
-            sys.stderr.write("\n--- Error output from hnt-shell-apply ---\n")
-            sys.stderr.write(shell_apply_stderr)
-            if not shell_apply_stderr.endswith("\n"):
-                sys.stderr.write("\n")
-        sys.stderr.flush()
-
-        # 8b. Add hnt-shell-apply's stdout to the conversation (conditionally)
-        if shell_apply_stdout:
-            proceed_add_to_chat = True
-            if not args.no_confirm:
-                try:
-                    print("")  # Ensure prompt is on a new line
-                    user_choice_add_msg = (
-                        input("add hnt-shell-apply output to user msg (y/n)? ")
-                        .strip()
-                        .lower()
+                sys.stdout.write("\n--- LLM Response ---\n")
+                if syntax_highlight_enabled:
+                    debug_log(
+                        args, "Using syntax highlighter command:", effective_syntax_cmd
                     )
-                    if user_choice_add_msg != "y":
-                        proceed_add_to_chat = False
+                    try:
+                        highlight_process = subprocess.Popen(
+                            effective_syntax_cmd,
+                            stdin=subprocess.PIPE,
+                            stdout=sys.stdout,
+                            stderr=sys.stderr,
+                            text=True,
+                        )
+                        highlight_process.communicate(input=llm_message_raw)
+                        if highlight_process.returncode != 0:
+                            debug_log(
+                                args,
+                                f"Syntax highlighter exited with code {highlight_process.returncode}",
+                            )
+                    except FileNotFoundError:
+                        debug_log(
+                            args,
+                            f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found. Printing raw.",
+                        )
                         print(
-                            "Skipping: hnt-shell-apply output not added to user messages.",
+                            f"Warning: Syntax highlighter '{effective_syntax_cmd[0]}' not found. Printing raw output.",
                             file=sys.stderr,
                         )
-                except EOFError:
-                    print(
-                        "\nEOFError: No input received for adding hnt-shell-apply output confirmation. Assuming 'n'.",
-                        file=sys.stderr,
-                    )
-                    proceed_add_to_chat = False
+                        sys.stdout.write(llm_message_raw)
+                    except Exception as e:
+                        debug_log(
+                            args,
+                            f"Error running syntax highlighter: {e}. Printing raw.",
+                        )
+                        print(
+                            f"Warning: Error during syntax highlighting: {e}. Printing raw output.",
+                            file=sys.stderr,
+                        )
+                        sys.stdout.write(llm_message_raw)
+                else:
+                    sys.stdout.write(llm_message_raw)
 
-            if proceed_add_to_chat:
-                debug_log(args, "Adding hnt-shell-apply stdout to chat conversation...")
-                run_command(
-                    hnt_chat_add_user_cmd,
-                    stdin_content=shell_apply_stdout,
-                    check=True,
+                if llm_message_raw and not llm_message_raw.endswith("\n"):
+                    sys.stdout.write("\n")
+                sys.stdout.flush()
+                print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
+
+                # Confirmation before running hnt-shell-apply
+                if not args.no_confirm:
+                    try:
+                        print("")  # Ensure prompt is on a new line
+                        user_choice_apply = (
+                            input("proceed to hnt-shell-apply (y/n)? ").strip().lower()
+                        )
+                        if user_choice_apply != "y":
+                            print(
+                                "Aborted by user before hnt-shell-apply.",
+                                file=sys.stderr,
+                            )
+                            break  # EXIT LOOP (cleanly)
+                    except EOFError:
+                        print(
+                            "\nEOFError: No input for hnt-shell-apply confirmation. Aborting.",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)  # Error exit, caught by outer try/except
+
+                # Run hnt-shell-apply (adapting original 7)
+                debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
+                hnt_shell_apply_cmd = ["hnt-shell-apply", session_name]
+                debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
+
+                shell_apply_process = run_command(
+                    hnt_shell_apply_cmd,
+                    stdin_content=llm_message_raw,
+                    capture_output=True,
+                    check=False,  # Manually check returncode
                     text=True,
                 )
-                debug_log(args, "hnt-shell-apply stdout added to chat.")
-            else:
-                # Message already printed by confirmation logic or debug log below handles it implicitly
+                shell_apply_stdout = shell_apply_process.stdout
+                shell_apply_stderr = shell_apply_process.stderr
+                shell_apply_rc = shell_apply_process.returncode
+
+                debug_log(args, f"hnt-shell-apply exited with code {shell_apply_rc}")
+                if shell_apply_stdout:
+                    debug_log(
+                        args,
+                        "hnt-shell-apply stdout (first 200 chars):\n",
+                        textwrap.shorten(
+                            shell_apply_stdout, width=200, placeholder="..."
+                        ),
+                    )
+                if shell_apply_stderr:
+                    debug_log(
+                        args,
+                        "hnt-shell-apply stderr (first 200 chars):\n",
+                        textwrap.shorten(
+                            shell_apply_stderr, width=200, placeholder="..."
+                        ),
+                    )
+
+                # Print hnt-shell-apply's output (adapting original 8)
+                if shell_apply_stdout:
+                    sys.stdout.write("\n--- Output from hnt-shell-apply ---\n")
+                    sys.stdout.write(shell_apply_stdout)
+                    if not shell_apply_stdout.endswith("\n"):
+                        sys.stdout.write("\n")
+                sys.stdout.flush()
+
+                if shell_apply_stderr:
+                    sys.stderr.write("\n--- Error output from hnt-shell-apply ---\n")
+                    sys.stderr.write(shell_apply_stderr)
+                    if not shell_apply_stderr.endswith("\n"):
+                        sys.stderr.write("\n")
+                sys.stderr.flush()
+
+                # Check hnt-shell-apply return code
+                if shell_apply_rc != 0:
+                    print(
+                        f"\nError: hnt-shell-apply exited with code {shell_apply_rc}.",
+                        file=sys.stderr,
+                    )
+                    original_exit_code = shell_apply_rc
+                    break  # EXIT LOOP (error)
+
+                # Add hnt-shell-apply's stdout to conversation (adapting original 8b)
+                if not shell_apply_stdout:
+                    debug_log(
+                        args,
+                        "hnt-shell-apply produced no stdout. Ending interaction loop.",
+                    )
+                    print(
+                        "hnt-shell-apply produced no stdout. Ending interaction loop.",
+                        file=sys.stderr,
+                    )
+                    break  # EXIT LOOP (cleanly, no new info to process)
+
+                proceed_add_to_chat = True
+                if not args.no_confirm:
+                    try:
+                        print("")
+                        user_choice_add_msg = (
+                            input("add hnt-shell-apply output to user msg (y/n)? ")
+                            .strip()
+                            .lower()
+                        )
+                        if user_choice_add_msg != "y":
+                            proceed_add_to_chat = False
+                            print(
+                                "User chose not to add hnt-shell-apply output. Ending interaction loop.",
+                                file=sys.stderr,
+                            )
+                            break  # EXIT LOOP (cleanly, user choice)
+                    except EOFError:
+                        print(
+                            "\nEOFError: No input for adding hnt-shell-apply output. Aborting.",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)  # Error exit, caught by outer try/except
+
+                if proceed_add_to_chat:
+                    debug_log(
+                        args, "Adding hnt-shell-apply stdout to chat conversation..."
+                    )
+                    run_command(  # hnt_chat_add_user_cmd is defined outside the loop
+                        hnt_chat_add_user_cmd,
+                        stdin_content=shell_apply_stdout,
+                        check=True,  # sys.exit on error
+                        text=True,
+                    )
+                    debug_log(args, "hnt-shell-apply stdout added to chat.")
+                # else: if proceed_add_to_chat is False and not args.no_confirm, we broke the loop
+
+                # Generate NEXT LLM message for the next iteration
+                debug_log(args, "Generating next LLM response...")
+                # hnt_chat_gen_cmd is already defined and includes model/debug flags
+                gen_process_result = run_command(
+                    hnt_chat_gen_cmd, capture_output=True, check=True, text=True
+                )  # sys.exit on error
+                next_llm_message_raw = gen_process_result.stdout
+
                 debug_log(
                     args,
-                    "Skipped adding hnt-shell-apply stdout to chat due to user choice or EOF.",
+                    "Captured hnt-chat gen output length (next iter):",
+                    len(next_llm_message_raw),
                 )
-        else:
-            debug_log(args, "hnt-shell-apply produced no stdout; not adding to chat.")
+                debug_log(
+                    args,
+                    "LLM Raw Message (next iter, first 200 chars):\n",
+                    textwrap.shorten(
+                        next_llm_message_raw, width=200, placeholder="..."
+                    ),
+                )
 
-        if shell_apply_rc != 0:
-            print(
-                f"\nError: hnt-shell-apply exited with code {shell_apply_rc}.",
-                file=sys.stderr,
-            )
-            original_exit_code = shell_apply_rc  # Store exit code, but don't exit yet
-        else:
-            debug_log(args, "hnt-shell-apply finished successfully.")
-            # original_exit_code remains 0 if all good so far
+                if not next_llm_message_raw.strip():
+                    debug_log(args, "hnt-chat gen produced no further output.")
+                    print(
+                        "Warning: LLM produced no further output. Ending interaction loop.",
+                        file=sys.stderr,
+                    )
+                    break  # EXIT LOOP (cleanly, no more LLM response)
+
+                llm_message_raw = next_llm_message_raw  # Update for the next iteration
+                # Loop continues
+
+            # End of while True loop
+        # End of else block (if initial llm_message_raw was not empty)
 
     except SystemExit as e:
         # Catches sys.exit calls from run_command (e.g., if hnt-chat or headlesh create fails)
