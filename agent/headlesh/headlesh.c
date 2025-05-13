@@ -244,6 +244,14 @@ static int construct_session_log_file_path(char* path_buffer,
 }
 
 void start_server_mode(const char* session_id, const char* shell_program_arg) {
+	char shell_initial_cwd[PATH_MAX];
+	if (getcwd(shell_initial_cwd, sizeof(shell_initial_cwd)) == NULL) {
+		perror("headlesh (create): Failed to get current working directory");
+		// This error occurs before daemonization, so perror to original stderr
+		// is fine.
+		exit(EXIT_FAILURE);
+	}
+
 	int shell_stdin_pipe[2];
 	int cmd_fifo_fd = -1;      // FD for the session's command FIFO
 	char buffer[BUFFER_SIZE];  // For reading commands from session's CMD_FIFO
@@ -553,10 +561,24 @@ void start_server_mode(const char* session_id, const char* shell_program_arg) {
 		// cmd_fifo_fd would be -1 here (not opened by shell child)
 		// No need to close cmd_fifo_fd for the session.
 
+		// Change to the CWD that was active when 'headlesh create' was called.
+		// stderr from here (before execlp) will go to the daemon's log file.
+		if (chdir(shell_initial_cwd) == -1) {
+			fprintf(stderr,
+			        "Shell child (PID %d): Failed to chdir to initial CWD "
+			        "'%s': %s. Shell will start in current CWD (likely '/').\n",
+			        getpid(), shell_initial_cwd, strerror(errno));
+			// If chdir fails, shell will start in the CWD inherited from the
+			// daemon parent (which is "/"). This is a logged warning, but not a
+			// fatal error for the shell to start.
+		}
+
 		// Use effective_shell for both the command and argv[0]
 		execlp(effective_shell, effective_shell, NULL);
 		// If execlp returns, it's an error
-		// perror("Shell child: execlp shell failed");
+		fprintf(stderr,
+		        "Shell child (PID %d): execlp for shell '%s' failed: %s\n",
+		        getpid(), effective_shell, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else {  // Parent process (session daemon server logic)
 		close(shell_stdin_pipe[0]);  // Close read end
