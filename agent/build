@@ -1,0 +1,18 @@
+#!/bin/sh -e
+
+# Change to directory where build script is located
+cd "$(dirname "$0")"
+
+if ! which headlesh > /dev/null 2>&1
+then
+	echo "build: headlesh not found. compiling..."
+	cd headlesh
+	./build
+	cd -
+fi
+
+bin=/usr/local/bin
+
+chmod +x ./hnt-shell-apply.py
+sudo cp ./hnt-shell-apply.py "$bin/hnt-shell-apply"
+echo "build: installed hnt-shell-apply in $bin/"
