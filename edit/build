@@ -41,7 +41,7 @@ then
 fi
 
 prompts_dir=$XDG_CONFIG_HOME/hinata/prompts
-bin=/usr/local/bin/
+bin=/usr/local/bin
 
 mkdir -p "$prompts_dir"
 cp prompts/* "$prompts_dir"
@@ -51,9 +51,9 @@ gcc \
 	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
 	hnt-apply.c -o ./hnt-apply
 
-sudo cp ./hnt-apply "$bin"
-echo "build: installed hnt-apply in $bin"
+sudo cp ./hnt-apply "$bin/"
+echo "build: installed hnt-apply in $bin/"
 
-chmod +x ./hnt-edit
-sudo cp ./hnt-edit "$bin"
-echo "build: installed hnt-edit in $bin"
+chmod +x ./hnt-edit.py
+sudo cp ./hnt-edit.py "$bin/hnt-edit"
+echo "build: installed hnt-edit in $bin/"

@@ -9,5 +9,6 @@ then
 	cd -
 fi
 
-sudo cp ./hnt-chat /usr/local/bin/
+chmod +x ./hnt-chat.py
+sudo cp ./hnt-chat.py /usr/local/bin/hnt-chat
 echo "build: installed hnt-chat"
