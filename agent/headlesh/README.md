@@ -24,11 +24,11 @@ headlesh list
 
 # run one or more commands
 echo "cd" | headlesh exec $s
-echo "pwd" | headlesh exec $s
+echo "f=5 ; pwd" | headlesh exec $s
 # > /home/oboro
 
 # new lines separate commands, just like in regular shell scripts
-echo "f=5\necho \$f\ncat \$(date +%s)" | headlesh exec $s > /tmp/0
+echo "echo \$f\ncat \$(date +%s)" | headlesh exec $s > /tmp/0
 # > cat: 1747092138: No such file or directory
 # (writes to stdout and stderr appropriately)
 
