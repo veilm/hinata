@@ -191,6 +191,11 @@ def main():
         action="store_true",
         help="Enable unsafe debugging options in hinata tools",
     )
+    parser.add_argument(
+        "--no-confirm",
+        action="store_true",
+        help="Skip confirmation steps before executing commands or adding messages.",
+    )
     args = parser.parse_args()
     debug_log(args, "Arguments parsed:", args)
 
@@ -363,6 +368,26 @@ def main():
 
         print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
 
+        # Confirmation before running hnt-shell-apply
+        if not args.no_confirm:
+            try:
+                print("")  # Ensure prompt is on a new line
+                user_choice_apply = (
+                    input("proceed to hnt-shell-apply (y/n)? ").strip().lower()
+                )
+                if user_choice_apply != "y":
+                    print("Aborted by user before hnt-shell-apply.", file=sys.stderr)
+                    sys.exit(
+                        0
+                    )  # User chose to abort, this is a clean exit; finally block will run
+            except EOFError:
+                print(
+                    "\nEOFError: No input received for hnt-shell-apply confirmation. Aborting.",
+                    file=sys.stderr,
+                )
+                # Exit with non-zero because we couldn't get confirmation in an interactive-expected mode.
+                sys.exit(1)  # finally block will run
+
         # 7. Pipe the raw LLM message to hnt-shell-apply and capture its output
         debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
         # Pass session_name to hnt-shell-apply
@@ -410,16 +435,45 @@ def main():
                 sys.stderr.write("\n")
         sys.stderr.flush()
 
-        # 8b. Add hnt-shell-apply's stdout to the conversation
+        # 8b. Add hnt-shell-apply's stdout to the conversation (conditionally)
         if shell_apply_stdout:
-            debug_log(args, "Adding hnt-shell-apply stdout to chat conversation...")
-            run_command(
-                hnt_chat_add_user_cmd,
-                stdin_content=shell_apply_stdout,
-                check=True,
-                text=True,
-            )
-            debug_log(args, "hnt-shell-apply stdout added to chat.")
+            proceed_add_to_chat = True
+            if not args.no_confirm:
+                try:
+                    print("")  # Ensure prompt is on a new line
+                    user_choice_add_msg = (
+                        input("add hnt-shell-apply output to user msg (y/n)? ")
+                        .strip()
+                        .lower()
+                    )
+                    if user_choice_add_msg != "y":
+                        proceed_add_to_chat = False
+                        print(
+                            "Skipping: hnt-shell-apply output not added to user messages.",
+                            file=sys.stderr,
+                        )
+                except EOFError:
+                    print(
+                        "\nEOFError: No input received for adding hnt-shell-apply output confirmation. Assuming 'n'.",
+                        file=sys.stderr,
+                    )
+                    proceed_add_to_chat = False
+
+            if proceed_add_to_chat:
+                debug_log(args, "Adding hnt-shell-apply stdout to chat conversation...")
+                run_command(
+                    hnt_chat_add_user_cmd,
+                    stdin_content=shell_apply_stdout,
+                    check=True,
+                    text=True,
+                )
+                debug_log(args, "hnt-shell-apply stdout added to chat.")
+            else:
+                # Message already printed by confirmation logic or debug log below handles it implicitly
+                debug_log(
+                    args,
+                    "Skipped adding hnt-shell-apply stdout to chat due to user choice or EOF.",
+                )
         else:
             debug_log(args, "hnt-shell-apply produced no stdout; not adding to chat.")
 
