@@ -7,6 +7,7 @@ import sys
 import tempfile
 import io
 import shlex
+import time
 import shutil
 import textwrap
 from pathlib import Path
@@ -193,220 +194,322 @@ def main():
     args = parser.parse_args()
     debug_log(args, "Arguments parsed:", args)
 
-    # 1. Get system message
-    debug_log(args, "Getting system message...")
-    system_message = get_system_message(
-        args.system, default_prompt_filename="main-shell_agent.md"
-    )
-    debug_log(args, "System message source:", args.system or "default path")
-    debug_log(
-        args,
-        "System message content (first 100 chars):\n",
-        textwrap.shorten(system_message, width=100, placeholder="..."),
+    session_name = None  # Will be set to <time_ns>
+    original_exit_code = (
+        0  # Stores the first critical error's exit code, or 0 for success
     )
 
-    # 2. Get user instruction
-    debug_log(args, "Getting user instruction...")
-    instruction = get_user_instruction(args.message)
-    debug_log(
-        args, "User instruction source:", "args.message" if args.message else "$EDITOR"
-    )
-    debug_log(
-        args,
-        "User instruction content (first 100 chars):\n",
-        textwrap.shorten(instruction, width=100, placeholder="..."),
-    )
+    try:
+        # 0. Create headlesh session
+        current_time_ns = time.time_ns()
+        session_name = str(current_time_ns)
+        debug_log(args, f"Attempting to create headlesh session: {session_name}")
 
-    # 3. Create a new chat conversation
-    debug_log(args, "Creating new chat conversation via hnt-chat new...")
-    hnt_chat_new_cmd = ["hnt-chat", "new"]
-    debug_log(args, "hnt-chat new command:", hnt_chat_new_cmd)
-    hnt_chat_new_result = run_command(
-        hnt_chat_new_cmd, capture_output=True, check=True, text=True
-    )
-    conversation_dir = hnt_chat_new_result.stdout.strip()
-    if not conversation_dir or not os.path.isdir(conversation_dir):
-        print(
-            f"Error: hnt-chat new did not return a valid directory path: '{conversation_dir}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    debug_log(args, "Conversation directory created:", conversation_dir)
-
-    # 4. Add system message to conversation
-    debug_log(args, "Adding system message via hnt-chat add...")
-    hnt_chat_add_system_cmd = ["hnt-chat", "add", "system", "-c", conversation_dir]
-    debug_log(args, "hnt-chat add system command:", hnt_chat_add_system_cmd)
-    run_command(
-        hnt_chat_add_system_cmd, stdin_content=system_message, check=True, text=True
-    )
-    debug_log(args, "System message added.")
-
-    # 5. Add user request message to conversation
-    debug_log(args, "Adding user request message via hnt-chat add...")
-    hnt_chat_add_user_cmd = [
-        "hnt-chat",
-        "add",
-        "user",
-        "-c",
-        conversation_dir,
-    ]  # Reused later
-    debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
-    run_command(hnt_chat_add_user_cmd, stdin_content=instruction, check=True, text=True)
-    debug_log(args, "User request message added.")
-
-    if not args.message:  # Show user query if it came from EDITOR
-        print(
-            "-" * 40, file=sys.stdout
-        )  # Print to stdout for visibility before LLM output
-        print(instruction, file=sys.stdout)
-        print("-" * 40 + "\n", file=sys.stdout)
-        sys.stdout.flush()
-
-    # 6. Run hnt-chat gen to get LLM message
-    debug_log(args, "Running hnt-chat gen...")
-    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
-    if args.model:
-        hnt_chat_gen_cmd.extend(["--model", args.model])
-        debug_log(args, "Using model:", args.model)
-    if args.debug_unsafe:
-        hnt_chat_gen_cmd.append("--debug-unsafe")
-        debug_log(args, "Passing --debug-unsafe to hnt-chat gen")
-    debug_log(args, "hnt-chat gen command:", hnt_chat_gen_cmd)
-
-    gen_process_result = run_command(
-        hnt_chat_gen_cmd, capture_output=True, check=True, text=True
-    )
-    llm_message_raw = gen_process_result.stdout
-    debug_log(args, "Captured hnt-chat gen output length:", len(llm_message_raw))
-    debug_log(
-        args,
-        "LLM Raw Message (first 200 chars):\n",
-        textwrap.shorten(llm_message_raw, width=200, placeholder="..."),
-    )
-
-    if not llm_message_raw.strip():
-        debug_log(args, "hnt-chat gen output is empty or whitespace only.")
-        print(
-            "Warning: LLM produced no output. Continuing to hnt-shell-apply.",
-            file=sys.stderr,
-        )
-        # It's possible an empty response implies "do nothing" or is an error the user needs to see via hnt-shell-apply.
-
-    # 6a. Pipe LLM message to hlmd-st (if found) -> hnt-agent's stdout
-    debug_log(args, "Displaying LLM message (via syntax highlighter if enabled)...")
-    sys.stdout.write("\n--- LLM Response ---\n")  # Marker for clarity
-    if syntax_highlight_enabled:
-        debug_log(args, "Using syntax highlighter command:", effective_syntax_cmd)
-        try:
-            highlight_process = subprocess.Popen(
-                effective_syntax_cmd,
-                stdin=subprocess.PIPE,
-                stdout=sys.stdout,
-                stderr=sys.stderr,
-                text=True,
-            )
-            highlight_process.communicate(input=llm_message_raw)
-            if highlight_process.returncode != 0:
-                debug_log(
-                    args,
-                    f"Syntax highlighter exited with code {highlight_process.returncode}",
-                )
-        except FileNotFoundError:
-            debug_log(
-                args,
-                f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found. Printing raw.",
-            )
-            print(
-                f"Warning: Syntax highlighter '{effective_syntax_cmd[0]}' not found. Printing raw output.",
-                file=sys.stderr,
-            )
-            sys.stdout.write(llm_message_raw)
-        except Exception as e:
-            debug_log(args, f"Error running syntax highlighter: {e}. Printing raw.")
-            print(
-                f"Warning: Error during syntax highlighting: {e}. Printing raw output.",
-                file=sys.stderr,
-            )
-            sys.stdout.write(llm_message_raw)
-    else:
-        sys.stdout.write(llm_message_raw)
-
-    if llm_message_raw and not llm_message_raw.endswith("\n"):
-        sys.stdout.write("\n")  # Ensure newline for separation
-    sys.stdout.flush()
-
-    print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
-
-    # 7. Pipe the raw LLM message to hnt-shell-apply and capture its output
-    debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
-    hnt_shell_apply_cmd = ["hnt-shell-apply"]
-    debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
-
-    shell_apply_process = run_command(
-        hnt_shell_apply_cmd,
-        stdin_content=llm_message_raw,
-        capture_output=True,  # We need its stdout and stderr
-        check=False,  # Manually check returncode
-        text=True,
-    )
-
-    shell_apply_stdout = shell_apply_process.stdout
-    shell_apply_stderr = shell_apply_process.stderr  # Useful if it fails
-    shell_apply_rc = shell_apply_process.returncode
-
-    debug_log(args, f"hnt-shell-apply exited with code {shell_apply_rc}")
-    if shell_apply_stdout:
-        debug_log(
-            args,
-            "hnt-shell-apply stdout (first 200 chars):\n",
-            textwrap.shorten(shell_apply_stdout, width=200, placeholder="..."),
-        )
-    if shell_apply_stderr:
-        debug_log(
-            args,
-            "hnt-shell-apply stderr (first 200 chars):\n",
-            textwrap.shorten(shell_apply_stderr, width=200, placeholder="..."),
-        )
-
-    # 8. Print hnt-shell-apply's stdout and stderr.
-    if shell_apply_stdout:
-        sys.stdout.write("\n--- Output from hnt-shell-apply ---\n")  # Marker
-        sys.stdout.write(shell_apply_stdout)
-        if not shell_apply_stdout.endswith("\n"):
-            sys.stdout.write("\n")
-    sys.stdout.flush()
-
-    if shell_apply_stderr:  # Print its stderr to our stderr
-        sys.stderr.write("\n--- Error output from hnt-shell-apply ---\n")  # Marker
-        sys.stderr.write(shell_apply_stderr)
-        if not shell_apply_stderr.endswith("\n"):
-            sys.stderr.write("\n")
-    sys.stderr.flush()
-
-    # 8b. Add hnt-shell-apply's stdout to the conversation as another user message
-    # Per request: "add it (stdout of hnt-shell-apply) to the same conversation as another user message"
-    # This should happen regardless of hnt-shell-apply's success, as errors might be useful context.
-    if shell_apply_stdout:  # Only add if there IS stdout
-        debug_log(args, "Adding hnt-shell-apply stdout to chat conversation...")
+        # run_command will print errors and sys.exit if headlesh create fails or 'headlesh' is not found.
+        # This SystemExit will be caught by the `except SystemExit as e:` block below.
         run_command(
-            hnt_chat_add_user_cmd,  # Reusing the command list from earlier
-            stdin_content=shell_apply_stdout,
-            check=True,  # This 'hnt-chat add' operation should ideally succeed
+            ["headlesh", "create", session_name],
+            capture_output=True,  # Discard stdout by not using the return value's stdout
+            check=True,  # Panic (sys.exit) on non-zero exit code or if command not found
             text=True,
         )
-        debug_log(args, "hnt-shell-apply stdout added to chat.")
-    else:
-        debug_log(args, "hnt-shell-apply produced no stdout; not adding to chat.")
+        debug_log(args, f"Headlesh session {session_name} created successfully.")
 
-    if shell_apply_rc != 0:
+        # 1. Get system message
+        debug_log(args, "Getting system message...")
+        system_message = get_system_message(
+            args.system, default_prompt_filename="main-shell_agent.md"
+        )
+        debug_log(args, "System message source:", args.system or "default path")
+        debug_log(
+            args,
+            "System message content (first 100 chars):\n",
+            textwrap.shorten(system_message, width=100, placeholder="..."),
+        )
+
+        # 2. Get user instruction
+        debug_log(args, "Getting user instruction...")
+        instruction = get_user_instruction(args.message)
+        debug_log(
+            args,
+            "User instruction source:",
+            "args.message" if args.message else "$EDITOR",
+        )
+        debug_log(
+            args,
+            "User instruction content (first 100 chars):\n",
+            textwrap.shorten(instruction, width=100, placeholder="..."),
+        )
+
+        # 3. Create a new chat conversation
+        debug_log(args, "Creating new chat conversation via hnt-chat new...")
+        hnt_chat_new_cmd = ["hnt-chat", "new"]
+        debug_log(args, "hnt-chat new command:", hnt_chat_new_cmd)
+        hnt_chat_new_result = run_command(
+            hnt_chat_new_cmd, capture_output=True, check=True, text=True
+        )
+        conversation_dir = hnt_chat_new_result.stdout.strip()
+        if not conversation_dir or not os.path.isdir(conversation_dir):
+            # This path should ideally be caught by run_command if hnt-chat new has issues,
+            # but as a safeguard for unexpected output format:
+            print(
+                f"Error: hnt-chat new did not return a valid directory path: '{conversation_dir}'",
+                file=sys.stderr,
+            )
+            sys.exit(1)  # This SystemExit will be caught
+        debug_log(args, "Conversation directory created:", conversation_dir)
+
+        # 4. Add system message to conversation
+        debug_log(args, "Adding system message via hnt-chat add...")
+        hnt_chat_add_system_cmd = ["hnt-chat", "add", "system", "-c", conversation_dir]
+        debug_log(args, "hnt-chat add system command:", hnt_chat_add_system_cmd)
+        run_command(
+            hnt_chat_add_system_cmd, stdin_content=system_message, check=True, text=True
+        )
+        debug_log(args, "System message added.")
+
+        # 5. Add user request message to conversation
+        debug_log(args, "Adding user request message via hnt-chat add...")
+        hnt_chat_add_user_cmd = [
+            "hnt-chat",
+            "add",
+            "user",
+            "-c",
+            conversation_dir,
+        ]  # Reused later
+        debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
+        run_command(
+            hnt_chat_add_user_cmd, stdin_content=instruction, check=True, text=True
+        )
+        debug_log(args, "User request message added.")
+
+        if not args.message:  # Show user query if it came from EDITOR
+            print("-" * 40, file=sys.stdout)
+            print(instruction, file=sys.stdout)
+            print("-" * 40 + "\n", file=sys.stdout)
+            sys.stdout.flush()
+
+        # 6. Run hnt-chat gen to get LLM message
+        debug_log(args, "Running hnt-chat gen...")
+        hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
+        if args.model:
+            hnt_chat_gen_cmd.extend(["--model", args.model])
+            debug_log(args, "Using model:", args.model)
+        if args.debug_unsafe:
+            hnt_chat_gen_cmd.append("--debug-unsafe")
+            debug_log(args, "Passing --debug-unsafe to hnt-chat gen")
+        debug_log(args, "hnt-chat gen command:", hnt_chat_gen_cmd)
+
+        gen_process_result = run_command(
+            hnt_chat_gen_cmd, capture_output=True, check=True, text=True
+        )
+        llm_message_raw = gen_process_result.stdout
+        debug_log(args, "Captured hnt-chat gen output length:", len(llm_message_raw))
+        debug_log(
+            args,
+            "LLM Raw Message (first 200 chars):\n",
+            textwrap.shorten(llm_message_raw, width=200, placeholder="..."),
+        )
+
+        if not llm_message_raw.strip():
+            debug_log(args, "hnt-chat gen output is empty or whitespace only.")
+            print(
+                "Warning: LLM produced no output. Continuing to hnt-shell-apply.",
+                file=sys.stderr,
+            )
+
+        # 6a. Pipe LLM message to hlmd-st (if found) -> hnt-agent's stdout
+        debug_log(args, "Displaying LLM message (via syntax highlighter if enabled)...")
+        sys.stdout.write("\n--- LLM Response ---\n")
+        if syntax_highlight_enabled:
+            debug_log(args, "Using syntax highlighter command:", effective_syntax_cmd)
+            try:
+                highlight_process = subprocess.Popen(
+                    effective_syntax_cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=sys.stdout,
+                    stderr=sys.stderr,
+                    text=True,
+                )
+                highlight_process.communicate(input=llm_message_raw)
+                if highlight_process.returncode != 0:
+                    debug_log(
+                        args,
+                        f"Syntax highlighter exited with code {highlight_process.returncode}",
+                    )
+            except FileNotFoundError:
+                debug_log(
+                    args,
+                    f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found. Printing raw.",
+                )
+                print(
+                    f"Warning: Syntax highlighter '{effective_syntax_cmd[0]}' not found. Printing raw output.",
+                    file=sys.stderr,
+                )
+                sys.stdout.write(llm_message_raw)
+            except Exception as e:
+                debug_log(args, f"Error running syntax highlighter: {e}. Printing raw.")
+                print(
+                    f"Warning: Error during syntax highlighting: {e}. Printing raw output.",
+                    file=sys.stderr,
+                )
+                sys.stdout.write(llm_message_raw)
+        else:
+            sys.stdout.write(llm_message_raw)
+
+        if llm_message_raw and not llm_message_raw.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+        print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
+
+        # 7. Pipe the raw LLM message to hnt-shell-apply and capture its output
+        debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
+        # Pass session_name to hnt-shell-apply
+        hnt_shell_apply_cmd = ["hnt-shell-apply", session_name]
+        debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
+
+        shell_apply_process = run_command(
+            hnt_shell_apply_cmd,
+            stdin_content=llm_message_raw,
+            capture_output=True,
+            check=False,  # Manually check returncode
+            text=True,
+        )
+
+        shell_apply_stdout = shell_apply_process.stdout
+        shell_apply_stderr = shell_apply_process.stderr
+        shell_apply_rc = shell_apply_process.returncode
+
+        debug_log(args, f"hnt-shell-apply exited with code {shell_apply_rc}")
+        if shell_apply_stdout:
+            debug_log(
+                args,
+                "hnt-shell-apply stdout (first 200 chars):\n",
+                textwrap.shorten(shell_apply_stdout, width=200, placeholder="..."),
+            )
+        if shell_apply_stderr:
+            debug_log(
+                args,
+                "hnt-shell-apply stderr (first 200 chars):\n",
+                textwrap.shorten(shell_apply_stderr, width=200, placeholder="..."),
+            )
+
+        # 8. Print hnt-shell-apply's stdout and stderr.
+        if shell_apply_stdout:
+            sys.stdout.write("\n--- Output from hnt-shell-apply ---\n")
+            sys.stdout.write(shell_apply_stdout)
+            if not shell_apply_stdout.endswith("\n"):
+                sys.stdout.write("\n")
+        sys.stdout.flush()
+
+        if shell_apply_stderr:
+            sys.stderr.write("\n--- Error output from hnt-shell-apply ---\n")
+            sys.stderr.write(shell_apply_stderr)
+            if not shell_apply_stderr.endswith("\n"):
+                sys.stderr.write("\n")
+        sys.stderr.flush()
+
+        # 8b. Add hnt-shell-apply's stdout to the conversation
+        if shell_apply_stdout:
+            debug_log(args, "Adding hnt-shell-apply stdout to chat conversation...")
+            run_command(
+                hnt_chat_add_user_cmd,
+                stdin_content=shell_apply_stdout,
+                check=True,
+                text=True,
+            )
+            debug_log(args, "hnt-shell-apply stdout added to chat.")
+        else:
+            debug_log(args, "hnt-shell-apply produced no stdout; not adding to chat.")
+
+        if shell_apply_rc != 0:
+            print(
+                f"\nError: hnt-shell-apply exited with code {shell_apply_rc}.",
+                file=sys.stderr,
+            )
+            original_exit_code = shell_apply_rc  # Store exit code, but don't exit yet
+        else:
+            debug_log(args, "hnt-shell-apply finished successfully.")
+            # original_exit_code remains 0 if all good so far
+
+    except SystemExit as e:
+        # Catches sys.exit calls from run_command (e.g., if hnt-chat or headlesh create fails)
+        # or any other explicit sys.exit within the try block.
+        original_exit_code = e.code if e.code is not None else 1
+        # The function that called sys.exit (e.g. run_command) should have already printed an error.
+    except Exception as e:
+        # Catch any other unexpected exceptions from the main logic
         print(
-            f"\nError: hnt-shell-apply exited with code {shell_apply_rc}.",
+            f"An unexpected error occurred in hnt-agent's main logic: {e}",
             file=sys.stderr,
         )
-        sys.exit(shell_apply_rc)
-    else:
-        debug_log(args, "hnt-shell-apply finished successfully.")
+        # For more detailed debugging, one might add:
+        # import traceback
+        # traceback.print_exc(file=sys.stderr)
+        original_exit_code = 1  # General error code
+    finally:
+        if session_name:  # Only attempt to exit if session_name was set
+            debug_log(args, f"Attempting to exit headlesh session: {session_name}")
+            try:
+                # Call subprocess.run directly to have full control over error handling,
+                # avoiding run_command's default sys.exit behavior in this cleanup phase.
+                headlesh_exit_cmd = ["headlesh", "exit", session_name]
+                debug_log(args, f"Executing: {' '.join(headlesh_exit_cmd)}")
+
+                exit_proc = subprocess.run(
+                    headlesh_exit_cmd,
+                    capture_output=True,  # Capture to check, but discard output unless error
+                    text=True,
+                    check=False,  # Manually check returncode
+                )
+
+                if exit_proc.returncode != 0:
+                    # Log error if headlesh exit fails
+                    error_message = f"Error: 'headlesh exit {session_name}' failed with exit code {exit_proc.returncode}."
+                    print(error_message, file=sys.stderr)
+                    # headlesh might output useful info to stdout or stderr even on failure
+                    if exit_proc.stdout and exit_proc.stdout.strip():
+                        print(
+                            f"Stdout from 'headlesh exit':\n{exit_proc.stdout.strip()}",
+                            file=sys.stderr,
+                        )
+                    if exit_proc.stderr and exit_proc.stderr.strip():
+                        print(
+                            f"Stderr from 'headlesh exit':\n{exit_proc.stderr.strip()}",
+                            file=sys.stderr,
+                        )
+
+                    # If the main operations were successful (original_exit_code == 0),
+                    # but closing headlesh failed, this failure becomes the script's exit code.
+                    if original_exit_code == 0:
+                        original_exit_code = exit_proc.returncode
+                else:
+                    debug_log(
+                        args, f"Headlesh session {session_name} exited successfully."
+                    )
+
+            except FileNotFoundError:
+                # This occurs if 'headlesh' command is not found on the system.
+                print(
+                    f"Error: 'headlesh' command not found. Could not cleanly exit session {session_name}.",
+                    file=sys.stderr,
+                )
+                if original_exit_code == 0:
+                    original_exit_code = 1  # Mark as error if this was the only problem
+            except Exception as e_exit:
+                # Catch any other unexpected error during the headlesh exit attempt
+                print(
+                    f"An unexpected error occurred while trying to exit headlesh session '{session_name}': {e_exit}",
+                    file=sys.stderr,
+                )
+                if original_exit_code == 0:
+                    original_exit_code = 1  # Mark as error
+
+        # Finally, exit with the determined overall exit code.
+        if original_exit_code != 0:
+            sys.exit(original_exit_code)
+        # If original_exit_code is still 0, script exits successfully (implicitly returns 0).
 
 
 if __name__ == "__main__":
