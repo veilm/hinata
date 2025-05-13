@@ -11,8 +11,18 @@ then
 	cd -
 fi
 
+prompts_dir=$XDG_CONFIG_HOME/hinata/prompts
 bin=/usr/local/bin
 
+mkdir -p "$prompts_dir"
+cp prompts/* "$prompts_dir"
+echo "build: installed prompts in $prompts_dir"
+
 chmod +x ./hnt-shell-apply.py
+chmod +x ./hnt-agent.py
+
 sudo cp ./hnt-shell-apply.py "$bin/hnt-shell-apply"
 echo "build: installed hnt-shell-apply in $bin/"
+
+sudo cp ./hnt-agent.py "$bin/hnt-agent"
+echo "build: installed hnt-agent in $bin/"
