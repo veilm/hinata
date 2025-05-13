@@ -126,16 +126,20 @@ def main():
 
     if args.always_streams or headlesh_stdout:  # Note: empty string "" is Falsy
         output_parts.append("<stdout>")
-        output_parts.append(
-            headlesh_stdout
-        )  # Retain original newlines from headlesh output
+        # Remove a single trailing newline, if present, to avoid duplication by joiner
+        processed_stdout = headlesh_stdout
+        if processed_stdout.endswith("\n"):
+            processed_stdout = processed_stdout[:-1]
+        output_parts.append(processed_stdout)
         output_parts.append("</stdout>")
 
     if args.always_streams or headlesh_stderr:  # Note: empty string "" is Falsy
         output_parts.append("<stderr>")
-        output_parts.append(
-            headlesh_stderr
-        )  # Retain original newlines from headlesh output
+        # Remove a single trailing newline, if present, to avoid duplication by joiner
+        processed_stderr = headlesh_stderr
+        if processed_stderr.endswith("\n"):
+            processed_stderr = processed_stderr[:-1]
+        output_parts.append(processed_stderr)
         output_parts.append("</stderr>")
 
     output_parts.append("<exit_status>")
