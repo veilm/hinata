@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Change to directory where build script is located
+cd "$(dirname "$0")"
+
 gcc \
 	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
 	headlesh.c -o ./headlesh
