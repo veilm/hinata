@@ -424,7 +424,8 @@ void start_server_mode(const char* session_id, const char* shell_program_arg) {
 	if (chdir("/") < 0) {
 		print_error_and_exit("Session Server: chdir failed");
 	}
-	umask(0);
+	umask(0022);  // Set a more restrictive umask (rwxr-xr-x for dirs, rw-r--r--
+	              // for files)
 
 	// Redirect standard file descriptors for the daemon
 	int log_fd =
