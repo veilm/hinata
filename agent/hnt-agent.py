@@ -135,6 +135,176 @@ def debug_log(args, *print_args, **print_kwargs):
         print("[DEBUG]", *print_args, file=sys.stderr, **print_kwargs)
 
 
+def stream_and_capture_llm_output(
+    args, gen_cmd, use_syntax_highlight, highlighter_cmd, description="LLM"
+):
+    """
+    Runs the LLM generation command, streams its output to stdout (optionally via a syntax highlighter)
+    and captures the full output.
+    """
+    sys.stdout.write(f"\n--- {description} Response ---\n")
+    sys.stdout.flush()
+
+    output_capture = io.StringIO()
+    gen_process = None  # Initialize for finally block
+    highlighter_process = None  # Initialize for finally block
+
+    # This flag tracks if highlighting is active for the current stream attempt
+    current_stream_highlight_active = use_syntax_highlight
+
+    try:
+        gen_process = subprocess.Popen(
+            gen_cmd,
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr,  # Pipe generator's stderr directly to terminal
+            text=True,
+            bufsize=1,  # Line-buffered
+        )
+        debug_log(
+            args,
+            f"{description} generation process ({' '.join(gen_cmd)}) started. PID: {gen_process.pid}",
+        )
+
+        if current_stream_highlight_active and highlighter_cmd:
+            debug_log(
+                args,
+                f"Attempting to start syntax highlighter: {' '.join(highlighter_cmd)}",
+            )
+            try:
+                highlighter_process = subprocess.Popen(
+                    highlighter_cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=sys.stdout,  # Highlighter output goes to terminal
+                    stderr=sys.stderr,  # Highlighter stderr goes to terminal
+                    text=True,
+                )
+                debug_log(
+                    args,
+                    f"Syntax highlighter process started. PID: {highlighter_process.pid}",
+                )
+            except FileNotFoundError:
+                print(
+                    f"Warning: Syntax highlighter command '{highlighter_cmd[0]}' not found. Printing raw for this response.",
+                    file=sys.stderr,
+                )
+                debug_log(
+                    args,
+                    f"Syntax highlighter '{highlighter_cmd[0]}' not found, falling back to raw.",
+                )
+                current_stream_highlight_active = False
+            except Exception as e_hl_start:
+                print(
+                    f"Warning: Error starting syntax highlighter: {e_hl_start}. Printing raw for this response.",
+                    file=sys.stderr,
+                )
+                debug_log(
+                    args,
+                    f"Error starting syntax highlighter: {e_hl_start}, falling back to raw.",
+                )
+                current_stream_highlight_active = False
+
+        # Streaming loop
+        if gen_process.stdout:
+            for line in iter(gen_process.stdout.readline, ""):
+                output_capture.write(line)
+                if (
+                    current_stream_highlight_active
+                    and highlighter_process
+                    and highlighter_process.stdin
+                ):
+                    try:
+                        highlighter_process.stdin.write(line)
+                        highlighter_process.stdin.flush()
+                    except BrokenPipeError:
+                        print(
+                            "Warning: Syntax highlighter pipe broken. Printing raw for remainder of this response.",
+                            file=sys.stderr,
+                        )
+                        debug_log(
+                            args,
+                            "Syntax highlighter pipe broken, falling back to raw for remainder.",
+                        )
+                        current_stream_highlight_active = False
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                    except Exception as e_hl_write:
+                        print(
+                            f"Warning: Error writing to syntax highlighter: {e_hl_write}. Printing raw for remainder of this response.",
+                            file=sys.stderr,
+                        )
+                        debug_log(
+                            args,
+                            f"Error writing to syntax highlighter: {e_hl_write}, falling back to raw.",
+                        )
+                        current_stream_highlight_active = False
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                else:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+            gen_process.stdout.close()  # Close the pipe after reading everything
+
+        # Wait for generator process first
+        gen_rc = gen_process.wait()
+
+        # Clean up highlighter process
+        if highlighter_process:
+            if highlighter_process.stdin:
+                try:
+                    highlighter_process.stdin.close()
+                except (
+                    IOError,
+                    BrokenPipeError,
+                ):  # Can happen if already closed or broken
+                    pass
+            highlighter_rc = highlighter_process.wait()
+            if highlighter_rc != 0:
+                # This is a warning, as hnt-chat gen might have succeeded.
+                print(
+                    f"Warning: Syntax highlighter exited with code {highlighter_rc}",
+                    file=sys.stderr,
+                )
+                debug_log(
+                    args, f"Syntax highlighter exited with code {highlighter_rc}."
+                )
+
+        if gen_rc != 0:
+            # Stderr from gen_process should have already been printed by Popen's stderr=sys.stderr
+            # This print adds context about which command failed.
+            print(
+                f"\nError: {description} generation command ('{' '.join(gen_cmd)}') failed with exit code {gen_rc}.",
+                file=sys.stderr,
+            )
+            sys.exit(gen_rc)  # Propagate error, caught by main try/except SystemExit
+
+    except FileNotFoundError:  # For gen_process Popen itself failing
+        print(
+            f"Error: Command for {description} generation not found: {gen_cmd[0]}",
+            file=sys.stderr,
+        )
+        if gen_process and gen_process.poll() is None:
+            gen_process.terminate()
+        if highlighter_process and highlighter_process.poll() is None:
+            highlighter_process.terminate()
+        sys.exit(1)
+    except (
+        Exception
+    ) as e:  # Other unexpected errors during Popen/streaming for gen_process
+        print(
+            f"An unexpected error occurred during {description} generation: {e}",
+            file=sys.stderr,
+        )
+        if gen_process and gen_process.poll() is None:
+            gen_process.terminate()
+        if highlighter_process and highlighter_process.poll() is None:
+            highlighter_process.terminate()
+        sys.exit(1)
+
+    captured_text = output_capture.getvalue()
+    output_capture.close()
+    return captured_text
+
+
 def main():
     syntax_highlight_enabled = False
     effective_syntax_cmd = None
@@ -305,10 +475,13 @@ def main():
             debug_log(args, "Passing --debug-unsafe to hnt-chat gen")
         debug_log(args, "hnt-chat gen command (initial):", hnt_chat_gen_cmd)
 
-        gen_process_result = run_command(
-            hnt_chat_gen_cmd, capture_output=True, check=True, text=True
-        )  # sys.exit on error, caught by outer try/except
-        llm_message_raw = gen_process_result.stdout
+        llm_message_raw = stream_and_capture_llm_output(
+            args,
+            hnt_chat_gen_cmd,
+            syntax_highlight_enabled,
+            effective_syntax_cmd,
+            description="Initial LLM",
+        )
         debug_log(
             args, "Captured hnt-chat gen output length (initial):", len(llm_message_raw)
         )
@@ -326,61 +499,13 @@ def main():
             )
             # original_exit_code remains 0, script will exit cleanly via finally.
         else:
+            # LLM Message has already been streamed and displayed.
+            # Print conversation directory after the LLM response.
+            print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
+
             # Start the interaction loop
             while True:
-                # Display current LLM message (adapting original 6a)
-                debug_log(
-                    args,
-                    "Displaying LLM message (via syntax highlighter if enabled)...",
-                )
-                sys.stdout.write("\n--- LLM Response ---\n")
-                if syntax_highlight_enabled:
-                    debug_log(
-                        args, "Using syntax highlighter command:", effective_syntax_cmd
-                    )
-                    try:
-                        highlight_process = subprocess.Popen(
-                            effective_syntax_cmd,
-                            stdin=subprocess.PIPE,
-                            stdout=sys.stdout,
-                            stderr=sys.stderr,
-                            text=True,
-                        )
-                        highlight_process.communicate(input=llm_message_raw)
-                        if highlight_process.returncode != 0:
-                            debug_log(
-                                args,
-                                f"Syntax highlighter exited with code {highlight_process.returncode}",
-                            )
-                    except FileNotFoundError:
-                        debug_log(
-                            args,
-                            f"Syntax highlighter command '{effective_syntax_cmd[0]}' not found. Printing raw.",
-                        )
-                        print(
-                            f"Warning: Syntax highlighter '{effective_syntax_cmd[0]}' not found. Printing raw output.",
-                            file=sys.stderr,
-                        )
-                        sys.stdout.write(llm_message_raw)
-                    except Exception as e:
-                        debug_log(
-                            args,
-                            f"Error running syntax highlighter: {e}. Printing raw.",
-                        )
-                        print(
-                            f"Warning: Error during syntax highlighting: {e}. Printing raw output.",
-                            file=sys.stderr,
-                        )
-                        sys.stdout.write(llm_message_raw)
-                else:
-                    sys.stdout.write(llm_message_raw)
-
-                if llm_message_raw and not llm_message_raw.endswith("\n"):
-                    sys.stdout.write("\n")
-                sys.stdout.flush()
-                print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
-
-                # Confirmation before running hnt-shell-apply
+                # Confirmation before running hnt-shell-apply (using current llm_message_raw)
                 if not args.no_confirm:
                     try:
                         print("")  # Ensure prompt is on a new line
@@ -509,10 +634,14 @@ def main():
                 # Generate NEXT LLM message for the next iteration
                 debug_log(args, "Generating next LLM response...")
                 # hnt_chat_gen_cmd is already defined and includes model/debug flags
-                gen_process_result = run_command(
-                    hnt_chat_gen_cmd, capture_output=True, check=True, text=True
-                )  # sys.exit on error
-                next_llm_message_raw = gen_process_result.stdout
+
+                next_llm_message_raw = stream_and_capture_llm_output(
+                    args,
+                    hnt_chat_gen_cmd,
+                    syntax_highlight_enabled,
+                    effective_syntax_cmd,
+                    description="Next LLM",
+                )
 
                 debug_log(
                     args,
@@ -536,6 +665,9 @@ def main():
                     break  # EXIT LOOP (cleanly, no more LLM response)
 
                 llm_message_raw = next_llm_message_raw  # Update for the next iteration
+                print(
+                    f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr
+                )  # After new LLM response.
                 # Loop continues
 
             # End of while True loop
