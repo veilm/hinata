@@ -377,7 +377,7 @@ def main():
     try:
         # 0. Create headlesh session
         current_time_ns = time.time_ns()
-        session_name = str(current_time_ns)
+        session_name = f"hnt-agent-{current_time_ns}"
         debug_log(args, f"Attempting to create headlesh session: {session_name}")
 
         # run_command will print errors and sys.exit if headlesh create fails or 'headlesh' is not found.
