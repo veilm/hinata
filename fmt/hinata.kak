@@ -58,7 +58,11 @@ define-command -params 1 hinata-copy %{
 }
 
 hook global BufCreate "/tmp/hnt-edit-.*\.md" hinata-auto-clear
+hook global BufCreate "/tmp/hnt-agent-.*\.md" hinata-auto-clear
 
 hook global BufClose "/tmp/hnt-edit-.*\.md" %{
+	hinata-copy %val{buffile}
+}
+hook global BufClose "/tmp/hnt-agent-.*\.md" %{
 	hinata-copy %val{buffile}
 }
