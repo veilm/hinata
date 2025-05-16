@@ -7,18 +7,18 @@
 
 # /home/oboro/src/hinata/fmt/hinata.kak
 
-hook global BufCreate "/tmp/hnt-edit-.*\.md" %{
+define-command hinata-auto-clear %{
 	hook global -once ClientCreate ".*" %{
 		exec -with-hooks "%%c"
 	}
 }
 
-hook global BufClose "/tmp/hnt-edit-.*\.md" %{
+define-command -params 1 hinata-copy %{
 	nop %sh{
 		which wl-copy || exit
 		which wl-paste || exit
 
-		content=$(cat "$kak_buffile")
+		content=$(cat "$1")
 		[ "$content" ] || exit
 		echo "$content" | grep -q "Replace this text with your instructions. Then write to this file and exit your" && exit
 
@@ -55,4 +55,10 @@ hook global BufClose "/tmp/hnt-edit-.*\.md" %{
 
 		which notify-send && notify-send "Hinata: Copied" "Content copied to clipboard.\nFile: $kak_buffile"
 	}
+}
+
+hook global BufCreate "/tmp/hnt-edit-.*\.md" hinata-auto-clear
+
+hook global BufClose "/tmp/hnt-edit-.*\.md" %{
+	hinata-copy %val{buffile}
 }
