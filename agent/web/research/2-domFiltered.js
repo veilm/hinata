@@ -18,8 +18,8 @@ function processElementNode(element) {
 	const nodeInfo = {
 		tagName: element.tagName.toLowerCase(),
 		attributes: {},
-		textNodes: [], // For direct text content (text nodes) of this element
-		children: [], // For processed child elements that form the subtree
+		// Unified list for ordered text nodes and child elements
+		childNodesProcessed: [],
 	};
 
 	// Gather element attributes
@@ -27,38 +27,39 @@ function processElementNode(element) {
 		nodeInfo.attributes[attr.name] = attr.value;
 	}
 
-	// Process child nodes
+	// Process child nodes, preserving order
 	for (const child of element.childNodes) {
 		if (child.nodeType === Node.TEXT_NODE) {
-			// Handle text nodes
 			const text = child.nodeValue.trim();
 			if (text) {
-				nodeInfo.textNodes.push(text);
+				// Add text node representation
+				nodeInfo.childNodesProcessed.push({ type: "text", value: text });
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
-			// Handle element nodes recursively
 			const childElementOutput = processElementNode(child);
 			if (childElementOutput) {
-				// Add to children if the recursive call produced a meaningful output
-				nodeInfo.children.push(childElementOutput);
+				// Add processed child element
+				nodeInfo.childNodesProcessed.push(childElementOutput);
 			}
 		}
 		// Other node types (comments, etc.) are ignored
 	}
 
 	// NEW HEURISTIC: Collapse wrapper elements
-	// An element is a wrapper if it has no direct text nodes and exactly one child element.
-	if (nodeInfo.textNodes.length === 0 && nodeInfo.children.length === 1) {
-		// Replace the wrapper with its single child.
-		// The child has already been processed by a recursive call to processElementNode,
-		// so it's already in the desired structured format (or null if it was pruned).
-		return nodeInfo.children[0];
+	// An element is a "wrapper" if its processed children list contains exactly one item,
+	// AND that item is an element node (identifiable by having a tagName property).
+	if (
+		nodeInfo.childNodesProcessed.length === 1 &&
+		nodeInfo.childNodesProcessed[0].tagName
+	) {
+		// Replace the wrapper with its single child element.
+		return nodeInfo.childNodesProcessed[0];
 	}
 
-	// Original pruning logic (now applied if not a collapsed wrapper):
-	// Only return the node representation if it contains direct text
-	// or has children that themselves contain content. This prunes empty branches.
-	if (nodeInfo.textNodes.length > 0 || nodeInfo.children.length > 0) {
+	// Pruning logic (applied if not a collapsed wrapper):
+	// Only return the node representation if its childNodesProcessed list is not empty.
+	// Empty text nodes and null/empty child elements were already filtered out before being added.
+	if (nodeInfo.childNodesProcessed.length > 0) {
 		return nodeInfo;
 	}
 
@@ -84,22 +85,41 @@ function formatNodeRecursive(node, indentLevel = 0) {
 	let output = "";
 	const indent = "\t".repeat(indentLevel);
 
-	// Current node's line
+	// Current node's line: tagName
 	output += indent + node.tagName;
-	if (node.textNodes && node.textNodes.length > 0) {
-		// Text nodes are already trimmed and non-empty from processElementNode
-		const combinedText = node.textNodes.join(" ");
+
+	// childNodesProcessed contains an ordered list of text objects and element nodes
+	const elementChildren = node.childNodesProcessed.filter((n) => n.tagName); // Element nodes have a tagName
+	const textNodeChildren = node.childNodesProcessed.filter(
+		(n) => n.type === "text",
+	); // Text nodes are {type: "text", value: "..."}
+
+	// If there are ONLY text children (no element children), display text inline with the tag
+	if (elementChildren.length === 0 && textNodeChildren.length > 0) {
+		const combinedText = textNodeChildren
+			.map((t) => t.value)
+			.join(" ")
+			.trim();
 		if (combinedText) {
-			// Still, ensure joined text is not effectively empty
+			// Ensure combined text is not empty after join/trim
 			output += ": " + combinedText;
 		}
 	}
 	output += "\n";
 
-	// Children
-	if (node.children && node.children.length > 0) {
-		for (const child of node.children) {
-			output += formatNodeRecursive(child, indentLevel + 1);
+	// If there ARE element children, iterate through ALL childNodesProcessed (both text and elements in order).
+	// Text nodes are printed as "text: value" on new lines, and element nodes are recursed.
+	// This handles mixed content like <span>text1<em>elem</em>text2</span>
+	if (elementChildren.length > 0) {
+		const childIndent = "\t".repeat(indentLevel + 1);
+		for (const child of node.childNodesProcessed) {
+			if (child.type === "text") {
+				// child.value is already trimmed and checked for emptiness in processElementNode
+				output += childIndent + "text: " + child.value + "\n";
+			} else if (child.tagName) {
+				// It's an element node
+				output += formatNodeRecursive(child, indentLevel + 1);
+			}
 		}
 	}
 	return output;
