@@ -94,6 +94,10 @@ as stdin. write syntax highlighted ver to stdout
 `llm-pack` to format source code. sends it along with user instructions to
 `hnt-chat`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
 to parse the LLM's desired edits
+- [`headlesh`](./agent/headlesh/): CLI headless shell manager. create shell
+sessions and easily read/write to them
+- (wip) [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM
+to use your shell and receive output, in a feedback loop
 
 # philosophy
 
