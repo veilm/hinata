@@ -2,6 +2,7 @@
 const defaultConfig = {
 	skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE"], // Tags to skip, in uppercase
 	escapeNewlinesInFormat: true, // Default to escape newlines in formatted string output
+	showVisibility: true, // Default to show visibility scores in formatted output
 };
 
 // Helper function to process a single element node and its children recursively
@@ -20,9 +21,38 @@ function processElementNode(element, config) {
 	// If an element is not a script/style, we attempt to process it.
 	// It will be pruned later if it and its children yield no text content.
 
+	// Calculate visibility score
+	const computedStyle = window.getComputedStyle(element);
+	let visibilityScore = 1.0;
+
+	if (
+		computedStyle.display === "none" ||
+		computedStyle.visibility === "hidden"
+	) {
+		visibilityScore = 0.0;
+	} else if (computedStyle.opacity !== undefined) {
+		const opacityValue = parseFloat(computedStyle.opacity);
+		if (!isNaN(opacityValue)) {
+			visibilityScore = Math.max(0, Math.min(1, opacityValue)); // Clamp between 0 and 1
+		}
+	}
+	// If an element is determined to be fully invisible by CSS, skip processing its children.
+	// This is a heuristic; full invisibility can be complex (e.g. zero size, clipped).
+	// For now, display:none or visibility:hidden in computed style are strong indicators.
+	// An opacity of 0 also makes it "invisible" in terms of visual impact.
+	if (visibilityScore === 0.0) {
+		// Although we calculate the score, if it's 0 we might decide not to renderdetailed info.
+		// For now, let's proceed and include it in the tree, as it *exists* in DOM.
+		// The formatter can later decide what to do with visibilityScore=0 nodes.
+		// However, if it's truly display:none, it's reasonable to prune it early.
+		// Let's stick to the original pruning logic (by tag or empty content) for now,
+		// but attach the score. If the element itself is display:none, its score will be 0.
+	}
+
 	const nodeInfo = {
 		tagName: element.tagName.toLowerCase(),
 		attributes: {},
+		visibilityScore: visibilityScore, // Store the calculated visibility score
 		// Unified list for ordered text nodes and child elements
 		childNodesProcessed: [],
 	};
@@ -142,11 +172,19 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 	}
 	output += "\n";
 
+	const childIndent = "\t".repeat(indentLevel + 1);
+
+	// If configured, show visibility score
+	if (config.showVisibility && node.hasOwnProperty("visibilityScore")) {
+		// Format to one decimal place, or more if needed, but avoid excessive precision.
+		const visScoreFormatted = parseFloat(node.visibilityScore.toFixed(2));
+		output += childIndent + "vis: " + visScoreFormatted + "\n";
+	}
+
 	// If there ARE element children, iterate through ALL childNodesProcessed (both text and elements in order).
 	// Text nodes are printed as "text: value" on new lines, and element nodes are recursed.
 	// This handles mixed content like <span>text1<em>elem</em>text2</span>
 	if (elementChildren.length > 0) {
-		const childIndent = "\t".repeat(indentLevel + 1);
 		for (const child of node.childNodesProcessed) {
 			if (child.type === "text") {
 				// child.value is already trimmed and checked for emptiness in processElementNode
@@ -167,7 +205,8 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 // Function to format the entire content tree into a string
 function formatTreeToString(tree, userFormatConfig = {}) {
 	if (!tree) return "";
-	const config = { ...defaultConfig, ...userFormatConfig };
+	// Ensure that defaultConfig (which now contains showVisibility) is used as a base
+	const config = { ...defaultConfig, ...userFormatConfig }; // Merge user config with defaults
 	return formatNodeRecursive(tree, 0, config); // Start recursion with the root of the tree, pass config
 }
 
