@@ -14,3 +14,4 @@ gcc \
 	escape.c -o ./hnt-escape
 
 sudo cp ./hnt-llm ./hnt-escape /usr/local/bin/
+echo "llm/build: compiled hnt-llm and hnt-escape"

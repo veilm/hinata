@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 if ! which headlesh > /dev/null 2>&1
 then
-	echo "build: headlesh not found. compiling..."
+	echo "agent/build: headlesh not found. compiling..."
 	cd headlesh
 	./build
 	cd -
@@ -16,13 +16,13 @@ bin=/usr/local/bin
 
 mkdir -p "$prompts_dir"
 cp prompts/* "$prompts_dir"
-echo "build: installed prompts in $prompts_dir"
+echo "agent/build: installed prompts in $prompts_dir"
 
 chmod +x ./hnt-shell-apply.py
 chmod +x ./hnt-agent.py
 
 sudo cp ./hnt-shell-apply.py "$bin/hnt-shell-apply"
-echo "build: installed hnt-shell-apply in $bin/"
+echo "agent/build: installed hnt-shell-apply in $bin/"
 
 sudo cp ./hnt-agent.py "$bin/hnt-agent"
-echo "build: installed hnt-agent in $bin/"
+echo "agent/build: installed hnt-agent in $bin/"

@@ -3,7 +3,7 @@ cd "$(dirname "$0")"
 
 if ! which hnt-llm > /dev/null 2>&1
 then
-	echo "build: hnt-llm not found. compiling..."
+	echo "chat/build: hnt-llm not found. compiling..."
 	cd ../llm
 	./build
 	cd -
@@ -11,4 +11,4 @@ fi
 
 chmod +x ./hnt-chat.py
 sudo cp ./hnt-chat.py /usr/local/bin/hnt-chat
-echo "build: installed hnt-chat"
+echo "chat/build: installed hnt-chat"

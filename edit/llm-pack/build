@@ -8,3 +8,4 @@ gcc \
 	main.c -o ./llm-pack
 
 sudo cp ./llm-pack /usr/local/bin/
+echo "llm-pack/build: compiled llm-pack"
