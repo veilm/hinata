@@ -1,8 +1,12 @@
+// Default configuration for DOM processing
+const defaultConfig = {
+	skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE"], // Tags to skip, in uppercase
+};
+
 // Helper function to process a single element node and its children recursively
-function processElementNode(element) {
-	// Skip script and style elements as they don't represent visible content
-	// Note: The original selector had a typo "sytle" which is corrected here.
-	if (element.tagName === "SCRIPT" || element.tagName === "STYLE") {
+function processElementNode(element, config) {
+	// Skip elements whose tag names are in the config's skippedTags list
+	if (config.skippedTags.includes(element.tagName)) {
 		return null;
 	}
 
@@ -36,7 +40,7 @@ function processElementNode(element) {
 				nodeInfo.childNodesProcessed.push({ type: "text", value: text });
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
-			const childElementOutput = processElementNode(child);
+			const childElementOutput = processElementNode(child, config); // Pass config recursively
 			if (childElementOutput) {
 				// Add processed child element
 				nodeInfo.childNodesProcessed.push(childElementOutput);
@@ -68,7 +72,9 @@ function processElementNode(element) {
 }
 
 // Main function to extract page content as a tree structure
-function extractPageContentTree() {
+function extractPageContentTree(userConfig = {}) {
+	const config = { ...defaultConfig, ...userConfig }; // Merge user config with defaults
+
 	// Start processing from document.body, as it's the typical container for page content
 	if (!document.body) {
 		console.warn(
@@ -77,7 +83,7 @@ function extractPageContentTree() {
 		return null;
 	}
 	// The root of our content tree will be the processed body element
-	return processElementNode(document.body);
+	return processElementNode(document.body, config);
 }
 
 // Helper function to format a node and its children recursively for string output
@@ -202,7 +208,10 @@ function displayTreeOverlay(formattedTreeString) {
 }
 
 function llmPack() {
-	window.contentTree = extractPageContentTree();
+	// Example of using custom config:
+	// const customConfig = { skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE", "HEADER", "FOOTER"] };
+	// window.contentTree = extractPageContentTree(customConfig);
+	window.contentTree = extractPageContentTree(); // Uses defaultConfig by default
 	window.formattedTree = formatTreeToString(contentTree);
 	console.log(location.href, ": ~", formattedTree.length / 4, "tokens");
 }
