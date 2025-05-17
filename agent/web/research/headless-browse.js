@@ -56,11 +56,45 @@ function processElementNode(element, config) {
 		visibilityScore: visibilityScore, // Store the calculated visibility score
 		// Unified list for ordered text nodes and child elements
 		childNodesProcessed: [],
+		meaningfulReason: null, // Will store why this node is important if not just for text
 	};
 
 	// Gather element attributes
 	for (const attr of element.attributes) {
 		nodeInfo.attributes[attr.name] = attr.value;
+	}
+
+	// Check if the element is "meaningful" and set a reason
+	const tagNameUpper = element.tagName.toUpperCase();
+	const meaningfulTagHandlers = {
+		INPUT: (attrs) =>
+			`input type: ${attrs.type || "text"}` +
+			(attrs.name ? `, name: "${attrs.name}"` : "") +
+			(attrs.value ? `, value: "${attrs.value}"` : "") +
+			(attrs.placeholder ? `, placeholder: "${attrs.placeholder}"` : ""),
+		TEXTAREA: (attrs) =>
+			`textarea` +
+			(attrs.name ? `, name: "${attrs.name}"` : "") +
+			(attrs.placeholder ? ` (placeholder: "${attrs.placeholder}")` : ""),
+		BUTTON: (attrs) => `button` + (attrs.name ? `, name: "${attrs.name}"` : ""),
+		SELECT: (attrs) => `select` + (attrs.name ? `, name: "${attrs.name}"` : ""),
+		A: (attrs) => (attrs.href ? `link to: ${attrs.href}` : `link`),
+		IMG: (attrs) =>
+			`image` +
+			(attrs.alt
+				? ` (alt: "${attrs.alt}")`
+				: attrs.src
+					? ` (src: ${attrs.src})`
+					: ""),
+		VIDEO: (attrs) => `video` + (attrs.src ? ` (src: ${attrs.src})` : ""),
+		AUDIO: (attrs) => `audio` + (attrs.src ? ` (src: ${attrs.src})` : ""),
+		LABEL: (attrs) => `label` + (attrs.for ? ` (for: ${attrs.for})` : ""),
+	};
+
+	if (meaningfulTagHandlers[tagNameUpper]) {
+		nodeInfo.meaningfulReason = meaningfulTagHandlers[tagNameUpper](
+			nodeInfo.attributes,
+		);
 	}
 
 	// Process child nodes, preserving order
@@ -117,9 +151,9 @@ function processElementNode(element, config) {
 	}
 
 	// Pruning logic (applied if not a collapsed wrapper):
-	// Only return the node representation if its childNodesProcessed list is not empty.
+	// Only return the node representation if its childNodesProcessed list is not empty OR it has a meaningfulReason.
 	// Empty text nodes and null/empty child elements were already filtered out before being added.
-	if (nodeInfo.childNodesProcessed.length > 0) {
+	if (nodeInfo.childNodesProcessed.length > 0 || nodeInfo.meaningfulReason) {
 		return nodeInfo;
 	}
 
@@ -155,8 +189,12 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 	let output = "";
 	const indent = "\t".repeat(indentLevel);
 
-	// Current node's line: tagName
-	output += indent + node.tagName;
+	// Build the main line for the current node
+	let mainLine = indent + node.tagName;
+
+	if (node.meaningfulReason) {
+		mainLine += " [" + node.meaningfulReason + "]";
+	}
 
 	// childNodesProcessed contains an ordered list of text objects and element nodes
 	const elementChildren = node.childNodesProcessed.filter((n) => n.tagName); // Element nodes have a tagName
@@ -176,10 +214,10 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 			if (config.escapeNewlinesInFormat) {
 				textToDisplay = textToDisplay.replace(/\n/g, "\\n");
 			}
-			output += ": " + textToDisplay;
+			mainLine += ": " + textToDisplay;
 		}
 	}
-	output += "\n";
+	output += mainLine + "\n";
 
 	const childIndent = "\t".repeat(indentLevel + 1);
 
