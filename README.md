@@ -6,7 +6,70 @@
 agentic AI pair programming in your terminal. except minimalist, modular, extensible
 </p>
 
-# architecture
+# quick tour
+### [`hnt-llm`](./llm/)
+basic LLM API in/out. significantly faster startup than openai-python
+```sh
+$ export OPENROUTER_API_KEY=...
+$ echo "hello 😊" | hnt-llm --model openrouter/deepseek/deepseek-chat-v3-0324:free
+Hello! 😊 How can I brighten your day today?
+```
+
+### [`hnt-chat`](./chat/)
+chat history management using plaintext files and conversation directories
+```sh
+$ conversation=$(hnt-chat new)
+$ echo "please write a poem about the user's given theme" | hnt-chat add system
+$ echo "iteration" | hnt-chat add user
+
+$ ls $conversation
+1747512247695244498-system.md
+1747512250714528664-user.md
+
+$ hnt-chat generate --write --model openrouter/deepseek/deepseek-chat-v3-0324:free
+**Iteration**  
+
+Again, the brushstroke on the page,  
+A line retraced, a word replayed.
+...
+```
+
+### [`hnt-edit`](./edit)
+simple hnt-chat wrapper for editing source code or other plaintext files
+
+```sh
+$ export DEEPSEEK_API_KEY=...
+$ model="deepseek/deepseek-chat"
+$ message="please enable debugging in the config"
+$ files=$(fd -g "*.h")
+
+# (This will have syntax highlighting in your terminal)
+$ hnt-edit -m "$message" --model "$model" $files
+I'll enable debugging by changing the DEBUG flag from 0 to 1 in util.h. Here's
+the edit:
+...
+# (V3.1's output cropped for brevity)
+
+$ git diff
+diff --git a/src/util.h b/src/util.h
+index badefee..5eb3e0d 100644
+--- a/src/util.h
++++ b/src/util.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#define DEBUG 0
++#define DEBUG 1
+ 
+ #define debug(fmt, ...) \
+ 	do { if (DEBUG) fprintf(stderr, "%-20s " fmt, \
+```
+
+in my (inevitably biased) experience, the [included system
+prompt](https://raw.githubusercontent.com/michaelskyba/hinata/refs/heads/main/edit/prompts/main-file_edit.md)'s
+editing performance is higher than Aider's, as of Apr 2025
+
+# full architecture
 - [`hnt-llm`](./llm/): simple, performant text backend. pipe text input in,
 receive LLM text response out
 - [`hnt-chat`](./chat/): wrapper around `hnt-llm` for managing conversations and
