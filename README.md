@@ -69,6 +69,16 @@ in my (inevitably biased) experience, the [included system
 prompt](https://raw.githubusercontent.com/michaelskyba/hinata/refs/heads/main/edit/prompts/main-file_edit.md)'s
 editing performance is higher than Aider's, as of Apr 2025
 
+# build everything
+```sh
+git clone https://github.com/michaelskyba/hinata
+cd hinata
+./build
+```
+
+- dependencies (you likely already have them): C libjasson and libcurl
+- optional dependencies: uv (pygments syntax highlighting)
+
 # full architecture
 - [`hnt-llm`](./llm/): simple, performant text backend. pipe text input in,
 receive LLM text response out
