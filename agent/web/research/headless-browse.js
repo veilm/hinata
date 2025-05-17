@@ -2,7 +2,8 @@
 const defaultConfig = {
 	skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE"], // Tags to skip, in uppercase
 	escapeNewlinesInFormat: true, // Default to escape newlines in formatted string output
-	showVisibility: true, // Default to show visibility scores in formatted output
+	showVisibility: false, // Default to show visibility scores in formatted output
+	visibilityThreshold: 0.1, // Default visibility threshold for inclusion in formatted output
 };
 
 // Helper function to process a single element node and its children recursively
@@ -143,6 +144,14 @@ function extractPageContentTree(userConfig = {}) {
 
 // Helper function to format a node and its children recursively for string output
 function formatNodeRecursive(node, indentLevel = 0, config) {
+	// If the node's visibility score is below the threshold, skip rendering it and its children.
+	if (
+		node.hasOwnProperty("visibilityScore") &&
+		node.visibilityScore < config.visibilityThreshold
+	) {
+		return ""; // Exclude this node and its entire branch
+	}
+
 	let output = "";
 	const indent = "\t".repeat(indentLevel);
 
