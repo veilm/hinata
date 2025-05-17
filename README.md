@@ -1,5 +1,12 @@
-# architecture
+<p align="center">
+<img src="https://raw.githubusercontent.com/michaelskyba/michaelskyba.github.io/refs/heads/master/static/1747511209-hinata-simsun.png" width="217">
+</p>
 
+<p align="center">
+agentic AI pair programming in your terminal. except minimalist, modular, extensible
+</p>
+
+# architecture
 - [`hnt-llm`](./llm/): simple, performant text backend. pipe text input in,
 receive LLM text response out
 - [`hnt-chat`](./chat/): wrapper around `hnt-llm` for managing conversations and
@@ -15,15 +22,15 @@ as stdin. write syntax highlighted ver to stdout
 `hnt-chat`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
 to parse the LLM's desired edits
 
-# vague philosophy. here we go again...
+# philosophy
 
-[informal roadmap](https://github.com/michaelskyba/hinata/issues/1)
-
-**Goal: unequivocally mog yapcine's setup**
+**Goal: unequivocally mog yacine's setup**
 
 - Have something like Aider / Claude code / codex but ~~impossible to use~~
 extensible
-- Integrate other ideas as they're leaked by Pliny/Tibor/etc
+- As much as possible, unify your environment so that LLMs and humans can use
+the same tools in the same ways: simple CLI programs that wrap each other
+- Integrate other ideas as they're leaked by Pliny/Tibor/etc.
 - Ideally LLM Chat is simple to layer on top as a wrapper over composable
 features (e.g. memory)
 - Maintain benchmarks on included prompts and scaffolding on private code (rvm,
