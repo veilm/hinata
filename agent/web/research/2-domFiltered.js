@@ -54,10 +54,18 @@ function processElementNode(element, config) {
 	// AND that item is an element node (identifiable by having a tagName property).
 	if (
 		nodeInfo.childNodesProcessed.length === 1 &&
-		nodeInfo.childNodesProcessed[0].tagName
+		nodeInfo.childNodesProcessed[0].tagName // Ensures it's an element node
 	) {
-		// Replace the wrapper with its single child element.
-		return nodeInfo.childNodesProcessed[0];
+		// The current node (nodeInfo) is a wrapper.
+		// Its single child element is nodeInfo.childNodesProcessed[0].
+		const childNode = nodeInfo.childNodesProcessed[0];
+
+		// Prepend the wrapper's tag name to the child's tag name.
+		childNode.tagName = nodeInfo.tagName + " > " + childNode.tagName;
+
+		// The childNode also carries over its own attributes and children.
+		// Attributes of the wrapper (nodeInfo.attributes) are discarded.
+		return childNode; // Return the modified child node in place of the wrapper.
 	}
 
 	// Pruning logic (applied if not a collapsed wrapper):
