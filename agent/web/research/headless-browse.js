@@ -67,34 +67,81 @@ function processElementNode(element, config) {
 	// Check if the element is "meaningful" and set a reason
 	const tagNameUpper = element.tagName.toUpperCase();
 	const meaningfulTagHandlers = {
-		INPUT: (attrs) =>
-			`input type: ${attrs.type || "text"}` +
-			(attrs.name ? `, name: "${attrs.name}"` : "") +
-			(attrs.value ? `, value: "${attrs.value}"` : "") +
-			(attrs.placeholder ? `, placeholder: "${attrs.placeholder}"` : ""),
-		TEXTAREA: (attrs) =>
-			`textarea` +
-			(attrs.name ? `, name: "${attrs.name}"` : "") +
-			(attrs.placeholder ? ` (placeholder: "${attrs.placeholder}")` : ""),
-		BUTTON: (attrs) => `button` + (attrs.name ? `, name: "${attrs.name}"` : ""),
-		SELECT: (attrs) => `select` + (attrs.name ? `, name: "${attrs.name}"` : ""),
-		A: (attrs) => (attrs.href ? `link to: ${attrs.href}` : `link`),
-		IMG: (attrs) =>
-			`image` +
-			(attrs.alt
-				? ` (alt: "${attrs.alt}")`
-				: attrs.src
-					? ` (src: ${attrs.src})`
-					: ""),
-		VIDEO: (attrs) => `video` + (attrs.src ? ` (src: ${attrs.src})` : ""),
-		AUDIO: (attrs) => `audio` + (attrs.src ? ` (src: ${attrs.src})` : ""),
-		LABEL: (attrs) => `label` + (attrs.for ? ` (for: ${attrs.for})` : ""),
+		INPUT: (attrs) => {
+			const props = [];
+			props.push({ key: "type", value: attrs.type || "text" });
+			if (attrs.hasOwnProperty("name"))
+				props.push({ key: "name", value: attrs.name });
+			// Check for value presence, including empty string values
+			if (attrs.hasOwnProperty("value"))
+				props.push({ key: "value", value: attrs.value });
+			if (attrs.hasOwnProperty("placeholder"))
+				props.push({ key: "placeholder", value: attrs.placeholder });
+			return props;
+		},
+		TEXTAREA: (attrs) => {
+			const props = [];
+			if (attrs.hasOwnProperty("name"))
+				props.push({ key: "name", value: attrs.name });
+			if (attrs.hasOwnProperty("placeholder"))
+				props.push({ key: "placeholder", value: attrs.placeholder });
+			return props;
+		},
+		BUTTON: (attrs) => {
+			const props = [];
+			// Buttons might not always have a name, but their existence is meaningful.
+			if (attrs.hasOwnProperty("name"))
+				props.push({ key: "name", value: attrs.name });
+			return props;
+		},
+		SELECT: (attrs) => {
+			const props = [];
+			if (attrs.hasOwnProperty("name"))
+				props.push({ key: "name", value: attrs.name });
+			return props;
+		},
+		A: (attrs) => {
+			const props = [];
+			if (attrs.hasOwnProperty("href"))
+				props.push({ key: "href", value: attrs.href });
+			return props;
+		},
+		IMG: (attrs) => {
+			const props = [];
+			// Order: src, then alt (based on common importance and user example)
+			if (attrs.hasOwnProperty("src"))
+				props.push({ key: "src", value: attrs.src });
+			if (attrs.hasOwnProperty("alt"))
+				props.push({ key: "alt", value: attrs.alt }); // alt can be empty string ""
+			return props;
+		},
+		VIDEO: (attrs) => {
+			const props = [];
+			if (attrs.hasOwnProperty("src"))
+				props.push({ key: "src", value: attrs.src });
+			return props;
+		},
+		AUDIO: (attrs) => {
+			const props = [];
+			if (attrs.hasOwnProperty("src"))
+				props.push({ key: "src", value: attrs.src });
+			return props;
+		},
+		LABEL: (attrs) => {
+			const props = [];
+			if (attrs.hasOwnProperty("for"))
+				props.push({ key: "for", value: attrs.for });
+			return props;
+		},
 	};
 
 	if (meaningfulTagHandlers[tagNameUpper]) {
-		nodeInfo.meaningfulReason = meaningfulTagHandlers[tagNameUpper](
-			nodeInfo.attributes,
-		);
+		const props = meaningfulTagHandlers[tagNameUpper](nodeInfo.attributes);
+		// Only assign if props array is not empty, to keep meaningfulReason null otherwise.
+		// This helps ensure that elements are only considered "meaningful" if they have specific attributes.
+		// Correction: An empty props array is fine and means the tag itself (e.g. <button>) is meaningful.
+		// Pruning logic `|| nodeInfo.meaningfulReason` (where `nodeInfo.meaningfulReason` is `[]`) is truthy.
+		nodeInfo.meaningfulReason = props;
 	}
 
 	// Process child nodes, preserving order
@@ -192,10 +239,6 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 	// Build the main line for the current node
 	let mainLine = indent + node.tagName;
 
-	if (node.meaningfulReason) {
-		mainLine += " [" + node.meaningfulReason + "]";
-	}
-
 	// childNodesProcessed contains an ordered list of text objects and element nodes
 	const elementChildren = node.childNodesProcessed.filter((n) => n.tagName); // Element nodes have a tagName
 	const textNodeChildren = node.childNodesProcessed.filter(
@@ -226,6 +269,22 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 		// Format to one decimal place, or more if needed, but avoid excessive precision.
 		const visScoreFormatted = parseFloat(node.visibilityScore.toFixed(2));
 		output += childIndent + "vis: " + visScoreFormatted + "\n";
+	}
+
+	// Display meaningfulReason properties (now an array of {key, value} objects)
+	if (
+		Array.isArray(node.meaningfulReason) &&
+		node.meaningfulReason.length > 0
+	) {
+		for (const prop of node.meaningfulReason) {
+			let propValue = prop.value;
+			// Ensure String conversion for safety, treat null as empty string for display
+			propValue = String(propValue === null ? "" : propValue);
+			if (config.escapeNewlinesInFormat) {
+				propValue = propValue.replace(/\n/g, "\\n");
+			}
+			output += childIndent + prop.key + ": " + propValue + "\n";
+		}
 	}
 
 	// If there ARE element children, iterate through ALL childNodesProcessed (both text and elements in order).
