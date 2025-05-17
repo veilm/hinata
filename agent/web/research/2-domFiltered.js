@@ -1,6 +1,7 @@
 // Default configuration for DOM processing
 const defaultConfig = {
 	skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE"], // Tags to skip, in uppercase
+	escapeNewlinesInFormat: true, // Default to escape newlines in formatted string output
 };
 
 // Helper function to process a single element node and its children recursively
@@ -111,7 +112,7 @@ function extractPageContentTree(userConfig = {}) {
 }
 
 // Helper function to format a node and its children recursively for string output
-function formatNodeRecursive(node, indentLevel = 0) {
+function formatNodeRecursive(node, indentLevel = 0, config) {
 	let output = "";
 	const indent = "\t".repeat(indentLevel);
 
@@ -132,7 +133,11 @@ function formatNodeRecursive(node, indentLevel = 0) {
 			.trim();
 		if (combinedText) {
 			// Ensure combined text is not empty after join/trim
-			output += ": " + combinedText;
+			let textToDisplay = combinedText;
+			if (config.escapeNewlinesInFormat) {
+				textToDisplay = textToDisplay.replace(/\n/g, "\\n");
+			}
+			output += ": " + textToDisplay;
 		}
 	}
 	output += "\n";
@@ -145,10 +150,14 @@ function formatNodeRecursive(node, indentLevel = 0) {
 		for (const child of node.childNodesProcessed) {
 			if (child.type === "text") {
 				// child.value is already trimmed and checked for emptiness in processElementNode
-				output += childIndent + "text: " + child.value + "\n";
+				let textToDisplay = child.value;
+				if (config.escapeNewlinesInFormat) {
+					textToDisplay = textToDisplay.replace(/\n/g, "\\n");
+				}
+				output += childIndent + "text: " + textToDisplay + "\n";
 			} else if (child.tagName) {
 				// It's an element node
-				output += formatNodeRecursive(child, indentLevel + 1);
+				output += formatNodeRecursive(child, indentLevel + 1, config);
 			}
 		}
 	}
@@ -156,9 +165,10 @@ function formatNodeRecursive(node, indentLevel = 0) {
 }
 
 // Function to format the entire content tree into a string
-function formatTreeToString(tree) {
+function formatTreeToString(tree, userFormatConfig = {}) {
 	if (!tree) return "";
-	return formatNodeRecursive(tree); // Start recursion with the root of the tree
+	const config = { ...defaultConfig, ...userFormatConfig };
+	return formatNodeRecursive(tree, 0, config); // Start recursion with the root of the tree, pass config
 }
 
 // Function to display the formatted tree in an overlay
@@ -233,10 +243,14 @@ function displayTreeOverlay(formattedTreeString) {
 
 function llmPack() {
 	// Example of using custom config:
-	// const customConfig = { skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE", "HEADER", "FOOTER"] };
-	// window.contentTree = extractPageContentTree(customConfig);
-	window.contentTree = extractPageContentTree(); // Uses defaultConfig by default
-	window.formattedTree = formatTreeToString(contentTree);
+	// const customConfig = {
+	//   skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE", "HEADER", "FOOTER"], // For extraction
+	//   escapeNewlinesInFormat: false // For formatting, example: disable newline escaping
+	// };
+	// window.contentTree = extractPageContentTree(customConfig); // Pass config for extraction
+	// window.formattedTree = formatTreeToString(contentTree, customConfig); // Pass same config for formatting options
+	window.contentTree = extractPageContentTree(); // Uses defaultConfig by default for extraction
+	window.formattedTree = formatTreeToString(contentTree); // Uses defaultConfig by default for formatting
 	console.log(location.href, ": ~", formattedTree.length / 4, "tokens");
 }
 
