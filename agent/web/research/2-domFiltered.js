@@ -60,8 +60,24 @@ function processElementNode(element, config) {
 		// Its single child element is nodeInfo.childNodesProcessed[0].
 		const childNode = nodeInfo.childNodesProcessed[0];
 
-		// Prepend the wrapper's tag name to the child's tag name.
-		childNode.tagName = nodeInfo.tagName + " > " + childNode.tagName;
+		// New logic for tagName construction:
+		// Avoids redundant prefixes like "div > div > span" if wrapper is "div" and child's tag path starts with "div".
+		const wrapperTagName = nodeInfo.tagName; // e.g., "div" (current wrapper's actual tag)
+		const childFullTagName = childNode.tagName; // e.g., "div > span" (child's processed tag path) or "span"
+
+		// Extract the first tag from the child's processed tag path.
+		// e.g., if childFullTagName is "div > span", childFirstTag is "div".
+		// e.g., if childFullTagName is "span", childFirstTag is "span".
+		const childFirstTag = childFullTagName.split(" > ")[0];
+
+		if (wrapperTagName !== childFirstTag) {
+			// If wrapper is "section" and child is "div > span", result is "section > div > span".
+			// If wrapper is "div" and child is "span", result is "div > span".
+			childNode.tagName = wrapperTagName + " > " + childFullTagName;
+		}
+		// Else (wrapperTagName === childFirstTag):
+		// If wrapper is "div" and child's tag path is "div > span", the result remains "div > span".
+		// childNode.tagName is already childFullTagName, so no change is needed to prepend the wrapper.
 
 		// The childNode also carries over its own attributes and children.
 		// Attributes of the wrapper (nodeInfo.attributes) are discarded.
