@@ -155,7 +155,8 @@ int main(int argc, char *argv[]) {
 			case '?':  // Unknown option or missing argument
 				// Error message is printed by getopt_long
 				fprintf(stderr,
-				        "Usage: %s [-v|--verbose] [--disallow-creating] <file1> [file2] ...\n",
+				        "Usage: %s [-v|--verbose] [--disallow-creating] "
+				        "<file1> [file2] ...\n",
 				        argv[0]);
 				fprintf(
 				    stderr,
@@ -170,7 +171,9 @@ int main(int argc, char *argv[]) {
 
 	// Check if any file paths were provided after options
 	if (optind >= argc) {
-		fprintf(stderr, "Usage: %s [-v|--verbose] [--disallow-creating] <file1> [file2] ...\n",
+		fprintf(stderr,
+		        "Usage: %s [-v|--verbose] [--disallow-creating] <file1> "
+		        "[file2] ...\n",
 		        argv[0]);
 		fprintf(stderr, "Error: No input files specified.\n");
 		fprintf(stderr,
@@ -667,6 +670,10 @@ char *run_command(const char *cmd) {
 int process_block(const char *shared_root, char **abs_input_paths,
                   int num_input_paths, const char *rel_path, const char *target,
                   const char *replace) {
+	// Mark unused parameters to avoid compiler warnings/errors
+	(void)abs_input_paths;
+	(void)num_input_paths;
+
 	// --- 1. Construct full path ---
 	char constructed_path_buf[PATH_MAX];
 	int written = snprintf(constructed_path_buf, PATH_MAX, "%s/%s", shared_root,
@@ -786,26 +793,9 @@ int process_block(const char *shared_root, char **abs_input_paths,
 		path_to_operate_on = resolved_path_str;  // resolved_path_str points
 		                                         // into canonical_path_buf
 
-		// --- 3. Verify against input paths (only for existing files) ---
-		int found_match = 0;
-		for (int i = 0; i < num_input_paths; ++i) {
-			if (strcmp(path_to_operate_on, abs_input_paths[i]) == 0) {
-				found_match = 1;
-				break;
-			}
-		}
-		if (!found_match) {
-			fprintf(stdout,  // ERROR to stdout
-			        "Error: Parsed path '%s' (from %s/%s) does not match any "
-			        "input file path.\n",
-			        path_to_operate_on, shared_root, rel_path);
-			fprintf(stdout, "Input paths were:\n");  // ERROR to stdout
-			for (int i = 0; i < num_input_paths; ++i) {
-				fprintf(stdout, "- %s\n",
-				        abs_input_paths[i]);  // ERROR to stdout
-			}
-			return 1;  // Indicate failure
-		}
+		// File exists. Proceed to read and edit without checking against input
+		// file paths. The original check against abs_input_paths for existing
+		// files has been removed as per the updated requirements.
 
 		// --- 4. Read target file content ---
 		FILE *fp_read = fopen(path_to_operate_on, "r");
