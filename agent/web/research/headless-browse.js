@@ -55,6 +55,7 @@ function processElementNode(element, config) {
 		tagName: element.tagName.toLowerCase(),
 		attributes: {},
 		visibilityScore: visibilityScore, // Store the calculated visibility score
+		domElement: element, // Store reference to the original DOM element
 		// Unified list for ordered text nodes and child elements
 		childNodesProcessed: [],
 		meaningfulReason: null, // Will store why this node is important if not just for text
@@ -401,17 +402,20 @@ function displayTreeOverlay(formattedTreeString) {
 	document.body.appendChild(overlay); // Add overlay to the page
 }
 
-function llmPack() {
-	// Example of using custom config:
-	// const customConfig = {
-	//   skippedTags: ["SCRIPT", "NOSCRIPT", "STYLE", "HEADER", "FOOTER"], // For extraction
-	//   escapeNewlinesInFormat: false // For formatting, example: disable newline escaping
-	// };
-	// window.contentTree = extractPageContentTree(customConfig); // Pass config for extraction
-	// window.formattedTree = formatTreeToString(contentTree, customConfig); // Pass same config for formatting options
-	window.contentTree = extractPageContentTree(); // Uses defaultConfig by default for extraction
-	window.formattedTree = formatTreeToString(contentTree); // Uses defaultConfig by default for formatting
-	console.log(location.href, ": ~", formattedTree.length / 4, "tokens");
+function llmPack(userConfig = {}) {
+	const configToUse = { ...defaultConfig, ...userConfig };
+
+	window.contentTree = extractPageContentTree(configToUse);
+	window.formattedTree = formatTreeToString(window.contentTree, configToUse);
+	window.lastUsedConfigForTree = configToUse; // Store the config used for this tree
+
+	// Ensure formattedTree is used from window scope if it's being assigned to window
+	console.log(
+		location.href,
+		": ~",
+		(window.formattedTree || "").length / 4,
+		"tokens",
+	);
 }
 
 function llmDisplay() {
@@ -435,4 +439,101 @@ function llmDisplay() {
 			"No content tree was extracted (e.g., document.body is not available, or body is empty or contains only filtered elements like scripts/styles).",
 		);
 	}
+}
+
+function llmDisplayVisual() {
+	if (typeof document === "undefined" || !document.body) {
+		console.warn("DOM environment not available for visual display.");
+		return;
+	}
+
+	// Remove previous visual elements if they exist
+	const existingOverlayContainer = document.getElementById(
+		"dom-visual-boxes-container",
+	);
+	if (existingOverlayContainer) {
+		existingOverlayContainer.parentNode.removeChild(existingOverlayContainer);
+	}
+	const existingCloseButton = document.getElementById(
+		"dom-visual-close-button",
+	);
+	if (existingCloseButton) {
+		existingCloseButton.parentNode.removeChild(existingCloseButton);
+	}
+
+	if (!window.contentTree) {
+		console.log("No content tree available to visualize. Run llmPack() first.");
+		return;
+	}
+
+	const config = window.lastUsedConfigForTree || defaultConfig; // Fallback to defaultConfig
+
+	const visualBoxesContainer = document.createElement("div");
+	visualBoxesContainer.id = "dom-visual-boxes-container";
+	// This container doesn't require specific styling; it's just a holder for boxes.
+	document.body.appendChild(visualBoxesContainer);
+
+	const closeButton = document.createElement("button");
+	closeButton.id = "dom-visual-close-button";
+	closeButton.textContent = "Close Visuals";
+	Object.assign(closeButton.style, {
+		position: "fixed",
+		top: "50px", // Positioned to potentially avoid overlap with text overlay's close button
+		right: "20px",
+		padding: "10px 18px",
+		cursor: "pointer",
+		backgroundColor: "#5bc0de", // Info blue, distinct from other buttons
+		color: "white",
+		border: "none",
+		borderRadius: "4px",
+		fontSize: "14px",
+		fontWeight: "bold",
+		zIndex: "2147483647", // Max z-index to ensure it's clickable
+	});
+
+	closeButton.onclick = function () {
+		if (visualBoxesContainer.parentNode) {
+			visualBoxesContainer.parentNode.removeChild(visualBoxesContainer);
+		}
+		if (closeButton.parentNode) {
+			closeButton.parentNode.removeChild(closeButton);
+		}
+	};
+	document.body.appendChild(closeButton);
+
+	function drawBoxesRecursive(node, container, currentConfig) {
+		if (node && node.domElement && typeof node.visibilityScore === "number") {
+			if (node.visibilityScore >= currentConfig.visibilityThreshold) {
+				const rect = node.domElement.getBoundingClientRect();
+
+				// Only draw boxes for elements with non-zero dimensions
+				if (rect.width > 0 && rect.height > 0) {
+					const box = document.createElement("div");
+					Object.assign(box.style, {
+						position: "absolute",
+						left: rect.left + window.scrollX + "px",
+						top: rect.top + window.scrollY + "px",
+						width: rect.width + "px",
+						height: rect.height + "px",
+						border: "2px solid red",
+						boxSizing: "border-box",
+						zIndex: "2147483640", // High, but below the close button
+						pointerEvents: "none", // Makes the box click-through
+					});
+					container.appendChild(box);
+				}
+			}
+		}
+
+		if (node && node.childNodesProcessed) {
+			for (const child of node.childNodesProcessed) {
+				if (child.tagName) {
+					// It's an element node (not a text node object)
+					drawBoxesRecursive(child, container, currentConfig);
+				}
+			}
+		}
+	}
+
+	drawBoxesRecursive(window.contentTree, visualBoxesContainer, config);
 }
