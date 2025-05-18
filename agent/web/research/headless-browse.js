@@ -441,19 +441,22 @@ function llmDisplay() {
 	}
 }
 
+let llmVisualizedElements = [];
+
 function llmDisplayVisual() {
 	if (typeof document === "undefined" || !document.body) {
 		console.warn("DOM environment not available for visual display.");
 		return;
 	}
 
-	// Remove previous visual elements if they exist
-	const existingOverlayContainer = document.getElementById(
-		"dom-visual-boxes-container",
-	);
-	if (existingOverlayContainer) {
-		existingOverlayContainer.parentNode.removeChild(existingOverlayContainer);
+	// Remove previous visual elements: clear outlines and remove old button
+	if (llmVisualizedElements.length > 0) {
+		for (const item of llmVisualizedElements) {
+			item.element.style.outline = item.originalOutline;
+		}
+		llmVisualizedElements = []; // Clear the list
 	}
+
 	const existingCloseButton = document.getElementById(
 		"dom-visual-close-button",
 	);
@@ -467,11 +470,6 @@ function llmDisplayVisual() {
 	}
 
 	const config = window.lastUsedConfigForTree || defaultConfig; // Fallback to defaultConfig
-
-	const visualBoxesContainer = document.createElement("div");
-	visualBoxesContainer.id = "dom-visual-boxes-container";
-	// This container doesn't require specific styling; it's just a holder for boxes.
-	document.body.appendChild(visualBoxesContainer);
 
 	const closeButton = document.createElement("button");
 	closeButton.id = "dom-visual-close-button";
@@ -492,35 +490,30 @@ function llmDisplayVisual() {
 	});
 
 	closeButton.onclick = function () {
-		if (visualBoxesContainer.parentNode) {
-			visualBoxesContainer.parentNode.removeChild(visualBoxesContainer);
+		// Clear outlines
+		for (const item of llmVisualizedElements) {
+			item.element.style.outline = item.originalOutline;
 		}
+		llmVisualizedElements = []; // Clear the list
+
+		// Remove the close button itself
 		if (closeButton.parentNode) {
 			closeButton.parentNode.removeChild(closeButton);
 		}
 	};
 	document.body.appendChild(closeButton);
 
-	function drawBoxesRecursive(node, container, currentConfig) {
+	function applyOutlinesRecursive(node, currentConfig) {
 		if (node && node.domElement && typeof node.visibilityScore === "number") {
 			if (node.visibilityScore >= currentConfig.visibilityThreshold) {
-				const rect = node.domElement.getBoundingClientRect();
+				const element = node.domElement;
+				const rect = element.getBoundingClientRect();
 
-				// Only draw boxes for elements with non-zero dimensions
+				// Only apply outline to elements with non-zero dimensions
 				if (rect.width > 0 && rect.height > 0) {
-					const box = document.createElement("div");
-					Object.assign(box.style, {
-						position: "absolute",
-						left: rect.left + window.scrollX + "px",
-						top: rect.top + window.scrollY + "px",
-						width: rect.width + "px",
-						height: rect.height + "px",
-						border: "2px solid red",
-						boxSizing: "border-box",
-						zIndex: "2147483640", // High, but below the close button
-						pointerEvents: "none", // Makes the box click-through
-					});
-					container.appendChild(box);
+					const originalOutline = element.style.outline; // Store current inline outline
+					llmVisualizedElements.push({ element, originalOutline });
+					element.style.outline = "2px solid red"; // Apply new outline
 				}
 			}
 		}
@@ -529,11 +522,11 @@ function llmDisplayVisual() {
 			for (const child of node.childNodesProcessed) {
 				if (child.tagName) {
 					// It's an element node (not a text node object)
-					drawBoxesRecursive(child, container, currentConfig);
+					applyOutlinesRecursive(child, currentConfig);
 				}
 			}
 		}
 	}
 
-	drawBoxesRecursive(window.contentTree, visualBoxesContainer, config);
+	applyOutlinesRecursive(window.contentTree, config);
 }
