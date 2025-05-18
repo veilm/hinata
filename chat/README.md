@@ -83,6 +83,8 @@ current conversation after it's finished streaming
 stdout to display the created assistant message's filename
 - `-m|--model MODEL` will pass a model argument to `hnt-llm`. see [available
 model providers](https://github.com/michaelskyba/hinata/tree/main/llm#supported-model-providers)
+- `--merge`: consecutive messages with the same role will be concatenated into a
+single message before being sent to the LLM. useful for organization
 
 ### `hnt-chat pack`
 `pack` packs a conversation into one text stream, suitably escaped as XML input

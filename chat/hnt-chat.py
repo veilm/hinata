@@ -177,7 +177,7 @@ def handle_add_command(args):
 
 def handle_pack_command(
     args,
-):  # This function remains mostly the same, just printing to stdout
+):
     """
     Packs messages from a conversation directory into a specific format using hnt-escape.
     """
@@ -187,58 +187,93 @@ def handle_pack_command(
     conv_dir_path = determine_conversation_dir(args, base_conv_dir)
 
     # 2. Use the helper function to pack directly to standard output (binary buffer)
-    _pack_conversation_stream(conv_dir_path, sys.stdout.buffer)
+    _pack_conversation_stream(conv_dir_path, sys.stdout.buffer, args.merge)
 
 
-def _pack_conversation_stream(conv_dir_path, output_stream):
+def _pack_conversation_stream(conv_dir_path, output_stream, merge_messages=False):
     """
     Packs messages from a conversation directory into the specified output stream.
 
     Args:
         conv_dir_path (Path): The path to the conversation directory.
-        output_stream: A file-like object opened in binary mode (e.g., sys.stdout.buffer, io.BytesIO).
+        output_stream: A file-like object opened in binary mode.
+        merge_messages (bool): If True, merge consecutive messages from the same role.
     """
-    # List, filter, and sort message files
     try:
         message_files = sorted(
             f for f in conv_dir_path.iterdir() if f.is_file() and f.name.endswith(".md")
         )
     except OSError as e:
-        print(
-            f"Error listing files in {conv_dir_path}: {e}", file=sys.stderr
-        )  # Keep error message specific
+        print(f"Error listing files in {conv_dir_path}: {e}", file=sys.stderr)
         sys.exit(1)
 
     filename_pattern = re.compile(r"^(\d+)-(user|assistant|system)\.md$")
 
-    # Iterate and pack matching files
+    # Variables for merging logic
+    accumulated_content_parts = []
+    accumulated_role = None
+
+    def _flush_accumulated_message_content(
+        out_stream, role_to_flush, content_parts_to_flush
+    ):
+        if not role_to_flush or not content_parts_to_flush:
+            return
+
+        full_content_raw = "".join(content_parts_to_flush)
+
+        out_stream.write(f"<hnt-{role_to_flush}>".encode("utf-8"))
+        if hasattr(out_stream, "flush"):
+            out_stream.flush()
+
+        try:
+            process = subprocess.run(
+                ["hnt-escape"],
+                input=full_content_raw.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=sys.stderr,
+                check=True,
+            )
+            out_stream.write(process.stdout)
+        except FileNotFoundError:
+            print(
+                "\nError: 'hnt-escape' command not found. Make sure it's installed and in your PATH.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        except subprocess.CalledProcessError as e:
+            print(
+                f"\nError: 'hnt-escape' failed while processing merged content (exit code {e.returncode}).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        out_stream.write(f"</hnt-{role_to_flush}>\n".encode("utf-8"))
+        if hasattr(out_stream, "flush"):
+            out_stream.flush()
+
     for msg_file_path in message_files:
         match = filename_pattern.match(msg_file_path.name)
-        if match:
-            role = match.group(2)
+        if not match:
+            continue  # Silently skip files that don't match the pattern
 
-            # Write opening tag without newline to the output stream
-            # Ensure the stream accepts bytes
-            output_stream.write(f"<hnt-{role}>".encode("utf-8"))
-            # Flushing might be necessary depending on the stream (e.g., stdout.buffer)
+        current_role_from_file = match.group(2)
+
+        if not merge_messages:
+            # Original behavior: process each file individually
+            output_stream.write(f"<hnt-{current_role_from_file}>".encode("utf-8"))
             if hasattr(output_stream, "flush"):
                 output_stream.flush()
-
             try:
-                # Open the message file in binary read mode
                 with open(msg_file_path, "rb") as f_in:
-                    # Run hnt-escape, piping input from file and capturing its output
                     process = subprocess.run(
                         ["hnt-escape"],
                         stdin=f_in,
-                        stdout=subprocess.PIPE,  # Capture stdout
-                        stderr=sys.stderr,  # Pipe errors to our stderr
-                        check=True,  # Raise exception on non-zero exit code
+                        stdout=subprocess.PIPE,
+                        stderr=sys.stderr,
+                        check=True,
                     )
-                    # Write the captured output to the provided output stream
                     output_stream.write(process.stdout)
             except FileNotFoundError:
-                # Add newline before error for better separation if tags were already printed
                 print(
                     f"\nError: 'hnt-escape' command not found. Make sure it's installed and in your PATH.",
                     file=sys.stderr,
@@ -254,22 +289,51 @@ def _pack_conversation_stream(conv_dir_path, output_stream):
                 print(f"\nError reading file {msg_file_path}: {e}", file=sys.stderr)
                 sys.exit(1)
 
-            # Write closing tag with newline to the output stream
-            output_stream.write(f"</hnt-{role}>\n".encode("utf-8"))
+            output_stream.write(f"</hnt-{current_role_from_file}>\n".encode("utf-8"))
             if hasattr(output_stream, "flush"):
                 output_stream.flush()
+        else:
+            # Merge messages logic
+            try:
+                with open(msg_file_path, "r", encoding="utf-8") as f_content:
+                    current_content_raw = f_content.read()
+            except OSError as e:
+                print(f"Error reading file {msg_file_path}: {e}", file=sys.stderr)
+                sys.exit(1)
 
-        # Silently skip files that don't match the pattern
+            if (
+                accumulated_role == current_role_from_file
+                and accumulated_role is not None
+            ):
+                accumulated_content_parts.append(current_content_raw)
+            else:
+                # Flush previous accumulated message if any
+                _flush_accumulated_message_content(
+                    output_stream, accumulated_role, accumulated_content_parts
+                )
+
+                # Start new accumulation
+                accumulated_role = current_role_from_file
+                accumulated_content_parts = [current_content_raw]
+
+    # After the loop, if merging, flush any remaining accumulated message
+    if merge_messages:
+        _flush_accumulated_message_content(
+            output_stream, accumulated_role, accumulated_content_parts
+        )
 
 
-def pack_conversation_to_buffer(conv_dir_path):
+def pack_conversation_to_buffer(conv_dir_path, merge_messages=False):
     """
     Packs messages from a conversation directory into a BytesIO buffer using the shared helper.
     Returns the BytesIO buffer containing the packed data.
+    Args:
+        conv_dir_path (Path): The path to the conversation directory.
+        merge_messages (bool): If True, merge consecutive messages from the same role.
     """
     output_buffer = io.BytesIO()
     # Call the helper function to write to the buffer
-    _pack_conversation_stream(conv_dir_path, output_buffer)
+    _pack_conversation_stream(conv_dir_path, output_buffer, merge_messages)
 
     output_buffer.seek(0)  # Rewind buffer for reading
     return output_buffer
@@ -300,8 +364,8 @@ def handle_gen_command(args):
     base_conv_dir = get_conversations_dir()
     conv_dir_path = determine_conversation_dir(args, base_conv_dir)
 
-    # 1. Pack the conversation history into a buffer
-    packed_buffer = pack_conversation_to_buffer(conv_dir_path)
+    # 1. Pack the conversation history into a buffer, considering the merge flag
+    packed_buffer = pack_conversation_to_buffer(conv_dir_path, args.merge)
 
     # 2. Prepare the hnt-llm command
     llm_cmd = ["hnt-llm"]
@@ -436,6 +500,11 @@ def main():
         type=Path,
         help="Path to the conversation directory (overrides $HINATA_CHAT_CONVERSATION, defaults to latest)",
     )
+    parser_pack.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge consecutive messages from the same role into a single message.",
+    )
     parser_pack.set_defaults(func=handle_pack_command)
 
     # 'gen'/'generate'/'llm' command
@@ -471,6 +540,11 @@ def main():
         "--debug-unsafe",
         action="store_true",
         help="Pass the --debug-unsafe flag to the hnt-llm subprocess",
+    )
+    parser_gen.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge consecutive messages from the same role before sending to LLM.",
     )
     parser_gen.set_defaults(func=handle_gen_command)
 
