@@ -4,6 +4,7 @@ const defaultConfig = {
 	escapeNewlinesInFormat: true, // Default to escape newlines in formatted string output
 	showVisibility: false, // Default to show visibility scores in formatted output
 	visibilityThreshold: 0.1, // Default visibility threshold for inclusion in formatted output
+	urlCropLength: 75, // Default length for URL cropping; <= 0 means infinite
 };
 
 // Helper function to process a single element node and its children recursively
@@ -277,13 +278,27 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 		node.meaningfulReason.length > 0
 	) {
 		for (const prop of node.meaningfulReason) {
-			let propValue = prop.value;
-			// Ensure String conversion for safety, treat null as empty string for display
-			propValue = String(propValue === null ? "" : propValue);
-			if (config.escapeNewlinesInFormat) {
-				propValue = propValue.replace(/\n/g, "\\n");
+			let displayValue = String(prop.value === null ? "" : prop.value);
+
+			// Apply URL cropping if configured and applicable
+			if (
+				config.urlCropLength > 0 &&
+				(prop.key === "href" || prop.key === "src")
+			) {
+				let effectiveCropLength = config.urlCropLength;
+				if (prop.key === "src" && displayValue.startsWith("data:image")) {
+					effectiveCropLength = Math.min(20, config.urlCropLength);
+				}
+
+				if (displayValue.length > effectiveCropLength) {
+					displayValue = displayValue.substring(0, effectiveCropLength) + "...";
+				}
 			}
-			output += childIndent + prop.key + ": " + propValue + "\n";
+
+			if (config.escapeNewlinesInFormat) {
+				displayValue = displayValue.replace(/\n/g, "\\n");
+			}
+			output += childIndent + prop.key + ": " + displayValue + "\n";
 		}
 	}
 
