@@ -340,26 +340,7 @@ def main():
     )
     debug_log(args, "User request message added.")
 
-    # 7. Add empty assistant message to conversation (workaround for API limitations)
-    debug_log(args, "Adding empty assistant message via hnt-chat add...")
-    hnt_chat_add_assistant_cmd = [
-        "hnt-chat",
-        "add",
-        "assistant",
-        "-c",
-        conversation_dir,
-    ]
-    debug_log(args, "hnt-chat add assistant command:", hnt_chat_add_assistant_cmd)
-    run_command(
-        hnt_chat_add_assistant_cmd,
-        stdin_content="",  # Empty stdin for a blank message
-        # capture_output=False, # Don't need filename output
-        check=True,
-        text=True,
-    )
-    debug_log(args, "Empty assistant message added.")
-
-    # 8. Add source reference message to conversation
+    # 7. Add source reference message to conversation
     debug_log(args, "Adding source reference message via hnt-chat add...")
     source_reference_content = (
         f"<source_reference>\n{packed_sources}</source_reference>"
@@ -382,7 +363,7 @@ def main():
     source_ref_filename = add_source_ref_result.stdout.strip()
     debug_log(args, "Source reference message added:", source_ref_filename)
 
-    # 8a. Write source reference path to source_reference.txt
+    # 7a. Write source reference path to source_reference.txt
     if source_ref_filename:
         debug_log(args, "Writing source reference path to source_reference.txt...")
         source_ref_txt_path = Path(conversation_dir) / "source_reference.txt"
@@ -412,9 +393,9 @@ def main():
         print(instruction)
         print("-" * 40 + "\n")
 
-    # 9. Run hnt-chat gen, stream and capture output
+    # 8. Run hnt-chat gen, stream and capture output
     debug_log(args, "Running hnt-chat gen...")
-    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
+    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "--merge", "-c", conversation_dir]
     if args.model:
         hnt_chat_gen_cmd.extend(["--model", args.model])
         debug_log(args, "Using model:", args.model)
@@ -604,7 +585,7 @@ def main():
     # Print conversation directory before applying changes
     print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
 
-    # 10. Run hnt-apply (step number updated)
+    # 9. Run hnt-apply (step number updated)
     debug_log(args, "Running hnt-apply...")
     hnt_apply_cmd = ["hnt-apply"] + args.source_files
     debug_log(args, "hnt-apply command:", hnt_apply_cmd)
@@ -685,7 +666,7 @@ def main():
         debug_log(args, "hnt-apply failed. Adding its stdout to the chat conversation.")
         debug_log(args, "Captured hnt-apply stdout length:", len(captured_apply_stdout))
 
-        # 11. Add hnt-apply's raw stdout as a new user message if it failed
+        # 10. Add hnt-apply's raw stdout as a new user message if it failed
         hnt_chat_add_user_failure_cmd = [
             "hnt-chat",
             "add",
