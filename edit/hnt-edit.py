@@ -323,7 +323,7 @@ def main():
     # 6. Add user request message to conversation
     debug_log(args, "Adding user request message via hnt-chat add...")
     # \n after instruction because it gets stripped
-    user_request_content = f"<user_request>\n{instruction}\n</user_request>"
+    user_request_content = f"<user_request>\n{instruction}\n</user_request>\n"
     hnt_chat_add_user_cmd = ["hnt-chat", "add", "user", "-c", conversation_dir]
     debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
     debug_log(
@@ -343,7 +343,7 @@ def main():
     # 7. Add source reference message to conversation
     debug_log(args, "Adding source reference message via hnt-chat add...")
     source_reference_content = (
-        f"<source_reference>\n{packed_sources}</source_reference>"
+        f"<source_reference>\n{packed_sources}</source_reference>\n"
     )
     # Reuse the command list, it's the same
     debug_log(args, "hnt-chat add user command (source):", hnt_chat_add_user_cmd)
