@@ -422,15 +422,23 @@ int main(int argc, char *argv[]) {
 		separator_marker_line = find_line_with_exact_content(
 		    target_content_starts_here, separator_marker,
 		    &replace_content_starts_here,
-		    block_marker,  // Stop if "```" is found before "======="
+		    NULL,  // Allow "```" within TARGET content
 		    &found_block_end_before_separator);
 
 		if (!separator_marker_line) {
 			fprintf(stdout,
 			        "Error: Missing '%s' after target section for path '%s'. ",
 			        separator_marker, relative_path);
-			if (found_block_end_before_separator) {
-				fprintf(stdout, "'%s' found instead.\n", block_marker);
+			// With stop_marker_content as NULL,
+			// found_block_end_before_separator will not be set by finding
+			// block_marker. So, the 'else' branch is more likely.
+			if (found_block_end_before_separator) {  // This condition would now
+				                                     // only be true if
+				                                     // stop_marker was
+				                                     // something else
+				fprintf(stdout,
+				        "'%s' found instead (unexpected stop marker).\n",
+				        block_marker /* or actual stop marker */);
 				current_pos = found_block_end_before_separator;
 			} else {
 				fprintf(stdout,
@@ -470,15 +478,23 @@ int main(int argc, char *argv[]) {
 		replace_marker_line = find_line_with_exact_content(
 		    replace_content_starts_here, replace_marker,
 		    &after_replace_marker_content_area,
-		    block_marker,  // Stop if "```" is found before ">>>>>>> REPLACE"
+		    NULL,  // Allow "```" within REPLACE content
 		    &found_block_end_before_replace);
 
 		if (!replace_marker_line) {
 			fprintf(stdout,
 			        "Error: Missing '%s' after replace section for path '%s'. ",
 			        replace_marker, relative_path);
-			if (found_block_end_before_replace) {
-				fprintf(stdout, "'%s' found instead.\n", block_marker);
+			// With stop_marker_content as NULL, found_block_end_before_replace
+			// will not be set by finding block_marker. So, the 'else' branch is
+			// more likely.
+			if (found_block_end_before_replace) {  // This condition would now
+				                                   // only be true if
+				                                   // stop_marker was something
+				                                   // else
+				fprintf(stdout,
+				        "'%s' found instead (unexpected stop marker).\n",
+				        block_marker /* or actual stop marker */);
 				current_pos = found_block_end_before_replace;
 			} else {
 				fprintf(stdout,
