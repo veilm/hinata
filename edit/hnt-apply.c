@@ -332,265 +332,293 @@ int main(int argc, char *argv[]) {
 	    *stdin_content != '\0') {  // Only print if there might be blocks
 		printf("hnt-apply: Processing blocks...\n");
 	}
-	char *current_pos = stdin_content;
-	const char *block_marker = "```";
-	const char *target_marker = "<<<<<<< TARGET";
+	char *scan_pos = stdin_content;
+	const char *block_marker_const = "```";              // Renamed for clarity
+	const char *target_marker_const = "<<<<<<< TARGET";  // Renamed for clarity
 	const char *separator_marker = "=======";
 	const char *replace_marker = ">>>>>>> REPLACE";
+	size_t block_marker_len = strlen(block_marker_const);
+	size_t target_marker_len = strlen(target_marker_const);
 	int block_count = 0;
 	int overall_status = EXIT_SUCCESS;  // Track if any block fails
 
-	while (1) {
-		char *block_start = strstr(current_pos, block_marker);
-		if (!block_start) break;  // No more blocks found
+	while (*scan_pos) {
+		char *line1_start = scan_pos;
+		char *line1_end = strchr(line1_start, '\n');
+		// size_t line1_content_len = line1_end ? (line1_end - line1_start) :
+		// strlen(line1_start); // Not strictly needed for line1 check
 
-		char *line_after_block_start = strchr(block_start, '\n');
-		if (!line_after_block_start) {
-			if (strlen(block_start) > strlen(block_marker)) {
-				fprintf(
-				    stdout,
-				    "Error: Malformed block - '%s' not followed by newline.\n",
-				    block_marker);
-				overall_status = EXIT_FAILURE;
+		// Condition 1: Line starts with block_marker (e.g., "```")
+		if (strncmp(line1_start, block_marker_const, block_marker_len) == 0) {
+			char *line2_start = NULL;  // Potential path line
+			if (line1_end && *(line1_end + 1) != '\0') {
+				line2_start = line1_end + 1;
 			}
-			current_pos = block_start + strlen(block_marker);
-			continue;
-		}
-		char *path_start = line_after_block_start + 1;
 
-		char *path_end_newline = strchr(path_start, '\n');
-		if (!path_end_newline) {
-			fprintf(stdout,
-			        "Error: Malformed block - path line starting near '%.*s' "
-			        "not terminated by newline.\n",
-			        (int)MIN(20, strlen(path_start)), path_start);
-			overall_status = EXIT_FAILURE;
-			current_pos = path_start;
-			continue;
-		}
-
-		char *relative_path =
-		    strndup(path_start, path_end_newline - path_start);
-		if (!relative_path) {
-			perror("strndup failed for relative_path");
-			overall_status = EXIT_FAILURE;
-			current_pos = path_end_newline + 1;
-			continue;
-		}
-
-		char *content_scan_ptr =
-		    path_end_newline + 1;  // Start scanning for markers after path line
-		char *target_marker_line = NULL;
-		char *target_content_starts_here = NULL;
-		char *found_block_end_instead = NULL;
-
-		target_marker_line = find_line_with_exact_content(
-		    content_scan_ptr, target_marker, &target_content_starts_here,
-		    block_marker,  // Stop if "```" is found first
-		    &found_block_end_instead);
-
-		if (!target_marker_line) {
-			if (verbose_mode) {
-				printf(
-				    "hnt-apply: Skipping non-TARGET/REPLACE block associated "
-				    "with path '%s'. Reason: '%s' marker not found or "
-				    "misplaced before block end.\n",
-				    relative_path, target_marker);
+			char *line3_start = NULL;  // Potential <<<<<<< TARGET line
+			char *line2_end = NULL;
+			if (line2_start) {
+				line2_end = strchr(line2_start, '\n');
+				if (line2_end && *(line2_end + 1) != '\0') {
+					line3_start = line2_end + 1;
+				}
 			}
-			free(relative_path);
-			if (found_block_end_instead) {  // "```" was found, ending this
-				                            // non-TARGET block
-				char *end_of_fence_line = strchr(found_block_end_instead, '\n');
-				current_pos =
-				    end_of_fence_line
-				        ? (end_of_fence_line + 1)
-				        : (found_block_end_instead + strlen(block_marker));
-			} else {  // EOF or other issue before TARGET or "```"
-				current_pos = content_scan_ptr +
-				              strlen(content_scan_ptr);  // Advance to end of
-				                                         // current scan area
+
+			if (line3_start) {
+				char *line3_end = strchr(line3_start, '\n');
+				size_t line3_content_len =
+				    line3_end ? (size_t)(line3_end - line3_start)
+				              : strlen(line3_start);
+
+				// Condition 2: Line i+2 (line3_start) is exactly
+				// target_marker_const
+				if (line3_content_len == target_marker_len &&
+				    strncmp(line3_start, target_marker_const,
+				            target_marker_len) == 0) {
+					// Valid HNT block header found. Proceed to parse and
+					// process.
+					char *relative_path = NULL;
+					char *target_content_str = NULL;
+					char *replace_content_str = NULL;
+
+					// 1. Extract relative_path from line2 (path line)
+					if (!line2_end) {  // Should ideally not happen if
+						               // line3_start is valid based on
+						               // line2_end
+						fprintf(stdout,
+						        "Error: Malformed block - path line starting "
+						        "near '%.*s' "
+						        "not terminated by newline.\n",
+						        (int)MIN(20, strlen(line2_start)), line2_start);
+						overall_status = EXIT_FAILURE;
+						// Advance scan_pos past the ``` line and continue
+						// scanning
+						scan_pos = (line1_end && *(line1_end + 1))
+						               ? (line1_end + 1)
+						               : (line1_start + strlen(line1_start));
+						if (!*scan_pos) break;  // EOF
+						continue;               // Outer loop
+					}
+					relative_path =
+					    strndup(line2_start, line2_end - line2_start);
+					if (!relative_path) {
+						perror("strndup failed for relative_path");
+						overall_status = EXIT_FAILURE;
+						scan_pos = (line3_end && *(line3_end + 1))
+						               ? (line3_end + 1)
+						               : (line3_start + line3_content_len);
+						if (!*scan_pos) break;  // EOF
+						continue;               // Outer loop
+					}
+
+					// target_marker_line is line3_start.
+					// target_content_starts_here is the line after line3_start.
+					char *target_content_starts_here;
+					if (line3_end && *(line3_end + 1) != '\0') {
+						target_content_starts_here = line3_end + 1;
+					} else if (line3_end) {  // line3 ends with \n but is last
+						                     // char of input
+						target_content_starts_here =
+						    line3_end + 1;  // Points to '\0'
+					} else {  // no \n after line3_start, it is the last line
+						target_content_starts_here =
+						    line3_start + line3_content_len;  // Points to '\0'
+					}
+
+					// Find SEPARATOR marker
+					char *separator_marker_line = NULL;
+					char *replace_content_starts_here = NULL;
+					char *dummy_found_stop_marker =
+					    NULL;  // For find_line_with_exact_content
+
+					separator_marker_line = find_line_with_exact_content(
+					    target_content_starts_here, separator_marker,
+					    &replace_content_starts_here,
+					    NULL,  // Allow "```" within TARGET content
+					    &dummy_found_stop_marker);
+
+					if (!separator_marker_line) {
+						fprintf(stdout,
+						        "Error: Missing '%s' after target section for "
+						        "path '%s'.\n",
+						        separator_marker, relative_path);
+						free(relative_path);
+						overall_status = EXIT_FAILURE;
+						scan_pos =
+						    (line3_end && *(line3_end + 1))
+						        ? (line3_end + 1)
+						        : (line3_start +
+						           line3_content_len);  // After TARGET line
+						if (!*scan_pos) break;          // EOF
+						continue;                       // Outer loop
+					}
+					char *separator_marker_line_end =
+					    strchr(separator_marker_line, '\n');
+
+					// Extract target content
+					char *actual_target_content_end = separator_marker_line;
+					while (actual_target_content_end >
+					           target_content_starts_here &&
+					       (*(actual_target_content_end - 1) == '\n' ||
+					        *(actual_target_content_end - 1) == '\r')) {
+						actual_target_content_end--;
+					}
+					target_content_str = strndup(
+					    target_content_starts_here,
+					    actual_target_content_end - target_content_starts_here);
+					if (!target_content_str) {
+						perror("strndup failed for target_content");
+						free(relative_path);
+						overall_status = EXIT_FAILURE;
+						scan_pos =
+						    (separator_marker_line_end &&
+						     *(separator_marker_line_end + 1))
+						        ? (separator_marker_line_end + 1)
+						        : (separator_marker_line +
+						           strlen(separator_marker));  // After
+						                                       // SEPARATOR line
+						if (!*scan_pos) break;                 // EOF
+						continue;                              // Outer loop
+					}
+
+					// Find REPLACE marker
+					char *replace_marker_line = NULL;
+					char *after_replace_marker_content_area = NULL;
+
+					replace_marker_line = find_line_with_exact_content(
+					    replace_content_starts_here, replace_marker,
+					    &after_replace_marker_content_area,
+					    NULL,  // Allow "```" within REPLACE content
+					    &dummy_found_stop_marker);
+
+					if (!replace_marker_line) {
+						fprintf(stdout,
+						        "Error: Missing '%s' after replace section for "
+						        "path '%s'.\n",
+						        replace_marker, relative_path);
+						free(relative_path);
+						free(target_content_str);
+						overall_status = EXIT_FAILURE;
+						scan_pos =
+						    (separator_marker_line_end &&
+						     *(separator_marker_line_end + 1))
+						        ? (separator_marker_line_end + 1)
+						        : (separator_marker_line +
+						           strlen(separator_marker));  // After
+						                                       // SEPARATOR line
+						if (!*scan_pos) break;                 // EOF
+						continue;                              // Outer loop
+					}
+					char *replace_marker_line_end =
+					    strchr(replace_marker_line, '\n');
+
+					// Extract replace content
+					char *actual_replace_content_end = replace_marker_line;
+					while (actual_replace_content_end >
+					           replace_content_starts_here &&
+					       (*(actual_replace_content_end - 1) == '\n' ||
+					        *(actual_replace_content_end - 1) == '\r')) {
+						actual_replace_content_end--;
+					}
+					replace_content_str =
+					    strndup(replace_content_starts_here,
+					            actual_replace_content_end -
+					                replace_content_starts_here);
+					if (!replace_content_str) {
+						perror("strndup failed for replace_content");
+						free(relative_path);
+						free(target_content_str);
+						overall_status = EXIT_FAILURE;
+						scan_pos =
+						    (replace_marker_line_end &&
+						     *(replace_marker_line_end + 1))
+						        ? (replace_marker_line_end + 1)
+						        : (replace_marker_line +
+						           strlen(replace_marker));  // After REPLACE
+						                                     // marker line
+						if (!*scan_pos) break;               // EOF
+						continue;                            // Outer loop
+					}
+
+					// Find closing block_marker "```"
+					char *closing_block_marker_line = NULL;
+					char *after_closing_block_marker = NULL;
+
+					closing_block_marker_line = find_line_with_exact_content(
+					    after_replace_marker_content_area, block_marker_const,
+					    &after_closing_block_marker, NULL,
+					    &dummy_found_stop_marker);
+
+					if (!closing_block_marker_line) {
+						fprintf(stdout,
+						        "Error: Missing closing '%s' for block related "
+						        "to path '%s'\n",
+						        block_marker_const, relative_path);
+						free(relative_path);
+						free(target_content_str);
+						free(replace_content_str);
+						overall_status = EXIT_FAILURE;
+						scan_pos =
+						    (replace_marker_line_end &&
+						     *(replace_marker_line_end + 1))
+						        ? (replace_marker_line_end + 1)
+						        : (replace_marker_line +
+						           strlen(replace_marker));  // After REPLACE
+						                                     // marker line
+						if (!*scan_pos) break;               // EOF
+						continue;                            // Outer loop
+					}
+
+					block_count++;
+					if (verbose_mode) {
+						printf("\n--- Processing Block %d: %s ---\n",
+						       block_count, relative_path);
+						printf("Target:\n---\n%s\n---\n", target_content_str);
+						printf("Replace:\n---\n%s\n---\n", replace_content_str);
+					}
+
+					int block_status = process_block(
+					    shared_root, abs_input_paths, num_input_paths,
+					    relative_path, target_content_str, replace_content_str);
+
+					if (block_status == 1) {  // FAILED
+						overall_status = EXIT_FAILURE;
+						if (!verbose_mode) {
+							printf("[%d] %s: FAILED\n", block_count,
+							       relative_path);
+						}
+					} else if (block_status == 2) {  // CREATED
+						if (!verbose_mode) {
+							printf("[%d] %s: OK (CREATED)\n", block_count,
+							       relative_path);
+						}
+					} else {  // OK
+						if (!verbose_mode) {
+							printf("[%d] %s: OK\n", block_count, relative_path);
+						}
+					}
+
+					free(relative_path);
+					free(target_content_str);
+					free(replace_content_str);
+
+					scan_pos =
+					    after_closing_block_marker;  // Advance scan_pos past
+					                                 // the processed block
+					if (!*scan_pos) break;           // End of input
+					continue;                        // Outer loop
+				}
 			}
-			continue;
 		}
 
-		// TARGET marker found. target_content_starts_here points to the line
-		// after it.
-		char *separator_marker_line = NULL;
-		char *replace_content_starts_here = NULL;
-		char *found_block_end_before_separator = NULL;
-
-		separator_marker_line = find_line_with_exact_content(
-		    target_content_starts_here, separator_marker,
-		    &replace_content_starts_here,
-		    NULL,  // Allow "```" within TARGET content
-		    &found_block_end_before_separator);
-
-		if (!separator_marker_line) {
-			fprintf(stdout,
-			        "Error: Missing '%s' after target section for path '%s'. ",
-			        separator_marker, relative_path);
-			// With stop_marker_content as NULL,
-			// found_block_end_before_separator will not be set by finding
-			// block_marker. So, the 'else' branch is more likely.
-			if (found_block_end_before_separator) {  // This condition would now
-				                                     // only be true if
-				                                     // stop_marker was
-				                                     // something else
-				fprintf(stdout,
-				        "'%s' found instead (unexpected stop marker).\n",
-				        block_marker /* or actual stop marker */);
-				current_pos = found_block_end_before_separator;
-			} else {
-				fprintf(stdout,
-				        "End of block content reached before finding it.\n");
-				current_pos =
-				    target_content_starts_here;  // Advance past TARGET line
-			}
-			free(relative_path);
-			overall_status = EXIT_FAILURE;
-			continue;
-		}
-
-		// Extract target content
-		char *actual_target_content_end = separator_marker_line;
-		while (actual_target_content_end > target_content_starts_here &&
-		       (*(actual_target_content_end - 1) == '\n' ||
-		        *(actual_target_content_end - 1) == '\r')) {
-			actual_target_content_end--;
-		}
-		char *target_content_str =
-		    strndup(target_content_starts_here,
-		            actual_target_content_end - target_content_starts_here);
-		if (!target_content_str) {
-			perror("strndup failed for target_content");
-			free(relative_path);
-			overall_status = EXIT_FAILURE;
-			current_pos =
-			    replace_content_starts_here;  // Advance past separator line
-			continue;
-		}
-
-		// Find REPLACE marker
-		char *replace_marker_line = NULL;
-		char *after_replace_marker_content_area = NULL;
-		char *found_block_end_before_replace = NULL;
-
-		replace_marker_line = find_line_with_exact_content(
-		    replace_content_starts_here, replace_marker,
-		    &after_replace_marker_content_area,
-		    NULL,  // Allow "```" within REPLACE content
-		    &found_block_end_before_replace);
-
-		if (!replace_marker_line) {
-			fprintf(stdout,
-			        "Error: Missing '%s' after replace section for path '%s'. ",
-			        replace_marker, relative_path);
-			// With stop_marker_content as NULL, found_block_end_before_replace
-			// will not be set by finding block_marker. So, the 'else' branch is
-			// more likely.
-			if (found_block_end_before_replace) {  // This condition would now
-				                                   // only be true if
-				                                   // stop_marker was something
-				                                   // else
-				fprintf(stdout,
-				        "'%s' found instead (unexpected stop marker).\n",
-				        block_marker /* or actual stop marker */);
-				current_pos = found_block_end_before_replace;
-			} else {
-				fprintf(stdout,
-				        "End of block content reached before finding it.\n");
-				current_pos =
-				    replace_content_starts_here;  // Advance past SEPARATOR line
-			}
-			free(relative_path);
-			free(target_content_str);
-			overall_status = EXIT_FAILURE;
-			continue;
-		}
-
-		// Extract replace content
-		char *actual_replace_content_end = replace_marker_line;
-		while (actual_replace_content_end > replace_content_starts_here &&
-		       (*(actual_replace_content_end - 1) == '\n' ||
-		        *(actual_replace_content_end - 1) == '\r')) {
-			actual_replace_content_end--;
-		}
-		char *replace_content_str =
-		    strndup(replace_content_starts_here,
-		            actual_replace_content_end - replace_content_starts_here);
-		if (!replace_content_str) {
-			perror("strndup failed for replace_content");
-			free(relative_path);
-			free(target_content_str);
-			overall_status = EXIT_FAILURE;
-			current_pos =
-			    after_replace_marker_content_area;  // Advance past replace
-			                                        // marker line
-			continue;
-		}
-
-		// Find closing block_marker "```"
-		char *closing_block_marker_line = NULL;
-		char *after_closing_block_marker =
-		    NULL;  // This will be the new current_pos for the main loop.
-		char *dummy_found_stop_marker = NULL;
-
-		closing_block_marker_line = find_line_with_exact_content(
-		    after_replace_marker_content_area, block_marker,
-		    &after_closing_block_marker,
-		    NULL,  // No specific stop marker, just looking for "```"
-		    &dummy_found_stop_marker);
-
-		if (!closing_block_marker_line) {
-			fprintf(
-			    stdout,
-			    "Error: Missing closing '%s' for block related to path '%s'\n",
-			    block_marker, relative_path);
-			free(relative_path);
-			free(target_content_str);
-			free(replace_content_str);
-			overall_status = EXIT_FAILURE;
-			current_pos =
-			    after_replace_marker_content_area;  // Advance past where
-			                                        // REPLACE content ended
-			continue;
-		}
-
-		block_count++;
-		if (verbose_mode) {
-			printf("\n--- Processing Block %d: %s ---\n", block_count,
-			       relative_path);
-			printf("Target:\n---\n%s\n---\n", target_content_str);
-			printf("Replace:\n---\n%s\n---\n", replace_content_str);
-		}
-
-		int block_status = process_block(
-		    shared_root, abs_input_paths, num_input_paths, relative_path,
-		    target_content_str, replace_content_str);
-
-		if (block_status == 1) {
-			overall_status = EXIT_FAILURE;
-			if (!verbose_mode) {
-				printf("[%d] %s: FAILED\n", block_count, relative_path);
-			}
-		} else if (block_status == 2) {
-			if (!verbose_mode) {
-				printf("[%d] %s: OK (CREATED)\n", block_count, relative_path);
-			}
+		// If not a valid HNT block start or conditions not met, advance
+		// scan_pos to the next line.
+		if (line1_end && *(line1_end + 1) != '\0') {
+			scan_pos = line1_end + 1;
 		} else {
-			if (!verbose_mode) {
-				printf("[%d] %s: OK\n", block_count, relative_path);
-			}
+			break;  // End of content or last line processed
 		}
-
-		free(relative_path);
-		free(target_content_str);
-		free(replace_content_str);
-
-		current_pos = after_closing_block_marker;  // Advance current_pos past
-		                                           // the processed block
 	}
-
 	// Final summary message
 	if (verbose_mode) {
 		printf("\nhnt-apply: Finished processing %d block(s).\n", block_count);
