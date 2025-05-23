@@ -85,6 +85,13 @@ stdout to display the created assistant message's filename
 model providers](https://github.com/michaelskyba/hinata/tree/main/llm#supported-model-providers)
 - `--merge`: consecutive messages with the same role will be concatenated into a
 single message before being sent to the LLM. useful for organization
+- `--include-reasoning`: Passes `--include-reasoning` to `hnt-llm`. The LLM may
+include reasoning within `<think>...</think>` tags as part of its output.
+- `--separate-reasoning`: Implies `--include-reasoning` and `--write`. If the
+LLM output begins with a `<think>...</think>` block, this block is saved to a
+separate `[timestamp]-assistant-reasoning.md` file. The rest of the output is
+saved as the main assistant message. The reasoning file is for reference and not
+used in future `gen` contexts.
 
 ### `hnt-chat pack`
 `pack` packs a conversation into one text stream, suitably escaped as XML input

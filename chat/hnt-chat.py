@@ -372,21 +372,28 @@ def handle_gen_command(args):
     if args.model:
         llm_cmd.extend(["--model", args.model])
     if args.debug_unsafe:
-        llm_cmd.append("--debug-unsafe")  # Pass the flag if present
+        llm_cmd.append("--debug-unsafe")
+
+    # Handle reasoning flags
+    include_reasoning_active = args.include_reasoning or args.separate_reasoning
+    if include_reasoning_active:
+        llm_cmd.append("--include-reasoning")
 
     # 3. Execute hnt-llm, stream output, and potentially capture
     captured_output_buffer = io.BytesIO()
-    should_write = args.write or args.output_filename
-    relative_filename_written = None  # Track if file was written
+    # --separate-reasoning implies --write
+    should_write_active = args.write or args.output_filename or args.separate_reasoning
+    relative_filename_written = None  # Track assistant message filename
+    process = None  # Initialize process for robust error handling
 
     try:
         # print(f"hnt-chat: running {' '.join(llm_cmd)}...", file=sys.stderr)
         process = subprocess.Popen(
             llm_cmd,
             stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,  # Always pipe stdout to handle streaming/capture
-            stderr=sys.stderr,  # Stream hnt-llm errors directly
-            bufsize=0,  # Unbuffered for stdin/stdout pipes
+            stdout=subprocess.PIPE,
+            stderr=sys.stderr,
+            bufsize=0,
         )
 
         # Write packed data to hnt-llm's stdin
@@ -401,8 +408,8 @@ def handle_gen_command(args):
                     break
                 sys.stdout.buffer.write(chunk)  # Stream to our stdout
                 sys.stdout.buffer.flush()
-                if should_write:
-                    captured_output_buffer.write(chunk)  # Capture the output
+                if should_write_active:  # Capture if any form of write is active
+                    captured_output_buffer.write(chunk)
             process.stdout.close()
 
         return_code = process.wait()
@@ -412,14 +419,39 @@ def handle_gen_command(args):
             # Don't write partial output if LLM errored
             sys.exit(return_code)
 
-        # 4. Write captured output as assistant message if requested
-        if should_write:
-            assistant_content = captured_output_buffer.getvalue().decode(
+        # 4. Write captured output if requested
+        if should_write_active:
+            full_assistant_content = captured_output_buffer.getvalue().decode(
                 "utf-8", errors="replace"
             )
-            relative_filename_written = _write_message_file(
-                conv_dir_path, "assistant", assistant_content
-            )
+            content_for_assistant_file = full_assistant_content
+
+            if args.separate_reasoning:
+                # Regex to find <think>...</think> at the beginning of the string.
+                # re.DOTALL allows '.' to match newlines within the think block.
+                think_block_match = re.match(
+                    r"^(<think>.*?</think>)", full_assistant_content, re.DOTALL
+                )
+                if think_block_match:
+                    extracted_reasoning = think_block_match.group(0)
+                    # Write reasoning to its own file with a new timestamp
+                    _write_message_file(
+                        conv_dir_path, "assistant-reasoning", extracted_reasoning
+                    )
+                    # Update content for the main assistant file: everything after the think block
+                    content_for_assistant_file = full_assistant_content[
+                        len(extracted_reasoning) :
+                    ].lstrip()
+
+            # Write the (potentially modified) assistant message
+            if (
+                content_for_assistant_file
+                or not args.separate_reasoning
+                or not think_block_match
+            ):  # Ensure we write empty assistant if it's all reasoning
+                relative_filename_written = _write_message_file(
+                    conv_dir_path, "assistant", content_for_assistant_file
+                )
             # print(
             #     f"hnt-chat: wrote assistant message {relative_filename_written}",
             #     file=sys.stderr,
@@ -438,12 +470,12 @@ def handle_gen_command(args):
             file=sys.stderr,
         )
         # Check exit status again if possible
-        if process:
+        if process:  # process is initialized to None, so this check is safe
             rc = process.poll()  # Non-blocking check
             if rc is not None and rc != 0:
                 print(f"hnt-llm exited abnormally with status {rc}", file=sys.stderr)
                 sys.exit(rc if rc > 0 else 1)
-            elif rc is None:
+            elif rc is None:  # pragma: no cover (hard to test this specific timing)
                 process.wait()  # Wait if somehow still running
         sys.exit(1)
     except Exception as e:
@@ -545,6 +577,16 @@ def main():
         "--merge",
         action="store_true",
         help="Merge consecutive messages from the same role before sending to LLM.",
+    )
+    parser_gen.add_argument(
+        "--include-reasoning",
+        action="store_true",
+        help="Passes --include-reasoning to hnt-llm. LLM may include <think> tags.",
+    )
+    parser_gen.add_argument(
+        "--separate-reasoning",
+        action="store_true",
+        help="Implies --include-reasoning and --write. Saves leading <think> block to a separate file.",
     )
     parser_gen.set_defaults(func=handle_gen_command)
 
