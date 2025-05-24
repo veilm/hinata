@@ -284,6 +284,12 @@ def stream_and_capture_llm_output(
                 )
                 current_stream_highlight_active = False
 
+        # If using syntax highlighting, reset terminal color after header for hlmd-st.
+        # Raw output will inherit LLM_RESPONSE_COLOR from header or apply it on fallback.
+        if current_stream_highlight_active:
+            sys.stdout.write(RESET_COLOR)
+            sys.stdout.flush()
+
         # Streaming loop
         if gen_process.stdout:
             for line in iter(gen_process.stdout.readline, ""):
@@ -303,9 +309,12 @@ def stream_and_capture_llm_output(
                         )
                         debug_log(
                             args,
-                            "Syntax highlighter pipe broken, falling back to raw for remainder.",
+                            "Syntax highlighter pipe broken, falling back to raw for remainder. Applying LLM_RESPONSE_COLOR.",
                         )
                         current_stream_highlight_active = False
+                        sys.stdout.write(
+                            LLM_RESPONSE_COLOR
+                        )  # Ensure raw output is colored
                         sys.stdout.write(line)
                         sys.stdout.flush()
                     except Exception as e_hl_write:
@@ -315,9 +324,12 @@ def stream_and_capture_llm_output(
                         )
                         debug_log(
                             args,
-                            f"Error writing to syntax highlighter: {e_hl_write}, falling back to raw.",
+                            f"Error writing to syntax highlighter: {e_hl_write}, falling back to raw. Applying LLM_RESPONSE_COLOR.",
                         )
                         current_stream_highlight_active = False
+                        sys.stdout.write(
+                            LLM_RESPONSE_COLOR
+                        )  # Ensure raw output is colored
                         sys.stdout.write(line)
                         sys.stdout.flush()
                 else:
