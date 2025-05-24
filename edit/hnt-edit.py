@@ -395,7 +395,7 @@ def main():
 
     # 8. Run hnt-chat gen, stream and capture output
     debug_log(args, "Running hnt-chat gen...")
-    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "--merge", "-c", conversation_dir]
+    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "--include-reasoning", "--separate-reasoning", "--merge", "-c", conversation_dir]
     if args.model:
         hnt_chat_gen_cmd.extend(["--model", args.model])
         debug_log(args, "Using model:", args.model)
