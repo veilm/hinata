@@ -18,6 +18,7 @@
 // --- Global Flags ---
 int verbose_mode = 0;            // Global flag for verbose output
 int disallow_creating_flag = 0;  // Global flag for disallowing file creation
+int ignore_reasoning_flag = 0;   // Global flag for ignoring <think> blocks
 
 #ifndef MIN  // Define MIN if not already defined (e.g., by sys/param.h)
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -211,6 +212,7 @@ int main(int argc, char *argv[]) {
 	struct option long_options[] = {
 	    {"verbose", no_argument, &verbose_mode, 1},
 	    {"disallow-creating", no_argument, &disallow_creating_flag, 1},
+	    {"ignore-reasoning", no_argument, &ignore_reasoning_flag, 1},
 	    {0, 0, 0, 0}  // End of options
 	};
 	int opt;
@@ -232,7 +234,7 @@ int main(int argc, char *argv[]) {
 				// Error message is printed by getopt_long
 				fprintf(stderr,
 				        "Usage: %s [-v|--verbose] [--disallow-creating] "
-				        "<file1> [file2] ...\n",
+				        "[--ignore-reasoning] <file1> [file2] ...\n",
 				        argv[0]);
 				fprintf(
 				    stderr,
@@ -248,8 +250,8 @@ int main(int argc, char *argv[]) {
 	// Check if any file paths were provided after options
 	if (optind >= argc) {
 		fprintf(stderr,
-		        "Usage: %s [-v|--verbose] [--disallow-creating] <file1> "
-		        "[file2] ...\n",
+		        "Usage: %s [-v|--verbose] [--disallow-creating] "
+		        "[--ignore-reasoning] <file1> [file2] ...\n",
 		        argv[0]);
 		fprintf(stderr, "Error: No input files specified.\n");
 		fprintf(stderr,
@@ -327,12 +329,63 @@ int main(int argc, char *argv[]) {
 		printf("hnt-apply: Finished reading stdin.\n");
 	}
 
+	// --- 3b. Handle --ignore-reasoning ---
+	char *effective_stdin_start = stdin_content;
+	if (ignore_reasoning_flag) {
+		if (verbose_mode) {
+			printf("hnt-apply: --ignore-reasoning flag is set.\n");
+		}
+		const char *think_open_tag = "<think>";
+		const char *think_close_tag = "</think>";
+		size_t think_open_tag_len = strlen(think_open_tag);
+
+		if (strncmp(stdin_content, think_open_tag, think_open_tag_len) == 0) {
+			if (verbose_mode) {
+				printf(
+				    "hnt-apply: Found '<think>' tag at the beginning of "
+				    "stdin.\n");
+			}
+			char *think_close_pos =
+			    strstr(stdin_content + think_open_tag_len, think_close_tag);
+			if (think_close_pos) {
+				effective_stdin_start =
+				    think_close_pos + strlen(think_close_tag);
+				// Skip leading newline characters after </think>
+				while (*effective_stdin_start == '\n' ||
+				       *effective_stdin_start == '\r') {
+					effective_stdin_start++;
+				}
+				if (verbose_mode) {
+					printf(
+					    "hnt-apply: Found '</think>' tag. Skipping reasoning "
+					    "block.\n");
+				}
+			} else {
+				if (verbose_mode) {
+					fprintf(stderr,
+					        "hnt-apply: Warning: Found '<think>' but no "
+					        "matching '</think>'. Entire input might be "
+					        "consumed as reasoning.\n");
+				}
+				// If no closing tag, effectively skip all content
+				effective_stdin_start = stdin_content + strlen(stdin_content);
+			}
+		} else {
+			if (verbose_mode) {
+				printf(
+				    "hnt-apply: --ignore-reasoning active, but no '<think>' "
+				    "tag at the beginning of stdin. Processing entire "
+				    "stdin.\n");
+			}
+		}
+	}
+
 	// --- 4. Parse stdin and process blocks ---
-	if (!verbose_mode &&
-	    *stdin_content != '\0') {  // Only print if there might be blocks
+	if (!verbose_mode && *effective_stdin_start !=
+	                         '\0') {  // Only print if there might be blocks
 		printf("hnt-apply: Processing blocks...\n");
 	}
-	char *scan_pos = stdin_content;
+	char *scan_pos = effective_stdin_start;
 	const char *block_marker_const = "```";              // Renamed for clarity
 	const char *target_marker_const = "<<<<<<< TARGET";  // Renamed for clarity
 	const char *separator_marker = "=======";

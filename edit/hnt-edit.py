@@ -395,7 +395,16 @@ def main():
 
     # 8. Run hnt-chat gen, stream and capture output
     debug_log(args, "Running hnt-chat gen...")
-    hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "--include-reasoning", "--separate-reasoning", "--merge", "-c", conversation_dir]
+    hnt_chat_gen_cmd = [
+        "hnt-chat",
+        "gen",
+        "--write",
+        "--include-reasoning",
+        "--separate-reasoning",
+        "--merge",
+        "-c",
+        conversation_dir,
+    ]
     if args.model:
         hnt_chat_gen_cmd.extend(["--model", args.model])
         debug_log(args, "Using model:", args.model)
@@ -587,7 +596,7 @@ def main():
 
     # 9. Run hnt-apply (step number updated)
     debug_log(args, "Running hnt-apply...")
-    hnt_apply_cmd = ["hnt-apply"] + args.source_files
+    hnt_apply_cmd = ["hnt-apply", "--ignore-reasoning"] + args.source_files
     debug_log(args, "hnt-apply command:", hnt_apply_cmd)
     debug_log(args, "Piping captured hnt-chat gen output to hnt-apply stdin.")
 
