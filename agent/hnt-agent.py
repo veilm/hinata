@@ -22,24 +22,27 @@ RESET_COLOR = "\033[0m"
 # Unicode character for UI borders
 U_HORIZ_LINE = "─"
 
+# Fixed width for dividers
+FIXED_DIVIDER_WIDTH = 70
+
 
 # Command to pipe output through for syntax highlighting
 SYNTAX_HIGHLIGHT_PIPE_CMD = ["hlmd-st"]
 
 
 def get_header_footer_lines(title_text_input):
-    """Generates header and footer line strings for styled output blocks."""
-    terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    """Generates header and footer line strings for styled output blocks using a fixed width."""
+    current_divider_width = FIXED_DIVIDER_WIDTH
 
     # Max length for title_text_input itself, leaving space for " .. " and dashes
     # " {title} " needs len(title) + 2. Min 1 dash each side. Min 2 spaces for " ".
     # So total space for " {title} " is len(title) + 2.
     # Max title content length aims to leave at least 2 dashes and 2 spaces for the title wrapper "  ".
-    # Effectively, title_text + "  " should be less than terminal_width - 2 (for minimal dashes).
+    # Effectively, title_text + "  " should be less than current_divider_width - 2 (for minimal dashes).
     max_title_content_len = (
-        terminal_width - 6
-    )  # Allows for " XYZ.. " and minimal dashes.
-    if max_title_content_len < 1:  # Handle very small terminal widths
+        current_divider_width - 6
+    )  # Allows for " XYZ.. " and minimal dashes. E.g. " -- TITLE... -- "
+    if max_title_content_len < 1:  # Handle very small divider widths
         max_title_content_len = 1
 
     if len(title_text_input) > max_title_content_len:
@@ -51,10 +54,13 @@ def get_header_footer_lines(title_text_input):
     title_str = f" {title_text} "
 
     # Now calculate dashes
-    remaining_width = terminal_width - len(title_str)
+    remaining_width = current_divider_width - len(title_str)
     # Ensure remaining_width is not negative if title_str itself is too long
+    # (e.g. if title_str due to title_text alone is already > current_divider_width)
     if remaining_width < 0:
-        remaining_width = 0
+        remaining_width = (
+            0  # No space for dashes if title itself (with spaces) is too wide
+        )
 
     dashes_left = remaining_width // 2
     dashes_right = remaining_width - dashes_left  # Handles odd remaining_width
@@ -62,13 +68,27 @@ def get_header_footer_lines(title_text_input):
     header_line_part1 = U_HORIZ_LINE * dashes_left
     header_line_part2 = U_HORIZ_LINE * dashes_right
 
-    # Construct header, ensuring it doesn't exceed terminal_width
-    header_display = (header_line_part1 + title_str + header_line_part2)[
-        :terminal_width
-    ]
+    # Construct header. It should naturally be current_divider_width long if logic is correct.
+    # The slicing [:current_divider_width] is a safeguard.
+    header_display = header_line_part1 + title_str + header_line_part2
+    if len(header_display) > current_divider_width:  # If title_str was too wide
+        header_display = (
+            title_str[: current_divider_width - 3] + "..."
+            if len(title_str) > current_divider_width
+            else title_str
+        )
+        # Pad with minimal dashes if possible, or just truncate title
+        if len(header_display) < current_divider_width:
+            padding_needed = current_divider_width - len(header_display)
+            pad_left = padding_needed // 2
+            pad_right = padding_needed - pad_left
+            header_display = (
+                (U_HORIZ_LINE * pad_left) + header_display + (U_HORIZ_LINE * pad_right)
+            )
+        header_display = header_display[:current_divider_width]  # Final safety truncate
 
-    # Footer matches the calculated length of the header_display
-    footer_display = (U_HORIZ_LINE * len(header_display))[:terminal_width]
+    # Footer should be a full line of dashes of current_divider_width
+    footer_display = U_HORIZ_LINE * current_divider_width
 
     return header_display, footer_display
 
@@ -192,13 +212,14 @@ def debug_log(args, *print_args, **print_kwargs):
 
 
 def stream_and_capture_llm_output(
-    args, gen_cmd, use_syntax_highlight, highlighter_cmd, description="LLM"
+    args, gen_cmd, use_syntax_highlight, highlighter_cmd, description
 ):
     """
     Runs the LLM generation command, streams its output to stdout (optionally via a syntax highlighter)
     and captures the full output.
+    'description' is used as the title for the header/footer.
     """
-    llm_header, llm_footer = get_header_footer_lines(f"{description} Response")
+    llm_header, llm_footer = get_header_footer_lines(description)
     sys.stdout.write(
         f"\n{LLM_RESPONSE_COLOR}"
     )  # Start color, add leading newline for separation
@@ -222,13 +243,13 @@ def stream_and_capture_llm_output(
         )
         debug_log(
             args,
-            f"{description} generation process ({' '.join(gen_cmd)}) started. PID: {gen_process.pid}",
+            f"Generation process for '{description}' ({' '.join(gen_cmd)}) started. PID: {gen_process.pid}",
         )
 
         if current_stream_highlight_active and highlighter_cmd:
             debug_log(
                 args,
-                f"Attempting to start syntax highlighter: {' '.join(highlighter_cmd)}",
+                f"Attempting to start syntax highlighter for '{description}': {' '.join(highlighter_cmd)}",
             )
             try:
                 highlighter_process = subprocess.Popen(
@@ -331,14 +352,14 @@ def stream_and_capture_llm_output(
         if gen_rc != 0:
             # Stderr from gen_process should have already been printed.
             print(
-                f"\nError: {description} generation command ('{' '.join(gen_cmd)}') failed with exit code {gen_rc}.",
+                f"\nError: Generation for '{description}' ('{' '.join(gen_cmd)}') failed with exit code {gen_rc}.",
                 file=sys.stderr,
             )
             should_exit_code = gen_rc
             # Defer sys.exit until after footer is printed in finally
     except FileNotFoundError:  # For gen_process Popen itself failing
         print(
-            f"Error: Command for {description} generation not found: {gen_cmd[0]}",
+            f"Error: Command for '{description}' generation not found: {gen_cmd[0]}",
             file=sys.stderr,
         )
         if gen_process and gen_process.poll() is None:
@@ -350,7 +371,7 @@ def stream_and_capture_llm_output(
         Exception
     ) as e:  # Other unexpected errors during Popen/streaming for gen_process
         print(
-            f"An unexpected error occurred during {description} generation: {e}",
+            f"An unexpected error occurred during '{description}' generation: {e}",
             file=sys.stderr,
         )
         if gen_process and gen_process.poll() is None:
@@ -442,6 +463,8 @@ def main():
     original_exit_code = (
         0  # Stores the first critical error's exit code, or 0 for success
     )
+    llm_navigator_idx = 0
+    shell_apply_idx = 0
 
     try:
         # 0. Create headlesh session
@@ -528,7 +551,7 @@ def main():
         debug_log(args, "User request message added.")
 
         if not args.message:  # Show user query if it came from EDITOR
-            header, footer = get_header_footer_lines("User Instruction")
+            header, footer = get_header_footer_lines("User Instruction <0>")
             sys.stdout.write(USER_INSTRUCTION_COLOR)
             print(header)
             # Ensure instruction ends with a newline for clean formatting
@@ -559,8 +582,9 @@ def main():
             hnt_chat_gen_cmd,
             syntax_highlight_enabled,
             effective_syntax_cmd,
-            description="Initial LLM",
+            description=f"LLM Navigator <{llm_navigator_idx}>",
         )
+        llm_navigator_idx += 1
         debug_log(
             args, "Captured hnt-chat gen output length (initial):", len(llm_message_raw)
         )
@@ -640,7 +664,7 @@ def main():
                 # Print hnt-shell-apply's output (adapting original 8)
                 if shell_apply_stdout:
                     tool_header, tool_footer = get_header_footer_lines(
-                        "hnt-shell-apply Output"
+                        f"hnt-shell-apply <{shell_apply_idx}>"
                     )
                     sys.stdout.write(
                         f"\n{TOOL_OUTPUT_COLOR}"
@@ -656,7 +680,8 @@ def main():
                     print(tool_footer)  # print() adds newline
                     sys.stdout.write(RESET_COLOR)  # Reset color
                     sys.stdout.write("\n")  # Extra newline for spacing
-                sys.stdout.flush()
+                    sys.stdout.flush()
+                    shell_apply_idx += 1
 
                 if shell_apply_stderr:
                     sys.stderr.write("\n--- Error output from hnt-shell-apply ---\n")
@@ -731,8 +756,9 @@ def main():
                     hnt_chat_gen_cmd,
                     syntax_highlight_enabled,
                     effective_syntax_cmd,
-                    description="Next LLM",
+                    description=f"LLM Navigator <{llm_navigator_idx}>",
                 )
+                llm_navigator_idx += 1
 
                 debug_log(
                     args,
