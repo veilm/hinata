@@ -13,8 +13,64 @@ import textwrap
 from pathlib import Path
 
 
+# ANSI color codes for UI display
+USER_INSTRUCTION_COLOR = "\033[94m"  # Light Blue
+LLM_RESPONSE_COLOR = "\033[92m"  # Light Green
+TOOL_OUTPUT_COLOR = "\033[96m"  # Light Cyan
+RESET_COLOR = "\033[0m"
+
+# Unicode character for UI borders
+U_HORIZ_LINE = "─"
+
+
 # Command to pipe output through for syntax highlighting
 SYNTAX_HIGHLIGHT_PIPE_CMD = ["hlmd-st"]
+
+
+def get_header_footer_lines(title_text_input):
+    """Generates header and footer line strings for styled output blocks."""
+    terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+
+    # Max length for title_text_input itself, leaving space for " .. " and dashes
+    # " {title} " needs len(title) + 2. Min 1 dash each side. Min 2 spaces for " ".
+    # So total space for " {title} " is len(title) + 2.
+    # Max title content length aims to leave at least 2 dashes and 2 spaces for the title wrapper "  ".
+    # Effectively, title_text + "  " should be less than terminal_width - 2 (for minimal dashes).
+    max_title_content_len = (
+        terminal_width - 6
+    )  # Allows for " XYZ.. " and minimal dashes.
+    if max_title_content_len < 1:  # Handle very small terminal widths
+        max_title_content_len = 1
+
+    if len(title_text_input) > max_title_content_len:
+        # Truncate, leaving space for "..."
+        title_text = title_text_input[: max_title_content_len - 3] + "..."
+    else:
+        title_text = title_text_input
+
+    title_str = f" {title_text} "
+
+    # Now calculate dashes
+    remaining_width = terminal_width - len(title_str)
+    # Ensure remaining_width is not negative if title_str itself is too long
+    if remaining_width < 0:
+        remaining_width = 0
+
+    dashes_left = remaining_width // 2
+    dashes_right = remaining_width - dashes_left  # Handles odd remaining_width
+
+    header_line_part1 = U_HORIZ_LINE * dashes_left
+    header_line_part2 = U_HORIZ_LINE * dashes_right
+
+    # Construct header, ensuring it doesn't exceed terminal_width
+    header_display = (header_line_part1 + title_str + header_line_part2)[
+        :terminal_width
+    ]
+
+    # Footer matches the calculated length of the header_display
+    footer_display = (U_HORIZ_LINE * len(header_display))[:terminal_width]
+
+    return header_display, footer_display
 
 
 def run_command(cmd, stdin_content=None, capture_output=True, check=True, text=True):
@@ -142,15 +198,19 @@ def stream_and_capture_llm_output(
     Runs the LLM generation command, streams its output to stdout (optionally via a syntax highlighter)
     and captures the full output.
     """
-    sys.stdout.write(f"\n--- {description} Response ---\n")
+    llm_header, llm_footer = get_header_footer_lines(f"{description} Response")
+    sys.stdout.write(
+        f"\n{LLM_RESPONSE_COLOR}"
+    )  # Start color, add leading newline for separation
+    print(llm_header)  # print() adds a newline after the header
     sys.stdout.flush()
 
     output_capture = io.StringIO()
-    gen_process = None  # Initialize for finally block
-    highlighter_process = None  # Initialize for finally block
-
-    # This flag tracks if highlighting is active for the current stream attempt
+    gen_process = None
+    highlighter_process = None
     current_stream_highlight_active = use_syntax_highlight
+
+    should_exit_code = None  # None means success, otherwise it's the code to exit with
 
     try:
         gen_process = subprocess.Popen(
@@ -269,14 +329,13 @@ def stream_and_capture_llm_output(
                 )
 
         if gen_rc != 0:
-            # Stderr from gen_process should have already been printed by Popen's stderr=sys.stderr
-            # This print adds context about which command failed.
+            # Stderr from gen_process should have already been printed.
             print(
                 f"\nError: {description} generation command ('{' '.join(gen_cmd)}') failed with exit code {gen_rc}.",
                 file=sys.stderr,
             )
-            sys.exit(gen_rc)  # Propagate error, caught by main try/except SystemExit
-
+            should_exit_code = gen_rc
+            # Defer sys.exit until after footer is printed in finally
     except FileNotFoundError:  # For gen_process Popen itself failing
         print(
             f"Error: Command for {description} generation not found: {gen_cmd[0]}",
@@ -286,7 +345,7 @@ def stream_and_capture_llm_output(
             gen_process.terminate()
         if highlighter_process and highlighter_process.poll() is None:
             highlighter_process.terminate()
-        sys.exit(1)
+        should_exit_code = 1
     except (
         Exception
     ) as e:  # Other unexpected errors during Popen/streaming for gen_process
@@ -298,7 +357,17 @@ def stream_and_capture_llm_output(
             gen_process.terminate()
         if highlighter_process and highlighter_process.poll() is None:
             highlighter_process.terminate()
-        sys.exit(1)
+        should_exit_code = 1
+    finally:
+        # Ensure footer is printed and colors are reset
+        sys.stdout.write(LLM_RESPONSE_COLOR)  # Re-assert color for footer
+        print(llm_footer)  # print() adds a newline
+        sys.stdout.write(RESET_COLOR)
+        sys.stdout.write("\n")  # Extra newline for spacing after the block
+        sys.stdout.flush()
+
+    if should_exit_code is not None:
+        sys.exit(should_exit_code)  # Exit now if an error occurred
 
     captured_text = output_capture.getvalue()
     output_capture.close()
@@ -459,9 +528,17 @@ def main():
         debug_log(args, "User request message added.")
 
         if not args.message:  # Show user query if it came from EDITOR
-            print("-" * 40, file=sys.stdout)
-            print(instruction, file=sys.stdout)
-            print("-" * 40 + "\n", file=sys.stdout)
+            header, footer = get_header_footer_lines("User Instruction")
+            sys.stdout.write(USER_INSTRUCTION_COLOR)
+            print(header)
+            # Ensure instruction ends with a newline for clean formatting
+            if instruction.endswith("\n"):
+                sys.stdout.write(instruction)
+            else:
+                print(instruction)  # print() will add a newline
+            print(footer)
+            sys.stdout.write(RESET_COLOR)
+            sys.stdout.write("\n")  # Mimic hnt-edit's extra newline for spacing
             sys.stdout.flush()
 
         print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
@@ -562,10 +639,23 @@ def main():
 
                 # Print hnt-shell-apply's output (adapting original 8)
                 if shell_apply_stdout:
-                    sys.stdout.write("\n--- Output from hnt-shell-apply ---\n")
-                    sys.stdout.write(shell_apply_stdout)
-                    if not shell_apply_stdout.endswith("\n"):
+                    tool_header, tool_footer = get_header_footer_lines(
+                        "hnt-shell-apply Output"
+                    )
+                    sys.stdout.write(
+                        f"\n{TOOL_OUTPUT_COLOR}"
+                    )  # Newline before header, start color
+                    print(tool_header)  # print() adds newline
+
+                    sys.stdout.write(shell_apply_stdout)  # Content
+                    if not shell_apply_stdout.endswith(
+                        "\n"
+                    ):  # Ensure newline after content
                         sys.stdout.write("\n")
+
+                    print(tool_footer)  # print() adds newline
+                    sys.stdout.write(RESET_COLOR)  # Reset color
+                    sys.stdout.write("\n")  # Extra newline for spacing
                 sys.stdout.flush()
 
                 if shell_apply_stderr:
