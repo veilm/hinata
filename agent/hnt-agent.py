@@ -464,6 +464,8 @@ def main():
             print("-" * 40 + "\n", file=sys.stdout)
             sys.stdout.flush()
 
+        print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
+
         # 6. Run hnt-chat gen to get INITIAL LLM message
         debug_log(args, "Running hnt-chat gen for initial message...")
         hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
@@ -500,8 +502,7 @@ def main():
             # original_exit_code remains 0, script will exit cleanly via finally.
         else:
             # LLM Message has already been streamed and displayed.
-            # Print conversation directory after the LLM response.
-            print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
+            # (hnt-chat dir print moved to earlier in the script)
 
             # Start the interaction loop
             while True:
@@ -665,9 +666,6 @@ def main():
                     break  # EXIT LOOP (cleanly, no more LLM response)
 
                 llm_message_raw = next_llm_message_raw  # Update for the next iteration
-                print(
-                    f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr
-                )  # After new LLM response.
                 # Loop continues
 
             # End of while True loop
