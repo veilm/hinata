@@ -21,6 +21,13 @@ SYNTAX_HIGHLIGHT_PIPE_CMD = ["hlmd-st"]
 # don't use. doesn't buffer
 # SYNTAX_HIGHLIGHT_PIPE_CMD = ["rich", "-m", "-"]
 
+# ANSI color codes for editor message display
+USER_MESSAGE_COLOR = "\033[94m"  # Light Blue
+RESET_COLOR = "\033[0m"
+
+# Unicode characters for editor message borders
+U_HORIZ_LINE = "─"
+
 
 def run_command(cmd, stdin_content=None, capture_output=True, check=True, text=True):
     """Helper function to run a command."""
@@ -389,9 +396,39 @@ def main():
 
     # Show user query if it came from EDITOR
     if not args.message:
-        print("-" * 40)
-        print(instruction)
-        print("-" * 40 + "\n")
+        # Nicer display for user message from editor
+        current_message_idx = 0  # For future multi-message support, currently hardcoded
+
+        title_str = f" User Message <{current_message_idx}> "
+        # Design based on user's example visual:
+        # ───────────────── User Message <0> ─────────────────
+        # For idx=0, title " User Message <0> " is 18 chars.
+        # Original total dashes: 13 (left) + 21 (right) = 34.
+        # New even distribution: 17 dashes left, 17 dashes right.
+        # Total length (for idx=0) = 17 + 18 (title) + 17 = 52 characters.
+
+        # Calculate even padding for horizontal lines
+        original_total_dashes = 13 + 21
+        dashes_left = original_total_dashes // 2
+        dashes_right = (
+            original_total_dashes - dashes_left
+        )  # Ensures total is preserved if odd
+
+        header_line_part1 = U_HORIZ_LINE * dashes_left
+        header_line_part2 = U_HORIZ_LINE * dashes_right
+
+        header_display = f"{header_line_part1}{title_str}{header_line_part2}"
+        footer_display = U_HORIZ_LINE * (
+            len(header_line_part1) + len(title_str) + len(header_line_part2)
+        )
+
+        sys.stdout.write(USER_MESSAGE_COLOR)
+        print(header_display)
+        print(instruction)  # print() adds a newline after instruction content
+        print(footer_display)
+        sys.stdout.write(RESET_COLOR)
+        sys.stdout.write("\n")  # Match original script's extra newline after the block
+        sys.stdout.flush()
 
     # 8. Run hnt-chat gen, stream and capture output
     debug_log(args, "Running hnt-chat gen...")
