@@ -558,6 +558,18 @@ def main():
         ]  # Reused later
         debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
 
+        debug_log(args, "Defining hnt-chat add assistant command...")
+        hnt_chat_add_assistant_cmd = [
+            "hnt-chat",
+            "add",
+            "assistant",
+            "-c",
+            conversation_dir,
+        ]
+        debug_log(
+            args, "hnt-chat add assistant command defined:", hnt_chat_add_assistant_cmd
+        )
+
         # Wrap user instruction in <user_request> tags
         # Use .strip() on the instruction to avoid issues with leading/trailing newlines from user input interfering with tags
         wrapped_instruction = f"<user_request>\n{instruction.strip()}\n</user_request>"
@@ -567,131 +579,138 @@ def main():
             textwrap.shorten(wrapped_instruction, width=100, placeholder="..."),
         )
 
+        # --- START OF NEW PRE-CANNED MESSAGE PROCESSING (pwd/os-release) ---
+        # 1. Define and add Fake User Request for initial info
+        fake_user_request_initial_info = "<user_request>\nCould you please check the current directory and some basic OS info?\n</user_request>"
+        debug_log(args, "Defined fake user request for initial info.")
+        debug_log(args, "Adding fake user request (initial info) via hnt-chat add...")
+        run_command(
+            hnt_chat_add_user_cmd,  # Defined earlier
+            stdin_content=fake_user_request_initial_info,
+            check=True,
+            text=True,
+        )
+        debug_log(args, "Fake user request (initial info) added to chat.")
+
+        # 2. Define and add Fake Assistant Shell Command for initial info
+        fake_assistant_shell_command = """<hnt-shell>
+pwd
+cat /etc/os-release
+</hnt-shell>"""
+        debug_log(
+            args, "Defined fake assistant shell command message for initial info."
+        )
+        debug_log(
+            args,
+            "Adding fake assistant shell command message (initial info) via hnt-chat add...",
+        )
+        run_command(
+            hnt_chat_add_assistant_cmd,  # Defined earlier
+            stdin_content=fake_assistant_shell_command,
+            check=True,
+            text=True,
+        )
+        debug_log(
+            args, "Fake assistant shell command message (initial info) added to chat."
+        )
+
+        # 3. Run hnt-shell-apply with fake_assistant_shell_command
+        debug_log(
+            args,
+            "Running hnt-shell-apply with fake assistant shell command (initial info) as stdin...",
+        )
+        hnt_shell_apply_cmd_fake_initial = ["hnt-shell-apply", session_name]
+        debug_log(
+            args,
+            "hnt-shell-apply command (fake initial):",
+            hnt_shell_apply_cmd_fake_initial,
+        )
+
+        shell_apply_process_fake_initial = run_command(
+            hnt_shell_apply_cmd_fake_initial,
+            stdin_content=fake_assistant_shell_command,
+            capture_output=True,
+            check=False,  # Manually check returncode
+            text=True,
+        )
+        shell_apply_stdout_fake_initial = shell_apply_process_fake_initial.stdout
+        shell_apply_stderr_fake_initial = shell_apply_process_fake_initial.stderr
+        shell_apply_rc_fake_initial = shell_apply_process_fake_initial.returncode
+
+        debug_log(
+            args,
+            f"hnt-shell-apply (fake initial) exited with code {shell_apply_rc_fake_initial}",
+        )
+        if shell_apply_stdout_fake_initial:
+            debug_log(
+                args,
+                "hnt-shell-apply (fake initial) stdout (first 200 chars):\n",
+                textwrap.shorten(
+                    shell_apply_stdout_fake_initial, width=200, placeholder="..."
+                ),
+            )
+        if shell_apply_stderr_fake_initial:
+            debug_log(
+                args,
+                "hnt-shell-apply (fake initial) stderr (first 200 chars):\n",
+                textwrap.shorten(
+                    shell_apply_stderr_fake_initial, width=200, placeholder="..."
+                ),
+            )
+
+        # Add hnt-shell-apply's stdout (from fake initial command) to conversation as user message
+        # This output is not displayed to the user in the UI directly, only added to chat history for LLM context.
+        # Script continues regardless of this step's success/failure, similar to old pre-canned logic.
+        if (
+            shell_apply_rc_fake_initial == 0
+            and shell_apply_stdout_fake_initial
+            and shell_apply_stdout_fake_initial.strip()
+        ):
+            debug_log(
+                args,
+                "Adding fake initial hnt-shell-apply stdout to chat as user message...",
+            )
+            run_command(
+                hnt_chat_add_user_cmd,  # Defined earlier
+                stdin_content=shell_apply_stdout_fake_initial,
+                check=True,
+                text=True,
+            )
+            debug_log(args, "Fake initial hnt-shell-apply stdout added to chat.")
+        elif shell_apply_rc_fake_initial == 0 and (
+            not shell_apply_stdout_fake_initial
+            or not shell_apply_stdout_fake_initial.strip()
+        ):
+            debug_log(
+                args,
+                "Fake initial hnt-shell-apply produced no stdout or only whitespace. Nothing to add to chat.",
+            )
+        else:  # Error case for hnt-shell-apply (fake initial)
+            debug_log(
+                args,
+                f"Fake initial hnt-shell-apply failed (rc={shell_apply_rc_fake_initial}) or produced no usable stdout ({len(shell_apply_stdout_fake_initial if shell_apply_stdout_fake_initial else '')} bytes received). Output not added to chat.",
+            )
+        # --- END OF NEW PRE-CANNED MESSAGE PROCESSING ---
+
+        # 4. Add the REAL user instruction message to conversation (MOVED HERE)
+        # wrapped_instruction was defined before this replaced block
+        debug_log(args, "Adding REAL user request message via hnt-chat add...")
+        debug_log(
+            args, "hnt-chat add user command (REAL request):", hnt_chat_add_user_cmd
+        )
+        # Log content of wrapped REAL user instruction for context at point of addition
+        debug_log(
+            args,
+            "Wrapped REAL user instruction content (first 100 chars):\n",
+            textwrap.shorten(wrapped_instruction, width=100, placeholder="..."),
+        )
         run_command(
             hnt_chat_add_user_cmd,
             stdin_content=wrapped_instruction,
             check=True,
             text=True,
         )
-        debug_log(args, "User request message added.")
-
-        # --- START OF PRE-CANNED MESSAGE PROCESSING ---
-        pre_canned_assistant_message = """<hnt-shell>
-pwd
-cat /etc/os-release
-</hnt-shell>"""
-        debug_log(args, "Defined pre-canned assistant message.")
-
-        # Add pre-canned assistant message to conversation
-        debug_log(args, "Adding pre-canned assistant message via hnt-chat add...")
-        hnt_chat_add_assistant_cmd = [
-            "hnt-chat",
-            "add",
-            "assistant",
-            "-c",
-            conversation_dir,
-        ]
-        debug_log(
-            args,
-            "hnt-chat add assistant command (pre-canned):",
-            hnt_chat_add_assistant_cmd,
-        )
-        run_command(
-            hnt_chat_add_assistant_cmd,
-            stdin_content=pre_canned_assistant_message,
-            check=True,
-            text=True,
-        )
-        debug_log(args, "Pre-canned assistant message added to chat.")
-
-        # Display of pre-canned assistant message removed to hide from UI.
-        # The message is still processed and added to the chat history.
-
-        # Auto-submit pre-canned message to hnt-shell-apply
-        debug_log(
-            args,
-            "Running hnt-shell-apply with pre-canned assistant message as stdin...",
-        )
-        hnt_shell_apply_cmd_precanned = ["hnt-shell-apply", session_name]
-        debug_log(
-            args, "hnt-shell-apply command (pre-canned):", hnt_shell_apply_cmd_precanned
-        )
-
-        shell_apply_process_precanned = run_command(
-            hnt_shell_apply_cmd_precanned,
-            stdin_content=pre_canned_assistant_message,
-            capture_output=True,
-            check=False,  # Manually check returncode
-            text=True,
-        )
-        shell_apply_stdout_precanned = shell_apply_process_precanned.stdout
-        shell_apply_stderr_precanned = shell_apply_process_precanned.stderr
-        shell_apply_rc_precanned = shell_apply_process_precanned.returncode
-
-        debug_log(
-            args,
-            f"hnt-shell-apply (pre-canned) exited with code {shell_apply_rc_precanned}",
-        )
-        if shell_apply_stdout_precanned:
-            debug_log(
-                args,
-                "hnt-shell-apply (pre-canned) stdout (first 200 chars):\n",
-                textwrap.shorten(
-                    shell_apply_stdout_precanned, width=200, placeholder="..."
-                ),
-            )
-        if shell_apply_stderr_precanned:
-            debug_log(
-                args,
-                "hnt-shell-apply (pre-canned) stderr (first 200 chars):\n",
-                textwrap.shorten(
-                    shell_apply_stderr_precanned, width=200, placeholder="..."
-                ),
-            )
-
-        # Display of hnt-shell-apply's stdout for the pre-canned command removed.
-        # shell_apply_idx is not incremented here, so the first user-visible
-        # hnt-shell-apply output will correctly be indexed as <0>.
-        # The stdout is still processed and added to chat history if successful.
-
-        # Display of hnt-shell-apply's stderr for the pre-canned command removed.
-        # Debug logs will still show this if --debug-unsafe is used.
-
-        # Handle hnt-shell-apply return code for pre-canned command
-        # Warning print for non-zero exit code of pre-canned hnt-shell-apply removed.
-        # The logic still checks shell_apply_rc_precanned for adding output to chat.
-        # We don't set original_exit_code or exit here; script continues.
-
-        # Auto-add hnt-shell-apply's stdout (from pre-canned) to conversation as user message
-        if (
-            shell_apply_rc_precanned == 0
-            and shell_apply_stdout_precanned
-            and shell_apply_stdout_precanned.strip()
-        ):
-            debug_log(
-                args,
-                "Adding pre-canned hnt-shell-apply stdout to chat conversation as user message...",
-            )
-            run_command(
-                hnt_chat_add_user_cmd,  # Defined earlier, used for initial user instruction
-                stdin_content=shell_apply_stdout_precanned,
-                check=True,
-                text=True,
-            )
-            debug_log(args, "Pre-canned hnt-shell-apply stdout added to chat.")
-        elif shell_apply_rc_precanned == 0 and (
-            not shell_apply_stdout_precanned or not shell_apply_stdout_precanned.strip()
-        ):
-            debug_log(
-                args,
-                "Pre-canned hnt-shell-apply produced no stdout or only whitespace. Nothing to add to chat.",
-            )
-        else:  # Error case for hnt-shell-apply (pre-canned)
-            debug_log(
-                args,
-                f"Pre-canned hnt-shell-apply failed (rc={shell_apply_rc_precanned}) or produced no usable stdout. Output not added to chat.",
-            )
-        # --- END OF PRE-CANNED MESSAGE PROCESSING ---
+        debug_log(args, "REAL user request message added.")
 
         if not args.message:  # Show user query if it came from EDITOR
             header, footer = get_header_footer_lines("User Instruction <0>")
