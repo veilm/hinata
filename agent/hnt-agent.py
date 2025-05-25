@@ -580,7 +580,16 @@ def main():
 
         # 6. Run hnt-chat gen to get INITIAL LLM message
         debug_log(args, "Running hnt-chat gen for initial message...")
-        hnt_chat_gen_cmd = ["hnt-chat", "gen", "--write", "-c", conversation_dir]
+        hnt_chat_gen_cmd = [
+            "hnt-chat",
+            "gen",
+            "--include-reasoning",
+            "--separate-reasoning",
+            "--write",
+            "--merge",
+            "-c",
+            conversation_dir,
+        ]
         if args.model:
             hnt_chat_gen_cmd.extend(["--model", args.model])
             debug_log(args, "Using model:", args.model)
