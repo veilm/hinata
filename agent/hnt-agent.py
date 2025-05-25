@@ -579,6 +579,62 @@ def main():
             textwrap.shorten(wrapped_instruction, width=100, placeholder="..."),
         )
 
+        # --- START OF HINATA.MD AGENT INFO PROCESSING ---
+        debug_log(args, "Attempting to load HINATA.md agent info...")
+        hinata_md_content_raw = None  # Raw content from file
+        try:
+            config_home = os.environ.get(
+                "XDG_CONFIG_HOME", os.path.expanduser("~/.config")
+            )
+            hinata_md_path = Path(config_home) / "hinata" / "agent" / "HINATA.md"
+            debug_log(args, f"Checking for HINATA.md at: {hinata_md_path}")
+            if hinata_md_path.is_file():
+                with open(hinata_md_path, "r", encoding="utf-8") as f:
+                    hinata_md_content_raw = f.read()
+                debug_log(
+                    args,
+                    f"Successfully read HINATA.md (raw length: {len(hinata_md_content_raw)}).",
+                )
+            else:
+                debug_log(
+                    args, f"HINATA.md ({hinata_md_path}) not found or is not a file."
+                )
+                # hinata_md_content_raw remains None
+        except IOError as e:
+            debug_log(
+                args, f"IOError reading HINATA.md ('{hinata_md_path}'): {e}. Skipping."
+            )
+            hinata_md_content_raw = None  # Ensure it's None on error
+        except Exception as e:  # Catch any other potential errors during file access
+            debug_log(
+                args,
+                f"Unexpected error reading HINATA.md ('{hinata_md_path}'): {e}. Skipping.",
+            )
+            hinata_md_content_raw = None  # Ensure it's None on error
+
+        if (
+            hinata_md_content_raw is not None
+        ):  # Check if file was read successfully (content might be empty string)
+            hinata_md_content_stripped = hinata_md_content_raw.strip()
+            if hinata_md_content_stripped:  # And it's not just whitespace
+                wrapped_hinata_info = f"<info>\n{hinata_md_content_stripped}\n</info>"
+                debug_log(args, "Adding HINATA.md content as user message...")
+                # hnt_chat_add_user_cmd is defined above this block
+                run_command(
+                    hnt_chat_add_user_cmd,
+                    stdin_content=wrapped_hinata_info,
+                    check=True,
+                    text=True,
+                )
+                debug_log(args, "HINATA.md content added to chat.")
+            else:
+                debug_log(
+                    args,
+                    "HINATA.md content was empty or all whitespace after stripping and was not added to chat.",
+                )
+        # If hinata_md_content_raw is None, it means file not found or error reading; this is already logged.
+        # --- END OF HINATA.MD AGENT INFO PROCESSING ---
+
         # --- START OF NEW PRE-CANNED MESSAGE PROCESSING (pwd/os-release) ---
         # 1. Define and add Fake User Request for initial info
         fake_user_request_initial_info = "<user_request>\nCould you please check the current directory and some basic OS info?\n</user_request>"
