@@ -557,8 +557,21 @@ def main():
             conversation_dir,
         ]  # Reused later
         debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
+
+        # Wrap user instruction in <user_request> tags
+        # Use .strip() on the instruction to avoid issues with leading/trailing newlines from user input interfering with tags
+        wrapped_instruction = f"<user_request>\n{instruction.strip()}\n</user_request>"
+        debug_log(
+            args,
+            "Wrapped user instruction content (first 100 chars):\n",
+            textwrap.shorten(wrapped_instruction, width=100, placeholder="..."),
+        )
+
         run_command(
-            hnt_chat_add_user_cmd, stdin_content=instruction, check=True, text=True
+            hnt_chat_add_user_cmd,
+            stdin_content=wrapped_instruction,
+            check=True,
+            text=True,
         )
         debug_log(args, "User request message added.")
 
