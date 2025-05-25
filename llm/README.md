@@ -17,7 +17,7 @@ echo hello | hnt-llm
 # system prompt using -s or --system
 echo 2027 | hnt-llm -s "Please repeat the given number verbatim"
 ```
-(defaults to `openrouter/deepseek/deepseek-chat-v3-0324:free` as the model)
+(The model is specified by the `--model` CLI argument, or the `$HINATA_LLM_MODEL` environment variable if set, or finally defaults to `openrouter/deepseek/deepseek-chat-v3-0324:free`)
 
 ## supported model providers
 you can specify a model with `-m` or `--model`

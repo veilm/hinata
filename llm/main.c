@@ -824,9 +824,14 @@ int main(int argc, char* argv[]) {
 	size_t ranges_count = 0;
 	size_t ranges_capacity = 0;
 	char* remaining_content_buffer = NULL;
+	const char* DEFAULT_MODEL_FALLBACK =
+	    "openrouter/deepseek/deepseek-chat-v3-0324:free";  // Fallback if
+	                                                       // --model and
+	                                                       // HINATA_LLM_MODEL
+	                                                       // are not set.
 	const char* model_arg =
-	    "openrouter/deepseek/deepseek-chat-v3-0324:free";  // Default model
-	                                                       // argument
+	    DEFAULT_MODEL_FALLBACK;  // Effective model to be used. Will be updated
+	                             // if --model or HINATA_LLM_MODEL is used.
 	const char* api_url_base = NULL;  // Base URL or format string
 	char final_api_url[1024];         // Buffer for the final formatted URL
 	const char* api_key_env_var = NULL;
@@ -892,6 +897,46 @@ int main(int argc, char* argv[]) {
 				return 1;
 			default:
 				abort();  // Should not happen
+		}
+	}
+
+	// --- 1a. Determine effective model (CLI > Env Var > Fallback) ---
+	if (model_arg ==
+	    DEFAULT_MODEL_FALLBACK) {  // True if --model CLI argument was NOT used
+		const char* env_model = getenv("HINATA_LLM_MODEL");
+		if (env_model != NULL &&
+		    *env_model != '\0') {   // If HINATA_LLM_MODEL is set and not empty
+			model_arg = env_model;  // Use environment variable
+			if (debug_mode) {
+				fprintf(stderr,
+				        "DEBUG: Using model from HINATA_LLM_MODEL environment "
+				        "variable: %s\n",
+				        model_arg);
+			}
+		} else {  // HINATA_LLM_MODEL not set, empty, or -m was not used and
+			      // HINATA_LLM_MODEL is not suitable
+			// model_arg remains DEFAULT_MODEL_FALLBACK (the hardcoded one)
+			if (debug_mode) {
+				if (env_model == NULL) {
+					fprintf(stderr,
+					        "DEBUG: HINATA_LLM_MODEL environment variable not "
+					        "set. Using hardcoded fallback model: %s\n",
+					        model_arg);
+				} else {  // *env_model == '\0'
+					fprintf(
+					    stderr,
+					    "DEBUG: HINATA_LLM_MODEL environment variable is set "
+					    "but empty. Using hardcoded fallback model: %s\n",
+					    model_arg);
+				}
+			}
+		}
+	} else {  // --model CLI argument was used, model_arg was updated by
+		      // getopt_long
+		if (debug_mode) {
+			fprintf(stderr,
+			        "DEBUG: Using model from --model CLI argument: %s\n",
+			        model_arg);
 		}
 	}
 
