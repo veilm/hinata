@@ -562,6 +562,155 @@ def main():
         )
         debug_log(args, "User request message added.")
 
+        # --- START OF PRE-CANNED MESSAGE PROCESSING ---
+        pre_canned_assistant_message = """<hnt-shell>
+pwd
+cat /etc/os-release
+</hnt-shell>"""
+        debug_log(args, "Defined pre-canned assistant message.")
+
+        # Add pre-canned assistant message to conversation
+        debug_log(args, "Adding pre-canned assistant message via hnt-chat add...")
+        hnt_chat_add_assistant_cmd = [
+            "hnt-chat",
+            "add",
+            "assistant",
+            "-c",
+            conversation_dir,
+        ]
+        debug_log(
+            args,
+            "hnt-chat add assistant command (pre-canned):",
+            hnt_chat_add_assistant_cmd,
+        )
+        run_command(
+            hnt_chat_add_assistant_cmd,
+            stdin_content=pre_canned_assistant_message,
+            check=True,
+            text=True,
+        )
+        debug_log(args, "Pre-canned assistant message added to chat.")
+
+        # Display the pre-canned assistant message
+        pre_canned_header, pre_canned_footer = get_header_footer_lines(
+            "Pre-canned Assistant Instruction"
+        )
+        sys.stdout.write(f"\n{LLM_RESPONSE_COLOR}")
+        print(pre_canned_header)
+        sys.stdout.write(pre_canned_assistant_message)
+        if not pre_canned_assistant_message.endswith("\n"):
+            sys.stdout.write("\n")  # ensure newline before footer
+        print(pre_canned_footer)
+        sys.stdout.write(RESET_COLOR)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+        # Auto-submit pre-canned message to hnt-shell-apply
+        debug_log(
+            args,
+            "Running hnt-shell-apply with pre-canned assistant message as stdin...",
+        )
+        hnt_shell_apply_cmd_precanned = ["hnt-shell-apply", session_name]
+        debug_log(
+            args, "hnt-shell-apply command (pre-canned):", hnt_shell_apply_cmd_precanned
+        )
+
+        shell_apply_process_precanned = run_command(
+            hnt_shell_apply_cmd_precanned,
+            stdin_content=pre_canned_assistant_message,
+            capture_output=True,
+            check=False,  # Manually check returncode
+            text=True,
+        )
+        shell_apply_stdout_precanned = shell_apply_process_precanned.stdout
+        shell_apply_stderr_precanned = shell_apply_process_precanned.stderr
+        shell_apply_rc_precanned = shell_apply_process_precanned.returncode
+
+        debug_log(
+            args,
+            f"hnt-shell-apply (pre-canned) exited with code {shell_apply_rc_precanned}",
+        )
+        if shell_apply_stdout_precanned:
+            debug_log(
+                args,
+                "hnt-shell-apply (pre-canned) stdout (first 200 chars):\n",
+                textwrap.shorten(
+                    shell_apply_stdout_precanned, width=200, placeholder="..."
+                ),
+            )
+        if shell_apply_stderr_precanned:
+            debug_log(
+                args,
+                "hnt-shell-apply (pre-canned) stderr (first 200 chars):\n",
+                textwrap.shorten(
+                    shell_apply_stderr_precanned, width=200, placeholder="..."
+                ),
+            )
+
+        # Display hnt-shell-apply's output for the pre-canned command
+        if shell_apply_stdout_precanned:
+            tool_header_precanned, tool_footer_precanned = get_header_footer_lines(
+                f"hnt-shell-apply <{shell_apply_idx}>"  # Use current shell_apply_idx
+            )
+            sys.stdout.write(f"\n{TOOL_OUTPUT_COLOR}")
+            print(tool_header_precanned)
+            sys.stdout.write(shell_apply_stdout_precanned)
+            if not shell_apply_stdout_precanned.endswith("\n"):
+                sys.stdout.write("\n")
+            print(tool_footer_precanned)
+            sys.stdout.write(RESET_COLOR)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            shell_apply_idx += 1  # Increment for next use
+
+        if shell_apply_stderr_precanned:
+            sys.stderr.write(
+                "\n--- Error output from hnt-shell-apply (pre-canned) ---\n"
+            )
+            sys.stderr.write(shell_apply_stderr_precanned)
+            if not shell_apply_stderr_precanned.endswith("\n"):
+                sys.stderr.write("\n")
+            sys.stderr.flush()
+
+        # Handle hnt-shell-apply return code for pre-canned command
+        if shell_apply_rc_precanned != 0:
+            print(
+                f"\nWarning: hnt-shell-apply (pre-canned) exited with code {shell_apply_rc_precanned}. Output may not be added to chat.",
+                file=sys.stderr,
+            )
+            # We don't set original_exit_code or exit here; script continues.
+
+        # Auto-add hnt-shell-apply's stdout (from pre-canned) to conversation as user message
+        if (
+            shell_apply_rc_precanned == 0
+            and shell_apply_stdout_precanned
+            and shell_apply_stdout_precanned.strip()
+        ):
+            debug_log(
+                args,
+                "Adding pre-canned hnt-shell-apply stdout to chat conversation as user message...",
+            )
+            run_command(
+                hnt_chat_add_user_cmd,  # Defined earlier, used for initial user instruction
+                stdin_content=shell_apply_stdout_precanned,
+                check=True,
+                text=True,
+            )
+            debug_log(args, "Pre-canned hnt-shell-apply stdout added to chat.")
+        elif shell_apply_rc_precanned == 0 and (
+            not shell_apply_stdout_precanned or not shell_apply_stdout_precanned.strip()
+        ):
+            debug_log(
+                args,
+                "Pre-canned hnt-shell-apply produced no stdout or only whitespace. Nothing to add to chat.",
+            )
+        else:  # Error case for hnt-shell-apply (pre-canned)
+            debug_log(
+                args,
+                f"Pre-canned hnt-shell-apply failed (rc={shell_apply_rc_precanned}) or produced no usable stdout. Output not added to chat.",
+            )
+        # --- END OF PRE-CANNED MESSAGE PROCESSING ---
+
         if not args.message:  # Show user query if it came from EDITOR
             header, footer = get_header_footer_lines("User Instruction <0>")
             sys.stdout.write(USER_INSTRUCTION_COLOR)
