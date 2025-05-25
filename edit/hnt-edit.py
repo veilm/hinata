@@ -10,6 +10,7 @@ import shlex
 import shutil
 import textwrap
 from pathlib import Path
+import atexit
 
 
 # Command to pipe output through for syntax highlighting
@@ -143,6 +144,56 @@ def debug_log(args, *print_args, **print_kwargs):
         print("[DEBUG]", *print_args, file=sys.stderr, **print_kwargs)
 
 
+# --- atexit cleanup function ---
+def cleanup_empty_created_files(created_files, args_obj):
+    """
+    Called at script exit to remove any files that were created by this script
+    run and are still empty.
+    """
+    if not created_files:
+        return
+
+    # args_obj is the parsed arguments from main(), passed to allow debug logging.
+    # debug_log itself checks args_obj.debug_unsafe.
+    debug_log(
+        args_obj,
+        f"atexit: Running cleanup for {len(created_files)} initially created files.",
+    )
+
+    for file_path in created_files:
+        try:
+            if file_path.exists():
+                if file_path.stat().st_size == 0:
+                    debug_log(
+                        args_obj,
+                        f"atexit: Removing blank file originally created by script: {file_path}",
+                    )
+                    file_path.unlink()  # Remove the empty file
+                else:
+                    debug_log(
+                        args_obj,
+                        f"atexit: File originally created by script is not empty, retaining: {file_path}",
+                    )
+            else:
+                # This case means the file was created by us, but then removed before cleanup
+                # (e.g., by LLM explicitly, or user/another process).
+                debug_log(
+                    args_obj,
+                    f"atexit: File originally created by script no longer exists, nothing to remove: {file_path}",
+                )
+        except Exception as e:
+            # Fallback to direct print for errors during cleanup, as debug_log might itself fail or args_obj could be an issue.
+            error_message = f"ERROR during atexit cleanup for {file_path}: {e}"
+            if args_obj and hasattr(args_obj, "debug_unsafe") and args_obj.debug_unsafe:
+                print(f"[DEBUG] {error_message}", file=sys.stderr)
+                # Optionally, print full traceback in debug mode for cleanup errors
+                # import traceback
+                # traceback.print_exc(file=sys.stderr)
+            else:
+                # Always print critical errors from atexit to stderr
+                print(error_message, file=sys.stderr)
+
+
 def main():
     # --- Syntax Highlighting Check ---
     syntax_highlight_enabled = False
@@ -212,6 +263,35 @@ def main():
     )
     args = parser.parse_args()
     debug_log(args, "Arguments parsed:", args)
+
+    # --- File Creation and Tracking ---
+    created_files_this_run = []
+    # args.source_files contains strings. We'll process them.
+    # The original args.source_files (list of strings) will be passed to hnt-pack etc.
+
+    source_file_paths_for_checking = [Path(f) for f in args.source_files]
+
+    for file_path_obj in source_file_paths_for_checking:
+        if not file_path_obj.exists():
+            try:
+                # Ensure parent directory exists if creating a file in a new subdirectory
+                file_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                file_path_obj.touch()  # Create the file empty
+                debug_log(args, f"Created missing file: {file_path_obj}")
+                created_files_this_run.append(file_path_obj)  # Track it for cleanup
+            except OSError as e:
+                print(
+                    f"Error: Could not create file {file_path_obj}: {e}",
+                    file=sys.stderr,
+                )
+                sys.exit(
+                    1
+                )  # Critical error, cannot proceed if a specified file can't be created
+
+    # Register the cleanup function to be called at script exit.
+    # This passes the list of files we created and the args object (for debug logging).
+    atexit.register(cleanup_empty_created_files, created_files_this_run, args)
+    # --- End File Creation and Tracking ---
 
     # 1. Get system message
     debug_log(args, "Getting system message...")
