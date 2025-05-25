@@ -591,19 +591,8 @@ cat /etc/os-release
         )
         debug_log(args, "Pre-canned assistant message added to chat.")
 
-        # Display the pre-canned assistant message
-        pre_canned_header, pre_canned_footer = get_header_footer_lines(
-            "Pre-canned Assistant Instruction"
-        )
-        sys.stdout.write(f"\n{LLM_RESPONSE_COLOR}")
-        print(pre_canned_header)
-        sys.stdout.write(pre_canned_assistant_message)
-        if not pre_canned_assistant_message.endswith("\n"):
-            sys.stdout.write("\n")  # ensure newline before footer
-        print(pre_canned_footer)
-        sys.stdout.write(RESET_COLOR)
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+        # Display of pre-canned assistant message removed to hide from UI.
+        # The message is still processed and added to the chat history.
 
         # Auto-submit pre-canned message to hnt-shell-apply
         debug_log(
@@ -647,38 +636,18 @@ cat /etc/os-release
                 ),
             )
 
-        # Display hnt-shell-apply's output for the pre-canned command
-        if shell_apply_stdout_precanned:
-            tool_header_precanned, tool_footer_precanned = get_header_footer_lines(
-                f"hnt-shell-apply <{shell_apply_idx}>"  # Use current shell_apply_idx
-            )
-            sys.stdout.write(f"\n{TOOL_OUTPUT_COLOR}")
-            print(tool_header_precanned)
-            sys.stdout.write(shell_apply_stdout_precanned)
-            if not shell_apply_stdout_precanned.endswith("\n"):
-                sys.stdout.write("\n")
-            print(tool_footer_precanned)
-            sys.stdout.write(RESET_COLOR)
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            shell_apply_idx += 1  # Increment for next use
+        # Display of hnt-shell-apply's stdout for the pre-canned command removed.
+        # shell_apply_idx is not incremented here, so the first user-visible
+        # hnt-shell-apply output will correctly be indexed as <0>.
+        # The stdout is still processed and added to chat history if successful.
 
-        if shell_apply_stderr_precanned:
-            sys.stderr.write(
-                "\n--- Error output from hnt-shell-apply (pre-canned) ---\n"
-            )
-            sys.stderr.write(shell_apply_stderr_precanned)
-            if not shell_apply_stderr_precanned.endswith("\n"):
-                sys.stderr.write("\n")
-            sys.stderr.flush()
+        # Display of hnt-shell-apply's stderr for the pre-canned command removed.
+        # Debug logs will still show this if --debug-unsafe is used.
 
         # Handle hnt-shell-apply return code for pre-canned command
-        if shell_apply_rc_precanned != 0:
-            print(
-                f"\nWarning: hnt-shell-apply (pre-canned) exited with code {shell_apply_rc_precanned}. Output may not be added to chat.",
-                file=sys.stderr,
-            )
-            # We don't set original_exit_code or exit here; script continues.
+        # Warning print for non-zero exit code of pre-canned hnt-shell-apply removed.
+        # The logic still checks shell_apply_rc_precanned for adding output to chat.
+        # We don't set original_exit_code or exit here; script continues.
 
         # Auto-add hnt-shell-apply's stdout (from pre-canned) to conversation as user message
         if (
