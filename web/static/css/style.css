@@ -68,16 +68,16 @@ li {
 }
 
 .message-system {
-	border-left: 4px solid #7f8c8d; /* Slate gray */
+	border-left: 4px solid #fcddf2; /* Light pink */
 }
 .message-user {
-	border-left: 4px solid #ff615e; /* New theme color */
+	border-left: 4px solid #81ae9d; /* Green */
 }
 .message-assistant {
-	border-left: 4px solid #98c379; /* Green */
+	border-left: 4px solid #ff615e; /* Orange-red  */
 }
 .message-assistant-reasoning {
-	border-left: 4px solid #e5c07b; /* Yellow/Gold */
+	border-left: 4px solid #6d213c; /* Purple */
 	background-color: #2c2c2c; /* Slightly different background for reasoning block */
 	font-size: 0.9em;
 	padding: 10px;
