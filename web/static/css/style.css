@@ -1,0 +1,130 @@
+body {
+    font-family: 'Consolas', 'Menlo', 'Courier New', Courier, monospace; /* Monospace font */
+    margin: 0;
+    padding: 20px;
+    background-color: #121212; /* Dark background */
+    color: #e0e0e0; /* Light text */
+}
+h1, h2 {
+    color: #e0e0e0;
+    border-bottom: 1px solid #333333;
+    padding-bottom: 8px;
+    margin-top: 0;
+}
+h1 { font-size: 1.8em; }
+h2 { font-size: 1.5em; }
+
+a {
+    color: #61afef; /* A common 'dark theme' blue */
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+.container {
+    background-color: #1e1e1e; /* Slightly lighter dark for container */
+    padding: 20px;
+    border-radius: 0; /* Minimal: no rounded corners */
+}
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+li {
+    margin-bottom: 8px;
+}
+.message {
+    background-color: #282828; /* Background for each message block */
+    border: 1px solid #333333; /* Subtle border */
+    margin-bottom: 15px;
+    padding: 12px;
+    border-radius: 0; /* Minimal */
+    word-wrap: break-word;
+    white-space: pre-wrap; /* Preserve whitespace and newlines */
+}
+.message-header {
+    font-weight: normal;
+    margin-bottom: 8px;
+    font-size: 0.85em;
+    color: #aaaaaa;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px dashed #444444;
+    padding-bottom: 6px;
+}
+.message-role {
+    text-transform: capitalize;
+    font-weight: bold; /* Role should remain distinguishable */
+    color: #c0c0c0;
+}
+.message-filename {
+    font-style: normal; /* Less emphasis */
+    color: #888888;
+}
+
+.message-system {
+    border-left: 4px solid #7f8c8d; /* Slate gray */
+}
+.message-user {
+    border-left: 4px solid #61afef; /* Blue */
+}
+.message-assistant {
+    border-left: 4px solid #98c379; /* Green */
+}
+.message-assistant-reasoning {
+    border-left: 4px solid #e5c07b; /* Yellow/Gold */
+    background-color: #2c2c2c; /* Slightly different background for reasoning block */
+    font-size: 0.9em; 
+    padding: 10px; 
+}
+.message-unknown {
+    border-left: 4px solid #5c6370; /* Darker gray */
+}
+.back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    padding: 6px 12px; 
+    border: 1px solid #444444; 
+    color: #61afef; 
+}
+.back-link:hover {
+    background-color: #2a2a2a; 
+    text-decoration: none;
+}
+.other-files-divider {
+    border: 0;
+    border-top: 1px solid #444444; 
+    margin-top: 25px;
+    margin-bottom: 20px;
+}
+.other-file-entry {
+    background-color: #2c2c2c; 
+    border: 1px solid #383838;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 0; 
+}
+.other-file-entry strong { /* Filename */
+    display: block;
+    margin-bottom: 5px;
+    color: #c0c0c0; 
+}
+.other-file-content {
+    white-space: pre-wrap; 
+    word-wrap: break-word; 
+    background-color: #222222; 
+    padding: 8px;
+    max-height: 400px; 
+    overflow-y: auto;  
+    border: 1px solid #333333; 
+    font-size: 0.9em; 
+}
+.other-file-content-binary { /* Used for info messages about non-text files */
+    color: #888888; 
+    font-style: italic;
+    /* No pre-wrap, as the message is short and simple */
+    white-space: normal; 
+    background-color: #2c2c2c; /* Match entry background perhaps, or keep distinct */
+    padding: 8px;
+    border: 1px solid #333333;
+}

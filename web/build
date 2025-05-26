@@ -1,0 +1,18 @@
+#!/bin/sh -e
+
+if ! which uv > /dev/null 2>&1
+then
+	echo "web/build: uv required"
+	exit 0
+fi
+
+web="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/web"
+mkdir -p "$web"
+cp -r static/* "$web/"
+
+echo "web/build: installed hnt-web assets in $XDG_DATA_HOME"
+
+chmod +x hnt-web.py
+sudo cp hnt-web.py /usr/local/bin/hnt-web
+
+echo "web/build: installed hnt-web"
