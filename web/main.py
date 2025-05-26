@@ -67,43 +67,100 @@ def get_conversations_dir():
 
 
 COMMON_STYLES = """
-body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
-h1, h2 { color: #333; }
-a { color: #007bff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-.container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-ul { list-style-type: none; padding: 0; }
-li { margin-bottom: 10px; }
-.message { 
-    border: 1px solid #ddd; 
-    margin-bottom: 15px; 
-    padding: 15px; 
-    border-radius: 8px; 
-    word-wrap: break-word; 
+body {
+    font-family: 'Consolas', 'Menlo', 'Courier New', Courier, monospace; /* Monospace font */
+    margin: 0;
+    padding: 20px;
+    background-color: #121212; /* Dark background */
+    color: #e0e0e0; /* Light text */
+}
+h1, h2 {
+    color: #e0e0e0;
+    border-bottom: 1px solid #333333;
+    padding-bottom: 8px;
+    margin-top: 0;
+}
+h1 { font-size: 1.8em; }
+h2 { font-size: 1.5em; }
+
+a {
+    color: #61afef; /* A common 'dark theme' blue */
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+.container {
+    background-color: #1e1e1e; /* Slightly lighter dark for container */
+    padding: 20px;
+    border-radius: 0; /* Minimal: no rounded corners */
+}
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+li {
+    margin-bottom: 8px;
+}
+.message {
+    background-color: #282828; /* Background for each message block */
+    border: 1px solid #333333; /* Subtle border */
+    margin-bottom: 15px;
+    padding: 12px;
+    border-radius: 0; /* Minimal */
+    word-wrap: break-word;
     white-space: pre-wrap; /* Preserve whitespace and newlines */
 }
-.message-header { 
-    font-weight: bold; 
-    margin-bottom: 8px; 
-    font-size: 0.9em; 
-    color: #555; 
+.message-header {
+    font-weight: normal;
+    margin-bottom: 8px;
+    font-size: 0.85em;
+    color: #aaaaaa;
     display: flex;
     justify-content: space-between;
+    border-bottom: 1px dashed #444444;
+    padding-bottom: 6px;
 }
-.message-role { text-transform: capitalize; }
-.message-filename { font-style: italic; color: #777; }
+.message-role {
+    text-transform: capitalize;
+    font-weight: bold; /* Role should remain distinguishable */
+    color: #c0c0c0;
+}
+.message-filename {
+    font-style: normal; /* Less emphasis */
+    color: #888888;
+}
 
-.message-system { background-color: #e9ecef; border-left: 5px solid #6c757d; }
-.message-user { background-color: #e0f7fa; border-left: 5px solid #007bff; }
-.message-assistant { background-color: #e8f5e9; border-left: 5px solid #28a745; }
-.message-assistant-reasoning { 
-    background-color: #fffde7; 
-    border-left: 5px solid #ffc107; 
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.9em;
+.message-system {
+    border-left: 4px solid #7f8c8d; /* Slate gray */
 }
-.message-unknown { background-color: #f8f9fa; border-left: 5px solid #adb5bd; }
-.back-link { display: inline-block; margin-bottom: 20px; }
+.message-user {
+    border-left: 4px solid #61afef; /* Blue */
+}
+.message-assistant {
+    border-left: 4px solid #98c379; /* Green */
+}
+.message-assistant-reasoning {
+    border-left: 4px solid #e5c07b; /* Yellow/Gold */
+    background-color: #2c2c2c; /* Slightly different background for reasoning block */
+    /* font-family is inherited from body; specific monospace fonts from original are covered */
+    font-size: 0.9em; /* Keep slightly distinct for code/reasoning blocks if desired */
+    padding: 10px; /* Adjusted padding for reasoning block */
+}
+.message-unknown {
+    border-left: 4px solid #5c6370; /* Darker gray */
+}
+.back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    padding: 6px 12px; /* Adjusted padding */
+    border: 1px solid #444444; /* Subtle border */
+    color: #61afef; /* Match link color for consistency */
+}
+.back-link:hover {
+    background-color: #2a2a2a; /* Subtle hover effect */
+    text-decoration: none;
+}
 """
 
 
@@ -135,12 +192,12 @@ async def list_conversations():
     return f"""
     <html>
         <head>
-            <title>HNT Chat Conversations</title>
+            <title>Hinata Chat Conversations</title>
             <style>{COMMON_STYLES}</style>
         </head>
         <body>
             <div class="container">
-                <h1>HNT Chat Conversations</h1>
+                <h1>Hinata Chat Conversations</h1>
                 {"<p>No conversations found.</p>" if not conversations else f"<ul>{list_items}</ul>"}
             </div>
         </body>
@@ -228,4 +285,3 @@ if __name__ == "__main__":
     # The host "127.0.0.1" makes it accessible locally, same as the previous Uvicorn instructions.
     # Reload=True is convenient for development as it restarts the server on code changes.
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
-
