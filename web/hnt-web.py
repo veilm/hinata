@@ -301,4 +301,6 @@ if __name__ == "__main__":
     # Reload=True is convenient for development.
     # Pass the app object directly to Uvicorn to avoid module import issues,
     # especially when the script is run from a location like /usr/local/bin.
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+    # uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+
+    uvicorn.run(app, host="127.0.0.1", port=8000)
