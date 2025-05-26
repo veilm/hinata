@@ -29,6 +29,14 @@ class TitleUpdateRequest(BaseModel):
     title: str
 
 
+# Pydantic model for model update requests
+class ModelUpdateRequest(BaseModel):
+    model: str
+
+
+DEFAULT_MODEL_NAME = "openrouter/deepseek/deepseek-chat-v3-0324:free"
+
+
 # Function to determine the XDG_DATA_HOME based directory for web assets
 def get_web_data_dir() -> Path:
     """
@@ -290,9 +298,26 @@ async def api_read_conversation(conversation_id: str) -> Dict[str, Any]:
         )
         # title remains "-"
 
+    # Read conversation model
+    model = DEFAULT_MODEL_NAME  # Default model
+    model_file_path = conv_path / "model.txt"
+    try:
+        if model_file_path.is_file():
+            model_content = model_file_path.read_text(encoding="utf-8").strip()
+            if model_content:
+                model = model_content
+    except Exception as e:
+        # Log error reading model, but proceed with default
+        print(
+            f"Error reading model.txt for conversation {conversation_id}: {e}",
+            file=sys.stderr,
+        )
+        # model remains DEFAULT_MODEL_NAME
+
     return {
         "conversation_id": conversation_id,
         "title": title,
+        "model": model,
         "messages": messages_data,
         "other_files": other_files_data,
     }
@@ -328,6 +353,46 @@ async def update_conversation_title(conversation_id: str, request: TitleUpdateRe
 
     return JSONResponse(
         content={"message": "Title updated successfully", "new_title": new_title},
+        status_code=status.HTTP_200_OK,
+    )
+
+
+# API endpoint to update a conversation's model
+@app.put("/api/conversation/{conversation_id}/model")
+async def update_conversation_model(conversation_id: str, request: ModelUpdateRequest):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    model_file_path = conv_path / "model.txt"
+    new_model_requested = request.model.strip()
+
+    # If the stripped model string is empty, use the default model name
+    effective_model_to_save = (
+        new_model_requested if new_model_requested else DEFAULT_MODEL_NAME
+    )
+
+    try:
+        model_file_path.write_text(effective_model_to_save, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error writing model.txt for conversation '{conversation_id}': {str(e)}",
+        )
+
+    return JSONResponse(
+        content={
+            "message": "Model updated successfully",
+            "new_model": effective_model_to_save,
+        },
         status_code=status.HTTP_200_OK,
     )
 
@@ -424,4 +489,5 @@ if __name__ == "__main__":
     # especially when the script is run from a location like /usr/local/bin.
     # uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
 
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=2027)

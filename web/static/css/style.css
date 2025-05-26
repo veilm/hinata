@@ -168,18 +168,23 @@ li {
 	margin-bottom: 20px;
 }
 
-.title-edit-container {
+.title-edit-container,
+.model-edit-container {
 	display: flex;
 	align-items: center;
+	margin-bottom: 10px; /* Add some space between title and model rows */
 }
 
-.title-edit-container label {
+.title-edit-container label,
+.model-edit-container label {
 	margin-right: 10px;
 	font-weight: bold;
 	color: #c0c0c0;
+	min-width: 50px; /* Ensure labels align nicely */
 }
 
-#conversation-title-input {
+#conversation-title-input,
+#conversation-model-input {
 	flex-grow: 1;
 	padding: 8px 10px;
 	background-color: #2c2c2c;
@@ -190,11 +195,22 @@ li {
 	font-size: 1.1em; /* Make it a bit prominent */
 }
 
-#conversation-title-input:focus {
+#conversation-title-input:focus,
+#conversation-model-input:focus {
 	outline: none;
 	border-color: #ff615e;
 	background-color: #303030;
 }
+
+.error-message {
+}
+
+/* Styles for .model-edit-container and #conversation-model-input 
+   have been consolidated above with .title-edit-container and 
+   #conversation-title-input for consistency.
+   This block is now redundant due to the consolidation.
+   If specific model-only styles were needed, they'd go here.
+*/
 
 .error-message {
 	color: #ff6b6b; /* A more vibrant red for errors */
