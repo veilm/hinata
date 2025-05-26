@@ -225,6 +225,7 @@ async def list_conversations():
     <html>
         <head>
             <title>Hinata Chat Conversations</title>
+            <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐙</text></svg>">
             <style>{COMMON_STYLES}</style>
         </head>
         <body>
@@ -407,6 +408,7 @@ async def read_conversation(conversation_id: str):
     <html>
         <head>
             <title>Conversation: {html.escape(conversation_id)}</title>
+            <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐙</text></svg>">
             <style>{COMMON_STYLES}</style>
         </head>
         <body>
