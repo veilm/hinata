@@ -257,6 +257,11 @@ def main():
     )
     parser.add_argument("--model", help="Model to use (passed through to hnt-llm)")
     parser.add_argument(
+        "--continue-dir",
+        metavar="CHAT_DIR",
+        help="Path to an existing hnt-chat conversation directory to continue from a failed edit.",
+    )
+    parser.add_argument(
         "--debug-unsafe",
         action="store_true",
         help="Enable unsafe debugging options in hnt-llm",
@@ -264,300 +269,431 @@ def main():
     args = parser.parse_args()
     debug_log(args, "Arguments parsed:", args)
 
-    # --- File Creation and Tracking ---
-    created_files_this_run = []
-    # args.source_files contains strings. We'll process them.
-    # The original args.source_files (list of strings) will be passed to hnt-pack etc.
+    conversation_dir = None  # Will be set by new or continue logic
 
-    source_file_paths_for_checking = [Path(f) for f in args.source_files]
+    if args.continue_dir:
+        # --- CONTINUATION MODE ---
+        print(f"Continuing conversation from: {args.continue_dir}", file=sys.stderr)
+        debug_log(args, f"Continue mode: Using directory {args.continue_dir}")
+        conversation_dir = Path(args.continue_dir).resolve()  # Ensure absolute path
+        if not conversation_dir.is_dir():
+            print(
+                f"Error: Continue directory not found: {conversation_dir}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    for file_path_obj in source_file_paths_for_checking:
-        if not file_path_obj.exists():
-            try:
-                # Ensure parent directory exists if creating a file in a new subdirectory
-                file_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                file_path_obj.touch()  # Create the file empty
-                debug_log(args, f"Created missing file: {file_path_obj}")
-                created_files_this_run.append(file_path_obj)  # Track it for cleanup
-            except OSError as e:
+        # 1. Read absolute_file_paths.txt
+        abs_paths_file = conversation_dir / "absolute_file_paths.txt"
+        debug_log(args, f"Reading absolute paths from {abs_paths_file}...")
+        source_files_from_abs_paths = []
+        try:
+            with open(abs_paths_file, "r") as f:
+                source_files_from_abs_paths = [
+                    line.strip() for line in f if line.strip()
+                ]
+            if not source_files_from_abs_paths:
                 print(
-                    f"Error: Could not create file {file_path_obj}: {e}",
+                    f"Error: No file paths found in {abs_paths_file}", file=sys.stderr
+                )
+                sys.exit(1)
+            debug_log(
+                args,
+                "Source files for continuation (absolute paths):",
+                source_files_from_abs_paths,
+            )
+        except FileNotFoundError:
+            print(
+                f"Error: {abs_paths_file} not found in continue directory.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        except IOError as e:
+            print(f"Error reading {abs_paths_file}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # Update args.source_files for hnt-apply later.
+        # These are absolute paths, which hnt-apply should handle.
+        args.source_files = source_files_from_abs_paths
+
+        # 2. Locate source_reference.txt and read it
+        source_ref_txt_path = conversation_dir / "source_reference.txt"
+        debug_log(
+            args,
+            f"Reading source reference chat file path from {source_ref_txt_path}...",
+        )
+        target_source_ref_file_path_in_chat = None
+        try:
+            with open(source_ref_txt_path, "r") as f:
+                source_ref_chat_filename_relative = f.read().strip()
+            if not source_ref_chat_filename_relative:
+                print(
+                    f"Error: No filename found in {source_ref_txt_path}",
                     file=sys.stderr,
                 )
-                sys.exit(
-                    1
-                )  # Critical error, cannot proceed if a specified file can't be created
+                sys.exit(1)
 
-    # Register the cleanup function to be called at script exit.
-    # This passes the list of files we created and the args object (for debug logging).
-    atexit.register(cleanup_empty_created_files, created_files_this_run, args)
-    # --- End File Creation and Tracking ---
+            # The filename from source_reference.txt is the name of the message file
+            # containing the source reference.
+            # Standard hnt-chat places this in a 'messages/' subdirectory.
+            # Fallback to checking the root of the conversation directory for compatibility.
 
-    # 1. Get system message
-    debug_log(args, "Getting system message...")
-    system_message = get_system_message(args.system)
-    debug_log(args, "System message source:", args.system or "default path")
-    # Log first few lines for brevity
-    debug_log(
-        args,
-        "System message content (first 100 chars):\n",
-        textwrap.shorten(system_message, width=100, placeholder="..."),
-    )
-
-    # 2. Get user instruction
-    debug_log(args, "Getting user instruction...")
-    instruction = get_user_instruction(args.message)
-    debug_log(
-        args, "User instruction source:", "args.message" if args.message else "$EDITOR"
-    )
-    debug_log(
-        args,
-        "User instruction content (first 100 chars):\n",
-        textwrap.shorten(instruction, width=100, placeholder="..."),
-    )
-
-    # 3. Run llm-pack
-    debug_log(args, "Running llm-pack...")
-    llm_pack_cmd = ["llm-pack", "-s"] + args.source_files
-    debug_log(args, "llm-pack command:", llm_pack_cmd)
-    llm_pack_result = run_command(
-        llm_pack_cmd, capture_output=True, check=True, text=True
-    )
-    packed_sources = llm_pack_result.stdout
-    debug_log(args, "llm-pack output (packed sources) length:", len(packed_sources))
-    debug_log(
-        args,
-        "llm-pack output (first 200 chars):\n",
-        textwrap.shorten(packed_sources, width=200, placeholder="..."),
-    )
-
-    # 4. Prepare input for hnt-llm using XML format
-    debug_log(args, "Preparing input for hnt-llm in XML format...")
-    user_content_raw = (
-        f"User request:\n{instruction}\n\nSource reference:\n{packed_sources}"
-    )
-
-    # Escape system message
-    debug_log(args, "Escaping system message via hnt-escape...")
-    escape_cmd = ["hnt-escape"]
-    debug_log(args, "hnt-escape command (system):", escape_cmd)
-    escaped_system_result = run_command(
-        escape_cmd,
-        stdin_content=system_message,
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    escaped_system_message = escaped_system_result.stdout
-    debug_log(args, "Escaped system message length:", len(escaped_system_message))
-
-    # Escape user content
-    debug_log(args, "Escaping user content via hnt-escape...")
-    debug_log(args, "hnt-escape command (user):", escape_cmd)
-    escaped_user_result = run_command(
-        escape_cmd,
-        stdin_content=user_content_raw,
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    escaped_user_content = escaped_user_result.stdout
-    debug_log(args, "Escaped user content length:", len(escaped_user_content))
-
-    # Construct the final XML input using escaped content
-    hnt_llm_input = (
-        f"<hnt-system>{escaped_system_message}</hnt-system>\n"
-        f"<hnt-user>{escaped_user_content}</hnt-user>"
-    )
-    debug_log(args, "Final hnt-llm input length:", len(hnt_llm_input))
-    # Log structure and parts for debugging
-    debug_log(
-        args,
-        "Final hnt-llm input structure: <hnt-system>...</hnt-system><hnt-user>...</hnt-user>",
-    )
-    debug_log(
-        args, "Final hnt-llm input <hnt-system> length:", len(escaped_system_message)
-    )
-    # 4. Create a new chat conversation
-    debug_log(args, "Creating new chat conversation via hnt-chat new...")
-    hnt_chat_new_cmd = ["hnt-chat", "new"]
-    debug_log(args, "hnt-chat new command:", hnt_chat_new_cmd)
-    hnt_chat_new_result = run_command(
-        hnt_chat_new_cmd, capture_output=True, check=True, text=True
-    )
-    conversation_dir = hnt_chat_new_result.stdout.strip()
-    if not conversation_dir or not os.path.isdir(conversation_dir):
-        print(
-            f"Error: hnt-chat new did not return a valid directory path: '{conversation_dir}'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    debug_log(args, "Conversation directory created:", conversation_dir)
-
-    # 4a. Compute and write absolute file paths
-    debug_log(args, "Computing absolute paths for source files...")
-    absolute_paths = []
-    for f_path_str in args.source_files:
-        try:
-            # Path(f_path_str).resolve() gives the absolute path
-            # Path.resolve() handles non-existent files correctly for our purpose (creates an absolute path string)
-            # if it's a new file to be created. If it must exist, an error would be raised.
-            # Since we touch/create files earlier, this should be fine.
-            abs_path = Path(f_path_str).resolve()
-            absolute_paths.append(str(abs_path))
-            debug_log(args, f"  Original: {f_path_str}, Absolute: {abs_path}")
-        except Exception as e:
-            # This might happen if f_path_str is somehow invalid for Path resolution
-            # though unlikely given prior checks and creations.
-            print(
-                f"Warning: Could not resolve absolute path for {f_path_str}: {e}",
-                file=sys.stderr,
+            path_in_messages_subdir = (
+                conversation_dir / "messages" / source_ref_chat_filename_relative
             )
-            debug_log(args, f"Error resolving path for {f_path_str}: {e}")
-            # Decide if this is critical. For now, let's add a placeholder or skip.
-            # For robustness, we'll skip problematic ones but log it.
-            # Or, we could append the original relative path as a fallback. Let's stick to absolute or nothing.
+            path_in_root_dir = conversation_dir / source_ref_chat_filename_relative
 
-    if absolute_paths:
-        abs_paths_file = Path(conversation_dir) / "absolute_file_paths.txt"
-        debug_log(args, f"Writing absolute paths to {abs_paths_file}...")
+            target_source_ref_file_path_in_chat = None  # Initialize
+            if path_in_messages_subdir.exists():
+                target_source_ref_file_path_in_chat = path_in_messages_subdir
+                debug_log(
+                    args,
+                    "Target source reference message file (standard location):",
+                    target_source_ref_file_path_in_chat,
+                )
+            elif path_in_root_dir.exists():
+                target_source_ref_file_path_in_chat = path_in_root_dir
+                debug_log(
+                    args,
+                    "Target source reference message file (fallback location - root dir):",
+                    target_source_ref_file_path_in_chat,
+                )
+            else:
+                # If neither exists, report error showing checked paths.
+                print(
+                    f"Error: Source reference message file '{source_ref_chat_filename_relative}' not found in "
+                    f"'{conversation_dir / 'messages'}' or in '{conversation_dir}'.\n"
+                    f"Checked paths:\n1. {path_in_messages_subdir}\n2. {path_in_root_dir}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            # At this point, target_source_ref_file_path_in_chat is set and verified to exist.
+            # Additional debug log for the successfully found path if not already covered by above.
+            if not (
+                path_in_messages_subdir.exists() or path_in_root_dir.exists()
+            ):  # Should not happen due to sys.exit above
+                debug_log(
+                    args,
+                    "Target source reference message file (final verification):",
+                    target_source_ref_file_path_in_chat,
+                )
+        except FileNotFoundError:
+            print(f"Error: {source_ref_txt_path} not found.", file=sys.stderr)
+            sys.exit(1)
+        except IOError as e:
+            print(f"Error reading {source_ref_txt_path}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        # 3. Recreate llm-pack output and update the source_reference chat file
+        debug_log(args, "Re-running llm-pack for continuation...")
+        # args.source_files now contains absolute paths from absolute_file_paths.txt
+        llm_pack_cmd_cont = ["llm-pack", "-s"] + args.source_files
+        debug_log(args, "llm-pack command (continuation):", llm_pack_cmd_cont)
+        llm_pack_result_cont = run_command(
+            llm_pack_cmd_cont, capture_output=True, check=True, text=True
+        )
+        packed_sources_cont = llm_pack_result_cont.stdout
+        debug_log(
+            args, "llm-pack (continuation) output length:", len(packed_sources_cont)
+        )
+
+        new_source_reference_content = (
+            f"<source_reference>\n{packed_sources_cont}</source_reference>\n"
+        )
+        debug_log(
+            args,
+            f"Overwriting {target_source_ref_file_path_in_chat} with new source reference...",
+        )
         try:
-            with open(abs_paths_file, "w") as f:
-                for p in absolute_paths:
-                    f.write(p + "\n")
-            debug_log(args, f"Successfully wrote absolute paths to {abs_paths_file}.")
+            with open(target_source_ref_file_path_in_chat, "w") as f:
+                f.write(new_source_reference_content)
+            debug_log(args, "Successfully updated source reference message file.")
         except IOError as e:
             print(
-                f"Warning: Could not write absolute file paths to {abs_paths_file}: {e}",
+                f"Error writing updated source reference to {target_source_ref_file_path_in_chat}: {e}",
                 file=sys.stderr,
             )
-            debug_log(args, f"IOError writing {abs_paths_file}: {e}")
-        except Exception as e:  # Catch any other unexpected errors during file write
-            print(
-                f"Warning: Unexpected error writing {abs_paths_file}: {e}",
-                file=sys.stderr,
-            )
-            debug_log(args, f"Unexpected error writing {abs_paths_file}: {e}")
+            sys.exit(1)
+
+        # File Creation and Tracking: In continue mode, we don't initially create files from CLI args.
+        # The atexit hook will clean up any *new* files created empty by this run if they were tracked.
+        # For now, we assume existing files specified by absolute_file_paths are not "created this run" for cleanup.
+        created_files_this_run = []
+        atexit.register(cleanup_empty_created_files, created_files_this_run, args)
     else:
+        # --- NORMAL (NEW CONVERSATION) MODE ---
+        # args.source_files are relative paths from CLI.
+
+        # --- File Creation and Tracking ---
+        created_files_this_run = []
+        # args.source_files contains strings. We'll process them.
+        # The original args.source_files (list of strings) will be passed to hnt-pack etc.
+
+        source_file_paths_for_checking = [Path(f) for f in args.source_files]
+
+        for file_path_obj in source_file_paths_for_checking:
+            if not file_path_obj.exists():
+                try:
+                    # Ensure parent directory exists if creating a file in a new subdirectory
+                    file_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    file_path_obj.touch()  # Create the file empty
+                    debug_log(args, f"Created missing file: {file_path_obj}")
+                    created_files_this_run.append(file_path_obj)  # Track it for cleanup
+                except OSError as e:
+                    print(
+                        f"Error: Could not create file {file_path_obj}: {e}",
+                        file=sys.stderr,
+                    )
+                    sys.exit(
+                        1
+                    )  # Critical error, cannot proceed if a specified file can't be created
+
+        # Register the cleanup function to be called at script exit.
+        # This passes the list of files we created and the args object (for debug logging).
+        atexit.register(cleanup_empty_created_files, created_files_this_run, args)
+        # --- End File Creation and Tracking ---
+
+        # 1. Get system message
+        debug_log(args, "Getting system message...")
+        system_message = get_system_message(args.system)
+        debug_log(args, "System message source:", args.system or "default path")
+        # Log first few lines for brevity
         debug_log(
-            args, "No absolute paths were resolved or source_files list was empty."
+            args,
+            "System message content (first 100 chars):\n",
+            textwrap.shorten(system_message, width=100, placeholder="..."),
         )
 
-    # 5. Add system message to conversation
-    debug_log(args, "Adding system message via hnt-chat add...")
-    hnt_chat_add_system_cmd = ["hnt-chat", "add", "system", "-c", conversation_dir]
-    debug_log(args, "hnt-chat add system command:", hnt_chat_add_system_cmd)
-    run_command(
-        hnt_chat_add_system_cmd,
-        stdin_content=system_message,
-        # capture_output=False, # Don't need filename output - Capture it instead
-        check=True,
-        text=True,
-    )
-    debug_log(args, "System message added.")
+        # 2. Get user instruction
+        debug_log(args, "Getting user instruction...")
+        instruction = get_user_instruction(args.message)
+        debug_log(
+            args,
+            "User instruction source:",
+            "args.message" if args.message else "$EDITOR",
+        )
+        debug_log(
+            args,
+            "User instruction content (first 100 chars):\n",
+            textwrap.shorten(instruction, width=100, placeholder="..."),
+        )
 
-    # 6. Add user request message to conversation
-    debug_log(args, "Adding user request message via hnt-chat add...")
-    # \n after instruction because it gets stripped
-    user_request_content = f"<user_request>\n{instruction}\n</user_request>\n"
-    hnt_chat_add_user_cmd = ["hnt-chat", "add", "user", "-c", conversation_dir]
-    debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
-    debug_log(
-        args,
-        "User request content (first 100 chars):\n",
-        textwrap.shorten(user_request_content, width=100, placeholder="..."),
-    )
-    run_command(
-        hnt_chat_add_user_cmd,
-        stdin_content=user_request_content,
-        # capture_output=False, # Don't need filename output - Capture it instead
-        check=True,
-        text=True,
-    )
-    debug_log(args, "User request message added.")
+        # 3. Run llm-pack
+        debug_log(args, "Running llm-pack...")
+        llm_pack_cmd = ["llm-pack", "-s"] + args.source_files
+        debug_log(args, "llm-pack command:", llm_pack_cmd)
+        llm_pack_result = run_command(
+            llm_pack_cmd, capture_output=True, check=True, text=True
+        )
+        packed_sources = llm_pack_result.stdout
+        debug_log(args, "llm-pack output (packed sources) length:", len(packed_sources))
+        debug_log(
+            args,
+            "llm-pack output (first 200 chars):\n",
+            textwrap.shorten(packed_sources, width=200, placeholder="..."),
+        )
 
-    # 7. Add source reference message to conversation
-    debug_log(args, "Adding source reference message via hnt-chat add...")
-    source_reference_content = (
-        f"<source_reference>\n{packed_sources}</source_reference>\n"
-    )
-    # Reuse the command list, it's the same
-    debug_log(args, "hnt-chat add user command (source):", hnt_chat_add_user_cmd)
-    debug_log(
-        args,
-        "Source reference content (first 100 chars):\n",
-        textwrap.shorten(source_reference_content, width=100, placeholder="..."),
-    )
-    # Capture the output filename for the source reference
-    add_source_ref_result = run_command(
-        hnt_chat_add_user_cmd,
-        stdin_content=source_reference_content,
-        capture_output=True,  # Capture the filename output
-        check=True,
-        text=True,
-    )
-    source_ref_filename = add_source_ref_result.stdout.strip()
-    debug_log(args, "Source reference message added:", source_ref_filename)
-
-    # 7a. Write source reference path to source_reference.txt
-    if source_ref_filename:
-        debug_log(args, "Writing source reference path to source_reference.txt...")
-        source_ref_txt_path = Path(conversation_dir) / "source_reference.txt"
-        try:
-            with open(source_ref_txt_path, "w") as f:
-                f.write(source_ref_filename)  # Write the path directly
-            debug_log(args, "Successfully wrote to", source_ref_txt_path)
-        except IOError as e:
+        # 4. Create a new chat conversation
+        debug_log(args, "Creating new chat conversation via hnt-chat new...")
+        hnt_chat_new_cmd = ["hnt-chat", "new"]
+        debug_log(args, "hnt-chat new command:", hnt_chat_new_cmd)
+        hnt_chat_new_result = run_command(
+            hnt_chat_new_cmd, capture_output=True, check=True, text=True
+        )
+        conversation_dir_str = hnt_chat_new_result.stdout.strip()
+        if not conversation_dir_str or not os.path.isdir(conversation_dir_str):
             print(
-                f"Warning: Could not write {source_ref_txt_path}: {e}", file=sys.stderr
-            )
-            debug_log(args, f"IOError writing {source_ref_txt_path}: {e}")
-        except Exception as e:
-            print(
-                f"Warning: Unexpected error writing {source_ref_txt_path}: {e}",
+                f"Error: hnt-chat new did not return a valid directory path: '{conversation_dir_str}'",
                 file=sys.stderr,
             )
-            debug_log(args, f"Unexpected error writing {source_ref_txt_path}: {e}")
-    else:
+            sys.exit(1)
+        conversation_dir = Path(conversation_dir_str).resolve()  # Store as Path object
+        debug_log(args, "Conversation directory created:", conversation_dir)
+
+        # 4a. Compute and write absolute file paths
+        debug_log(args, "Computing absolute paths for source files...")
+        absolute_paths = []
+        for f_path_str in args.source_files:
+            try:
+                # Path(f_path_str).resolve() gives the absolute path
+                # Path.resolve() handles non-existent files correctly for our purpose (creates an absolute path string)
+                # if it's a new file to be created. If it must exist, an error would be raised.
+                # Since we touch/create files earlier, this should be fine.
+                abs_path = Path(f_path_str).resolve()
+                absolute_paths.append(str(abs_path))
+                debug_log(args, f"  Original: {f_path_str}, Absolute: {abs_path}")
+            except Exception as e:
+                # This might happen if f_path_str is somehow invalid for Path resolution
+                # though unlikely given prior checks and creations.
+                print(
+                    f"Warning: Could not resolve absolute path for {f_path_str}: {e}",
+                    file=sys.stderr,
+                )
+                debug_log(args, f"Error resolving path for {f_path_str}: {e}")
+                # Decide if this is critical. For now, let's add a placeholder or skip.
+                # For robustness, we'll skip problematic ones but log it.
+                # Or, we could append the original relative path as a fallback. Let's stick to absolute or nothing.
+
+        if absolute_paths:
+            abs_paths_file = Path(conversation_dir) / "absolute_file_paths.txt"
+            debug_log(args, f"Writing absolute paths to {abs_paths_file}...")
+            try:
+                with open(abs_paths_file, "w") as f:
+                    for p in absolute_paths:
+                        f.write(p + "\n")
+                debug_log(
+                    args, f"Successfully wrote absolute paths to {abs_paths_file}."
+                )
+            except IOError as e:
+                print(
+                    f"Warning: Could not write absolute file paths to {abs_paths_file}: {e}",
+                    file=sys.stderr,
+                )
+                debug_log(args, f"IOError writing {abs_paths_file}: {e}")
+            except (
+                Exception
+            ) as e:  # Catch any other unexpected errors during file write
+                print(
+                    f"Warning: Unexpected error writing {abs_paths_file}: {e}",
+                    file=sys.stderr,
+                )
+                debug_log(args, f"Unexpected error writing {abs_paths_file}: {e}")
+        else:
+            debug_log(
+                args, "No absolute paths were resolved or source_files list was empty."
+            )
+
+        # 5. Add system message to conversation
+        debug_log(args, "Adding system message via hnt-chat add...")
+        hnt_chat_add_system_cmd = [
+            "hnt-chat",
+            "add",
+            "system",
+            "-c",
+            str(conversation_dir),
+        ]
+        debug_log(args, "hnt-chat add system command:", hnt_chat_add_system_cmd)
+        run_command(
+            hnt_chat_add_system_cmd,
+            stdin_content=system_message,
+            # capture_output=False, # Don't need filename output - Capture it instead
+            check=True,
+            text=True,
+        )
+        debug_log(args, "System message added.")
+
+        # 6. Add user request message to conversation
+        debug_log(args, "Adding user request message via hnt-chat add...")
+        # \n after instruction because it gets stripped
+        user_request_content = f"<user_request>\n{instruction}\n</user_request>\n"
+        hnt_chat_add_user_cmd = ["hnt-chat", "add", "user", "-c", str(conversation_dir)]
+        debug_log(args, "hnt-chat add user command (request):", hnt_chat_add_user_cmd)
         debug_log(
-            args, "Warning: Did not get a filename for the source reference message."
+            args,
+            "User request content (first 100 chars):\n",
+            textwrap.shorten(user_request_content, width=100, placeholder="..."),
         )
-
-    # Show user query if it came from EDITOR
-    if not args.message:
-        # Nicer display for user message from editor
-        current_message_idx = 0  # For future multi-message support, currently hardcoded
-
-        title_str = f" User Message <{current_message_idx}> "
-        # Design based on user's example visual:
-        # ───────────────── User Message <0> ─────────────────
-        # For idx=0, title " User Message <0> " is 18 chars.
-        # Original total dashes: 13 (left) + 21 (right) = 34.
-        # New even distribution: 17 dashes left, 17 dashes right.
-        # Total length (for idx=0) = 17 + 18 (title) + 17 = 52 characters.
-
-        # Calculate even padding for horizontal lines
-        original_total_dashes = 13 + 21
-        dashes_left = original_total_dashes // 2
-        dashes_right = (
-            original_total_dashes - dashes_left
-        )  # Ensures total is preserved if odd
-
-        header_line_part1 = U_HORIZ_LINE * dashes_left
-        header_line_part2 = U_HORIZ_LINE * dashes_right
-
-        header_display = f"{header_line_part1}{title_str}{header_line_part2}"
-        footer_display = U_HORIZ_LINE * (
-            len(header_line_part1) + len(title_str) + len(header_line_part2)
+        run_command(
+            hnt_chat_add_user_cmd,
+            stdin_content=user_request_content,
+            # capture_output=False, # Don't need filename output - Capture it instead
+            check=True,
+            text=True,
         )
+        debug_log(args, "User request message added.")
 
-        sys.stdout.write(USER_MESSAGE_COLOR)
-        print(header_display)
-        print(instruction)  # print() adds a newline after instruction content
-        print(footer_display)
-        sys.stdout.write(RESET_COLOR)
-        sys.stdout.write("\n")  # Match original script's extra newline after the block
-        sys.stdout.flush()
+        # 7. Add source reference message to conversation
+        debug_log(args, "Adding source reference message via hnt-chat add...")
+        source_reference_content = (
+            f"<source_reference>\n{packed_sources}</source_reference>\n"
+        )
+        # Reuse the command list, it's the same
+        debug_log(args, "hnt-chat add user command (source):", hnt_chat_add_user_cmd)
+        debug_log(
+            args,
+            "Source reference content (first 100 chars):\n",
+            textwrap.shorten(source_reference_content, width=100, placeholder="..."),
+        )
+        # Capture the output filename for the source reference
+        add_source_ref_result = run_command(
+            hnt_chat_add_user_cmd,
+            stdin_content=source_reference_content,
+            capture_output=True,  # Capture the filename output
+            check=True,
+            text=True,
+        )
+        source_ref_filename = add_source_ref_result.stdout.strip()
+        debug_log(args, "Source reference message added:", source_ref_filename)
+
+        # 7a. Write source reference path to source_reference.txt
+        if source_ref_filename:
+            debug_log(args, "Writing source reference path to source_reference.txt...")
+            source_ref_txt_path = Path(conversation_dir) / "source_reference.txt"
+            try:
+                with open(source_ref_txt_path, "w") as f:
+                    f.write(source_ref_filename)  # Write the path directly
+                debug_log(args, "Successfully wrote to", source_ref_txt_path)
+            except IOError as e:
+                print(
+                    f"Warning: Could not write {source_ref_txt_path}: {e}",
+                    file=sys.stderr,
+                )
+                debug_log(args, f"IOError writing {source_ref_txt_path}: {e}")
+            except Exception as e:
+                print(
+                    f"Warning: Unexpected error writing {source_ref_txt_path}: {e}",
+                    file=sys.stderr,
+                )
+                debug_log(args, f"Unexpected error writing {source_ref_txt_path}: {e}")
+        else:
+            debug_log(
+                args,
+                "Warning: Did not get a filename for the source reference message.",
+            )
+
+        # Show user query if it came from EDITOR
+        if not args.message:
+            # Nicer display for user message from editor
+            current_message_idx = (
+                0  # For future multi-message support, currently hardcoded
+            )
+
+            title_str = f" User Message <{current_message_idx}> "
+            # Design based on user's example visual:
+            # ───────────────── User Message <0> ─────────────────
+            # For idx=0, title " User Message <0> " is 18 chars.
+            # Original total dashes: 13 (left) + 21 (right) = 34.
+            # New even distribution: 17 dashes left, 17 dashes right.
+            # Total length (for idx=0) = 17 + 18 (title) + 17 = 52 characters.
+
+            # Calculate even padding for horizontal lines
+            original_total_dashes = 13 + 21
+            dashes_left = original_total_dashes // 2
+            dashes_right = (
+                original_total_dashes - dashes_left
+            )  # Ensures total is preserved if odd
+
+            header_line_part1 = U_HORIZ_LINE * dashes_left
+            header_line_part2 = U_HORIZ_LINE * dashes_right
+
+            header_display = f"{header_line_part1}{title_str}{header_line_part2}"
+            footer_display = U_HORIZ_LINE * (
+                len(header_line_part1) + len(title_str) + len(header_line_part2)
+            )
+
+            sys.stdout.write(USER_MESSAGE_COLOR)
+            print(header_display)
+            print(instruction)  # print() adds a newline after instruction content
+            print(footer_display)
+            sys.stdout.write(RESET_COLOR)
+            sys.stdout.write(
+                "\n"
+            )  # Match original script's extra newline after the block
+            sys.stdout.flush()
+
+    # --- COMMON EXECUTION FLOW ---
+    # `conversation_dir` (Path object) and `args.source_files` (list of strings) are now set for both modes.
 
     # 8. Run hnt-chat gen, stream and capture output
     debug_log(args, "Running hnt-chat gen...")
@@ -569,7 +705,7 @@ def main():
         "--separate-reasoning",
         "--merge",
         "-c",
-        conversation_dir,
+        str(conversation_dir),  # hnt-chat expects string path
     ]
     if args.model:
         hnt_chat_gen_cmd.extend(["--model", args.model])
@@ -758,7 +894,7 @@ def main():
         sys.exit(1)  # Or a specific error code
 
     # Print conversation directory before applying changes
-    print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
+    print(f"\nhnt-chat dir: {str(conversation_dir)}", file=sys.stderr)
 
     # 9. Run hnt-apply (step number updated)
     debug_log(args, "Running hnt-apply...")
@@ -847,7 +983,7 @@ def main():
             "add",
             "user",
             "-c",
-            conversation_dir,
+            str(conversation_dir),  # hnt-chat expects string path
         ]
         debug_log(
             args, "hnt-chat add user command (failure):", hnt_chat_add_user_failure_cmd
