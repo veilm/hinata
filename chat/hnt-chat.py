@@ -364,13 +364,31 @@ def handle_gen_command(args):
     base_conv_dir = get_conversations_dir()
     conv_dir_path = determine_conversation_dir(args, base_conv_dir)
 
+    # Determine effective model name and write to model.txt if applicable
+    effective_model_name = args.model
+    if not effective_model_name:
+        effective_model_name = os.getenv("HINATA_LLM_MODEL")
+
+    if effective_model_name:
+        model_file_path = conv_dir_path / "model.txt"
+        try:
+            with open(model_file_path, "w", encoding="utf-8") as f:
+                f.write(effective_model_name + "\n")
+        except OSError as e:
+            print(
+                f"Warning: Could not write model name to {model_file_path}: {e}",
+                file=sys.stderr,
+            )
+            # Continue execution even if model.txt cannot be written,
+            # as the main 'gen' operation might still be desired.
+
     # 1. Pack the conversation history into a buffer, considering the merge flag
     packed_buffer = pack_conversation_to_buffer(conv_dir_path, args.merge)
 
     # 2. Prepare the hnt-llm command
     llm_cmd = ["hnt-llm"]
-    if args.model:
-        llm_cmd.extend(["--model", args.model])
+    if effective_model_name:  # Use the determined effective_model_name
+        llm_cmd.extend(["--model", effective_model_name])
     if args.debug_unsafe:
         llm_cmd.append("--debug-unsafe")
 
