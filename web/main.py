@@ -1,9 +1,20 @@
+#!/usr/bin/env -S uv run --script
+
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "fastapi",
+#     "uvicorn",
+# ]
+# ///
+
 import os
 import sys
 import re
 from pathlib import Path
 from typing import List
 import html
+import uvicorn
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -211,11 +222,10 @@ async def read_conversation(conversation_id: str):
     """
 
 
-# To run this application:
-# 1. Make sure FastAPI and Uvicorn are installed:
-#    pip install fastapi uvicorn
-# 2. Navigate to the directory containing the 'web' folder (i.e., your project root).
-# 3. Run Uvicorn:
-#    python -m uvicorn web.main:app --reload
-#    (Or if your current directory is `web`: `python -m uvicorn main:app --reload`)
-# 4. Open your browser to http://127.0.0.1:8000
+if __name__ == "__main__":
+    # Run the application directly using Uvicorn when main.py is executed.
+    # This allows `python main.py` to start the server.
+    # The host "127.0.0.1" makes it accessible locally, same as the previous Uvicorn instructions.
+    # Reload=True is convenient for development as it restarts the server on code changes.
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
