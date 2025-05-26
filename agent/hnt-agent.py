@@ -836,23 +836,49 @@ cat /etc/os-release
             while True:
                 # Confirmation before running hnt-shell-apply (using current llm_message_raw)
                 if not args.no_confirm:
-                    try:
-                        print("")  # Ensure prompt is on a new line
-                        user_choice_apply = (
-                            input("proceed to hnt-shell-apply (y/n)? ").strip().lower()
-                        )
-                        if user_choice_apply != "y":
+                    while True:
+                        try:
+                            print("")  # Ensure prompt is on a new line
+                            user_choice_apply_raw = input(
+                                "proceed to hnt-shell-apply (y/n)? "
+                            )
+                            user_choice_apply = user_choice_apply_raw.strip().lower()
+                            if user_choice_apply == "y":
+                                break  # Proceed with hnt-shell-apply
+                            elif user_choice_apply == "n":
+                                print(
+                                    "Aborted by user before hnt-shell-apply.",
+                                    file=sys.stderr,
+                                )
+                                # To exit the outer while True loop for interaction
+                                # we need a way to signal this choice.
+                                # A simple break here will exit the inner confirmation loop.
+                                # We'll use a flag or re-evaluate the break for the outer loop.
+                                # For now, this break exits the confirmation loop.
+                                # The outer loop's break will be handled by setting a flag.
+                                original_exit_code = 0  # Mark as clean exit
+                                sys.exit(
+                                    0
+                                )  # Simplest way to exit the script cleanly as per original logic
+                            else:
+                                print(
+                                    "Invalid input. Please enter 'y' or 'n'.",
+                                    file=sys.stderr,
+                                )
+                                # Loop will continue to re-prompt
+                        except EOFError:
                             print(
-                                "Aborted by user before hnt-shell-apply.",
+                                "\nEOFError: No input for hnt-shell-apply confirmation. Aborting.",
                                 file=sys.stderr,
                             )
-                            break  # EXIT LOOP (cleanly)
-                    except EOFError:
-                        print(
-                            "\nEOFError: No input for hnt-shell-apply confirmation. Aborting.",
-                            file=sys.stderr,
-                        )
-                        sys.exit(1)  # Error exit, caught by outer try/except
+                            sys.exit(1)  # Exit only on EOF
+                        except KeyboardInterrupt:
+                            print(
+                                "\nUser interrupted confirmation. Aborting program.",
+                                file=sys.stderr,
+                            )
+                            # Exit with code 130 for SIGINT (Ctrl+C)
+                            sys.exit(130)
 
                 # Run hnt-shell-apply (adapting original 7)
                 debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
@@ -938,30 +964,57 @@ cat /etc/os-release
                     )
                     break  # EXIT LOOP (cleanly, no new info to process)
 
-                proceed_add_to_chat = True
+                user_wants_to_add_to_chat = True  # Assume yes if --no-confirm
                 if not args.no_confirm:
-                    try:
-                        print("")
-                        user_choice_add_msg = (
-                            input("add hnt-shell-apply output to user msg (y/n)? ")
-                            .strip()
-                            .lower()
-                        )
-                        if user_choice_add_msg != "y":
-                            proceed_add_to_chat = False
+                    while True:
+                        try:
+                            print("")  # Ensure prompt is on a new line
+                            user_choice_add_msg_raw = input(
+                                "add hnt-shell-apply output to user msg (y/n)? "
+                            )
+                            user_choice_add_msg = (
+                                user_choice_add_msg_raw.strip().lower()
+                            )
+
+                            if user_choice_add_msg == "y":
+                                user_wants_to_add_to_chat = True
+                                break
+                            elif user_choice_add_msg == "n":
+                                user_wants_to_add_to_chat = False
+                                print(
+                                    "User chose not to add hnt-shell-apply output. Ending interaction loop.",
+                                    file=sys.stderr,
+                                )
+                                # This break exits the confirmation loop.
+                                # The outer loop break will be handled by the `if not user_wants_to_add_to_chat:` condition below.
+                                break
+                            else:
+                                print(
+                                    "Invalid input. Please enter 'y' or 'n'.",
+                                    file=sys.stderr,
+                                )
+                                # Loop will continue to re-prompt
+                        except EOFError:
                             print(
-                                "User chose not to add hnt-shell-apply output. Ending interaction loop.",
+                                "\nEOFError: No input for adding hnt-shell-apply output. Aborting.",
                                 file=sys.stderr,
                             )
-                            break  # EXIT LOOP (cleanly, user choice)
-                    except EOFError:
-                        print(
-                            "\nEOFError: No input for adding hnt-shell-apply output. Aborting.",
-                            file=sys.stderr,
-                        )
-                        sys.exit(1)  # Error exit, caught by outer try/except
+                            sys.exit(1)  # Exit only on EOF
+                        except KeyboardInterrupt:
+                            print(
+                                "\nUser interrupted confirmation. Aborting program.",
+                                file=sys.stderr,
+                            )
+                            # Exit with code 130 for SIGINT (Ctrl+C)
+                            sys.exit(130)
 
-                if proceed_add_to_chat:
+                if (
+                    not user_wants_to_add_to_chat and not args.no_confirm
+                ):  # Check if user opted out
+                    break  # EXIT MAIN INTERACTION LOOP (cleanly, user choice)
+
+                # proceed_add_to_chat (now user_wants_to_add_to_chat) being true means we continue
+                if user_wants_to_add_to_chat:
                     debug_log(
                         args, "Adding hnt-shell-apply stdout to chat conversation..."
                     )
