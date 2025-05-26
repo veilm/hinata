@@ -35,6 +35,26 @@ edit format to the LLM, it will have no awareness of it and thus no way to edit
 files. Using a blank prompt like `-s ""` is fine if you only need read access,
 such as for asking questions about the code, though.
 
+## failures
+```
+hnt-chat dir: /home/oboro/.local/share/[...]
+
+hnt-apply: Processing blocks...
+Error: Target not found in file /tmp/dir/1748287186/foo.py
+Target (length 37):
+---
+print("foo")
+---
+[1] foo.py: FAILED
+```
+
+If the LLM fails to adhere to the edit format, hnt-apply will automatically
+produce an error message and add it to the conversation. If you wish for the LLM
+to attempt a followup, you can use
+```
+hnt-edit --continue-dir CHAT_DIR
+```
+
 ## syntax highlighting
 the LLM markdown output can be automatically piped to a syntax highlighting CLI.
 by default it looks in `$PATH` for
