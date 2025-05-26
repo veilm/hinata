@@ -161,6 +161,38 @@ li {
     background-color: #2a2a2a; /* Subtle hover effect */
     text-decoration: none;
 }
+.other-files-divider {
+    border: 0;
+    border-top: 1px solid #444444; /* Separator color */
+    margin-top: 25px;
+    margin-bottom: 20px;
+}
+.other-file-entry {
+    background-color: #2c2c2c; /* Slightly different from message for distinction */
+    border: 1px solid #383838;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 0; /* Minimal */
+}
+.other-file-entry strong { /* Filename */
+    display: block;
+    margin-bottom: 5px;
+    color: #c0c0c0; /* Brighter than regular text for emphasis */
+}
+.other-file-content {
+    white-space: pre-wrap; /* Preserve whitespace and newlines */
+    word-wrap: break-word; /* Wrap long lines */
+    background-color: #222222; /* Slightly darker than entry bg for content block */
+    padding: 8px;
+    max-height: 400px; /* Limit height for very long files */
+    overflow-y: auto;  /* Add scrollbar if content exceeds max-height */
+    border: 1px solid #333333; /* Subtle border for the content block */
+    font-size: 0.9em; /* Slightly smaller font for content, can be same as message */
+}
+.other-file-content-binary {
+    color: #888888; /* Dim color for binary/error message */
+    font-style: italic;
+}
 """
 
 
@@ -219,48 +251,157 @@ async def read_conversation(conversation_id: str):
             status_code=404, detail=f"Conversation '{conversation_id}' not found."
         )
 
-    messages_html = []
-    # Regex to extract role: e.g., 1234567890123-user.md
-    # It also captures 'assistant-reasoning' correctly.
+    messages_html_parts = []
+    other_files_html_parts = []
+
+    # Regex to extract role from standard message filenames.
+    # This pattern is used to distinguish message files from other files.
     filename_pattern = re.compile(
         r"^\d+-(system|user|assistant|assistant-reasoning)\.md$", re.IGNORECASE
     )
 
+    all_item_paths_in_dir = []
     try:
-        # Sort files by name, which includes the timestamp prefix, ensuring chronological order.
-        message_files = sorted(
-            f for f in conv_path.iterdir() if f.is_file() and f.name.endswith(".md")
-        )
+        all_item_paths_in_dir = list(conv_path.iterdir())
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error reading messages in conversation '{conversation_id}': {str(e)}",
+            detail=f"Error listing files in conversation '{conversation_id}': {str(e)}",
         )
 
-    for msg_file in message_files:
-        match = filename_pattern.match(msg_file.name)
-        role = "unknown"
+    matched_message_file_paths = []
+    other_file_paths = []
+
+    for item_path in all_item_paths_in_dir:
+        if item_path.is_file():
+            if filename_pattern.match(item_path.name):
+                matched_message_file_paths.append(item_path)
+            else:
+                other_file_paths.append(item_path)
+
+    # Sort matched message files by name (chronologically due to timestamp prefix)
+    matched_message_file_paths.sort(key=lambda p: p.name)
+
+    for msg_file_path in matched_message_file_paths:
+        # At this point, msg_file_path.name is guaranteed to match filename_pattern.
+        match = filename_pattern.match(msg_file_path.name)
+
+        # Default role from filename; 'unknown' if match object is unexpectedly None (defensive).
+        # Given the filtering above, match should always be a valid match object.
+        role_from_filename = "unknown"
         if match:
-            role = match.group(
-                1
-            ).lower()  # system, user, assistant, assistant-reasoning
+            role_from_filename = match.group(1).lower()
+
+        current_role_for_display = role_from_filename
 
         try:
-            content = msg_file.read_text(encoding="utf-8")
+            content = msg_file_path.read_text(encoding="utf-8")
             escaped_content = html.escape(content)
         except Exception as e:
             escaped_content = f"Error reading file: {html.escape(str(e))}"
-            role = "unknown"  # Mark as unknown if content can't be read
+            # If content can't be read, mimic original behavior by setting role to "unknown".
+            current_role_for_display = "unknown"
 
-        messages_html.append(f"""
-        <div class="message message-{role}">
+        messages_html_parts.append(f"""
+        <div class="message message-{current_role_for_display}">
             <div class="message-header">
-                <span class="message-role">{html.escape(role)}</span>
-                <span class="message-filename">{html.escape(msg_file.name)}</span>
+                <span class="message-role">{html.escape(current_role_for_display)}</span>
+                <span class="message-filename">{html.escape(msg_file_path.name)}</span>
             </div>
             <div>{escaped_content}</div>
         </div>
         """)
+
+    if other_file_paths:
+        other_file_paths.sort(key=lambda p: p.name)  # Sort for consistent display
+
+        other_files_html_parts.append("<hr class='other-files-divider'>")
+        other_files_html_parts.append("<h2>Other Files</h2>")
+        other_files_html_parts.append("<ul>")
+
+        PEEK_SIZE = 4096  # Max bytes to peek for binary check
+
+        for other_file_path in other_file_paths:
+            file_name_escaped = html.escape(other_file_path.name)
+            file_content_display_html = ""
+
+            try:
+                # Attempt to determine if file is text or binary and read content
+                is_likely_text_content = True
+                # Read an initial chunk to check for binary indicators
+                with open(other_file_path, "rb") as f:
+                    chunk = f.read(PEEK_SIZE)
+
+                if b"\0" in chunk:  # Null bytes are a strong indicator of a binary file
+                    is_likely_text_content = False
+                else:
+                    try:
+                        # Try to decode the chunk as UTF-8
+                        chunk.decode("utf-8")
+                    except UnicodeDecodeError:
+                        # If chunk decoding fails, treat as not displayable text
+                        is_likely_text_content = False
+
+                if is_likely_text_content:
+                    # If the chunk seems like text, try to read the full file as UTF-8 text.
+                    # This might still fail or be slow for very large files.
+                    try:
+                        full_content = other_file_path.read_text(encoding="utf-8")
+                        escaped_file_content = html.escape(full_content)
+                        file_content_display_html = f"""
+                        <div class="other-file-content">
+                            <pre>{escaped_file_content}</pre>
+                        </div>"""
+                    except UnicodeDecodeError:  # Full file content is not valid UTF-8
+                        is_likely_text_content = False  # Fallback to "not displayable"
+                    except Exception:  # Other errors reading the full file (e.g. too large, rare FS issues)
+                        # Log this specific error server-side ideally
+                        is_likely_text_content = False  # Fallback to "not displayable"
+
+                # If, after all checks, the file is not considered displayable as text
+                if not is_likely_text_content:
+                    file_content_display_html = """
+                    <div class="other-file-content other-file-content-binary">
+                        [File content not displayed: likely binary, not UTF-8, or read error.]
+                    </div>"""
+
+            except (
+                Exception
+            ) as e:  # Catch errors from initial open/read (e.g. permission denied)
+                print(
+                    f"Error processing other file {other_file_path}: {e}",
+                    file=sys.stderr,
+                )
+                file_content_display_html = f"""
+                <div class="other-file-content other-file-content-binary">
+                    [Error accessing file: {html.escape(str(e))}]
+                </div>"""
+
+            other_files_html_parts.append(f"""
+            <li class="other-file-entry">
+                <strong>{file_name_escaped}</strong>
+                {file_content_display_html}
+            </li>
+            """)
+        other_files_html_parts.append("</ul>")
+
+    # Construct final page content
+    page_elements = []
+    final_messages_html_str = "".join(messages_html_parts)
+    final_other_files_html_str = "".join(other_files_html_parts)
+
+    if final_messages_html_str:
+        page_elements.append(final_messages_html_str)
+    else:
+        # Show "No messages" if there are no matched messages.
+        # Other files, if any, will still be listed after this.
+        page_elements.append("<p>No messages found in this conversation.</p>")
+
+    # Add the "Other Files" section if it has content
+    if final_other_files_html_str:
+        page_elements.append(final_other_files_html_str)
+
+    content_html = "".join(page_elements)
 
     return f"""
     <html>
@@ -272,7 +413,7 @@ async def read_conversation(conversation_id: str):
             <div class="container">
                 <a href="/" class="back-link">&larr; Back to Conversations List</a>
                 <h1>Conversation: {html.escape(conversation_id)}</h1>
-                {"".join(messages_html) if messages_html else "<p>No messages found in this conversation.</p>"}
+                {content_html}
             </div>
         </body>
     </html>
