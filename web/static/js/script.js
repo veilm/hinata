@@ -3,6 +3,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 	if (path === "/") {
 		loadConversationsList();
+		const createBtn = document.getElementById("create-conversation-btn");
+		if (createBtn) {
+			createBtn.addEventListener("click", handleCreateConversation);
+		}
 	} else if (path.startsWith("/conversation-page/")) {
 		const parts = path.split("/");
 		const conversationId = parts[parts.length - 1];
@@ -64,6 +68,54 @@ async function loadConversationsList() {
 	} catch (error) {
 		handleError("Failed to load conversations.", container);
 		console.error("Error loading conversations:", error);
+	}
+}
+
+async function handleCreateConversation() {
+	const button = document.getElementById("create-conversation-btn");
+	if (button) {
+		button.disabled = true;
+	}
+
+	const buttonContainer = button ? button.parentElement : null;
+	if (buttonContainer) {
+		clearErrorMessages(buttonContainer); // Clear previous errors from this section
+	}
+
+	try {
+		const response = await fetch("/api/conversations/create", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json", // Though not sending a body, good practice
+			},
+		});
+
+		if (!response.ok) {
+			let errorDetail = "Failed to create conversation.";
+			try {
+				const errorData = await response.json();
+				if (errorData && errorData.detail) {
+					errorDetail = errorData.detail;
+				}
+			} catch (e) {
+				// If response is not JSON or other parsing error
+				errorDetail += ` Server responded with: ${response.status} ${response.statusText}`;
+			}
+			throw new Error(errorDetail);
+		}
+
+		// Success! Reload the page to see the new conversation in the list.
+		window.location.reload();
+	} catch (error) {
+		console.error("Error creating conversation:", error);
+		// Display error message near the button or in a general area
+		handleError(
+			error.message,
+			buttonContainer || document.getElementById("conversation-list-container"),
+		);
+		if (button) {
+			button.disabled = false; // Re-enable button on error
+		}
 	}
 }
 

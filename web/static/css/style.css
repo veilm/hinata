@@ -197,3 +197,30 @@ li {
     margin-top: 10px;
     margin-bottom: 10px;
 }
+
+/* Styles for the "Create New Conversation" button section */
+.create-conversation-section {
+    margin-bottom: 20px; /* Space below the button/section */
+}
+
+#create-conversation-btn {
+    padding: 10px 15px;
+    background-color: #61afef; /* Action blue */
+    color: #1e1e1e; /* Dark text for contrast on the blue button */
+    border: none;
+    border-radius: 0; /* Consistent with minimal theme */
+    font-family: inherit;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#create-conversation-btn:hover {
+    background-color: #529bdf; /* Slightly darker blue on hover */
+}
+
+#create-conversation-btn:disabled {
+    background-color: #4a4a4a; /* Disabled look */
+    color: #888888;
+    cursor: not-allowed;
+}

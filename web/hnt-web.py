@@ -372,6 +372,51 @@ except HTTPException as e:
         raise e  # Re-raise the caught HTTPException
 
 
+# API endpoint to create a new conversation
+@app.post("/api/conversations/create", status_code=status.HTTP_201_CREATED)
+async def api_create_conversation():
+    import subprocess  # Import locally to keep other imports clean or move to top
+
+    try:
+        # Assuming `hnt-chat` is in PATH. Pass the current environment.
+        process = subprocess.run(
+            ["hnt-chat", "new"],
+            capture_output=True,
+            text=True,
+            check=False,  # We handle non-zero exit codes manually
+            env=os.environ.copy(),
+        )
+
+        if process.returncode == 0:
+            # `hnt-chat create` might output the new conversation ID or other info.
+            # For now, a generic success message is sufficient as the frontend reloads.
+            return {"message": "Conversation created successfully."}
+        else:
+            error_detail = f"Failed to create conversation. `hnt-chat create` exited with code {process.returncode}."
+            if process.stderr:
+                error_detail += f" Stderr: {process.stderr.strip()}"
+            print(f"Error in api_create_conversation: {error_detail}", file=sys.stderr)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_detail,
+            )
+
+    except FileNotFoundError:
+        error_msg = "`hnt-chat` command not found. Please ensure it is installed and in the system PATH."
+        print(f"Error in api_create_conversation: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+    except Exception as e:
+        error_msg = f"An unexpected error occurred while trying to create conversation: {str(e)}"
+        print(f"Error in api_create_conversation: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
+
 if __name__ == "__main__":
     # Run the application directly using Uvicorn when hnt-web.py is executed.
     # Reload=True is convenient for development.
