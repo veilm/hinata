@@ -16,11 +16,17 @@ from pathlib import Path
 from typing import List, Dict, Any
 import uvicorn
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 app = FastAPI()
+
+
+# Pydantic model for title update requests
+class TitleUpdateRequest(BaseModel):
+    title: str
 
 
 # Function to determine the XDG_DATA_HOME based directory for web assets
@@ -104,27 +110,46 @@ def get_conversations_dir():
 
 # API endpoint to list conversations
 @app.get("/api/conversations")
-async def api_list_conversations() -> Dict[str, List[str]]:
+async def api_list_conversations() -> Dict[str, List[Dict[str, str]]]:
+    conv_data_list = []
     try:
         conv_base_dir = get_conversations_dir()
-        conversations = sorted(
-            [d.name for d in conv_base_dir.iterdir() if d.is_dir()],
-            reverse=True,  # Show newest first
+        conversation_dirs = sorted(
+            [d for d in conv_base_dir.iterdir() if d.is_dir()],
+            key=lambda p: p.name,
+            reverse=True,  # Show newest first based on ID
         )
-    except RuntimeError as e:  # From home_dir issue
+
+        for conv_dir in conversation_dirs:
+            conv_id = conv_dir.name
+            title_file = conv_dir / "title.txt"
+            title = "-"
+
+            try:
+                if title_file.is_file():
+                    title_content = title_file.read_text(encoding="utf-8").strip()
+                    if title_content:
+                        title = title_content
+                    else:  # File exists but is empty or whitespace
+                        title_file.write_text("-", encoding="utf-8")
+                        title = "-"
+                else:  # File does not exist
+                    title_file.write_text("-", encoding="utf-8")
+                    title = "-"
+            except Exception as e:
+                # Log error reading/writing title.txt, but proceed with default title
+                print(f"Error processing title for {conv_id}: {e}", file=sys.stderr)
+                title = "-"  # Fallback title
+
+            conv_data_list.append({"id": conv_id, "title": title})
+
+    except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except (
-        FileNotFoundError
-    ):  # Should be caught by get_conversations_dir if it's critical
-        raise HTTPException(
-            status_code=404, detail="Base conversation directory not found."
-        )
     except Exception as e:
-        # Generic error for other potential OS issues
         raise HTTPException(
             status_code=500, detail=f"Error listing conversations: {str(e)}"
         )
-    return {"conversations": conversations}
+    return {"conversations": conv_data_list}
 
 
 # API endpoint to read a specific conversation
@@ -249,11 +274,62 @@ async def api_read_conversation(conversation_id: str) -> Dict[str, Any]:
 
             other_files_data.append(file_data)
 
+    # Read conversation title
+    title = "-"  # Default title
+    title_file_path = conv_path / "title.txt"
+    try:
+        if title_file_path.is_file():
+            title_content = title_file_path.read_text(encoding="utf-8").strip()
+            if title_content:
+                title = title_content
+    except Exception as e:
+        # Log error reading title, but proceed with default
+        print(
+            f"Error reading title for conversation {conversation_id}: {e}",
+            file=sys.stderr,
+        )
+        # title remains "-"
+
     return {
         "conversation_id": conversation_id,
+        "title": title,
         "messages": messages_data,
         "other_files": other_files_data,
     }
+
+
+# API endpoint to update a conversation's title
+@app.put("/api/conversation/{conversation_id}/title")
+async def update_conversation_title(conversation_id: str, request: TitleUpdateRequest):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    title_file_path = conv_path / "title.txt"
+    new_title = request.title.strip()
+    if not new_title:  # If stripping results in an empty string, save as "-"
+        new_title = "-"
+
+    try:
+        title_file_path.write_text(new_title, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error writing title for conversation '{conversation_id}': {str(e)}",
+        )
+
+    return JSONResponse(
+        content={"message": "Title updated successfully", "new_title": new_title},
+        status_code=status.HTTP_200_OK,
+    )
 
 
 # Setup static file serving after API routes are defined

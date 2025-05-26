@@ -32,16 +32,28 @@ async function loadConversationsList() {
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
 		}
-		const data = await response.json();
+		const data = await response.json(); // Expects { conversations: [{id: "...", title: "..."}, ...] }
 
 		if (data.conversations && data.conversations.length > 0) {
 			const ul = document.createElement("ul");
-			data.conversations.forEach((convId) => {
+			data.conversations.forEach((conv) => {
 				const li = document.createElement("li");
+
 				const a = document.createElement("a");
-				a.href = `/conversation-page/${encodeURIComponent(convId)}`;
-				a.textContent = escapeHtml(convId);
+				a.href = `/conversation-page/${encodeURIComponent(conv.id)}`;
+				a.textContent = escapeHtml(conv.id);
 				li.appendChild(a);
+
+				const titleSpan = document.createElement("span");
+				titleSpan.className = "conversation-list-title";
+				// Display title read-only. Default to "-" if title is empty, null, or just whitespace.
+				let displayTitle = escapeHtml(conv.title).trim();
+				if (!displayTitle) {
+					displayTitle = "-";
+				}
+				titleSpan.textContent = ` - ${displayTitle}`;
+				li.appendChild(titleSpan);
+
 				ul.appendChild(li);
 			});
 			container.innerHTML = ""; // Clear "Loading..."
@@ -56,14 +68,20 @@ async function loadConversationsList() {
 }
 
 async function loadConversationDetails(conversationId) {
-	const titleElem = document.getElementById("conversation-title");
+	const mainTitleDisplayElement = document.getElementById(
+		"conversation-id-display",
+	);
+	const titleEditInput = document.getElementById("conversation-title-input");
 	const messagesContainer = document.getElementById("messages-container");
 	const otherFilesContainer = document.getElementById("other-files-container");
 
-	// Update page title and heading
 	const safeConvId = escapeHtml(conversationId);
-	document.title = `Conversation: ${safeConvId}`;
-	titleElem.textContent = `Conversation: ${safeConvId}`;
+
+	// Initial title before fetching full data
+	document.title = `Loading: ${safeConvId}`;
+	mainTitleDisplayElement.textContent = `Loading conversation: ${safeConvId}...`;
+	titleEditInput.value = ""; // Clear initially
+	titleEditInput.disabled = true; // Disable until data loaded
 
 	try {
 		const response = await fetch(
@@ -72,7 +90,64 @@ async function loadConversationDetails(conversationId) {
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
 		}
-		const data = await response.json();
+		const data = await response.json(); // Expects { conversation_id, title, messages, other_files }
+
+		const convTitle = data.title || "-"; // Default to "-" if title is null/undefined/empty
+
+		// Update page title, heading, and input field with fetched title
+		const updateDisplayedTitle = (currentTitle) => {
+			const displayPageTitle =
+				currentTitle && currentTitle !== "-"
+					? `${escapeHtml(currentTitle)} (${safeConvId})`
+					: `Conversation: ${safeConvId}`;
+			document.title = displayPageTitle;
+			mainTitleDisplayElement.textContent = displayPageTitle;
+		};
+
+		updateDisplayedTitle(convTitle);
+		titleEditInput.value = escapeHtml(convTitle === "-" ? "" : convTitle); // Show empty if "-", for better editing UX
+		titleEditInput.dataset.originalTitle = convTitle; // Store original title (could be "-")
+		titleEditInput.disabled = false;
+
+		// Event listener for title input blur (lost focus)
+		titleEditInput.addEventListener("blur", async () => {
+			let newTitle = titleEditInput.value.trim();
+			const originalTitle = titleEditInput.dataset.originalTitle;
+
+			if (newTitle === "") {
+				newTitle = "-"; // Default to "-" if input is cleared
+			}
+
+			if (newTitle !== originalTitle) {
+				try {
+					// Pass titleEditInput as the element for UI feedback/error context
+					await updateConversationTitle(
+						conversationId,
+						newTitle,
+						titleEditInput,
+					);
+					titleEditInput.dataset.originalTitle = newTitle; // Update stored original title on success
+					// Reflect the possibly changed newTitle (e.g., if empty became "-")
+					titleEditInput.value = escapeHtml(newTitle === "-" ? "" : newTitle);
+					updateDisplayedTitle(newTitle); // Update the H1 and document title
+				} catch (error) {
+					// Error handled by updateConversationTitle, revert input UI
+					titleEditInput.value = escapeHtml(
+						originalTitle === "-" ? "" : originalTitle,
+					);
+				}
+			} else if (titleEditInput.value.trim() !== newTitle && newTitle === "-") {
+				// Case: input was spaces, now should show empty (representing "-")
+				titleEditInput.value = "";
+			}
+		});
+
+		// Event listener for Enter key in title input
+		titleEditInput.addEventListener("keypress", (event) => {
+			if (event.key === "Enter") {
+				titleEditInput.blur(); // Trigger blur to save
+			}
+		});
 
 		// Render messages
 		messagesContainer.innerHTML = ""; // Clear potential loading/error states
@@ -159,21 +234,93 @@ async function loadConversationDetails(conversationId) {
 	}
 }
 
-function handleError(message, container) {
-	const targetContainer =
-		container ||
-		document.getElementById("conversation-list-container") ||
-		document.body;
+async function updateConversationTitle(conversationId, newTitle, inputElement) {
+	// Clear previous errors specifically for this input action
+	clearErrorMessages(inputElement.closest("li"));
+
+	try {
+		const response = await fetch(
+			`/api/conversation/${encodeURIComponent(conversationId)}/title`,
+			{
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ title: newTitle }),
+			},
+		);
+
+		if (!response.ok) {
+			const errorData = await response
+				.json()
+				.catch(() => ({ detail: "Unknown error updating title." }));
+			throw new Error(
+				errorData.detail || `HTTP error! status: ${response.status}`,
+			);
+		}
+
+		// Visually indicate success briefly (optional)
+		inputElement.style.borderColor = "#98c379"; // Green
+		setTimeout(() => {
+			inputElement.style.borderColor = ""; // Revert to default
+		}, 1500);
+
+		// The calling function will update dataset.originalTitle and other UI parts
+		console.log(`Title for ${conversationId} updated to "${newTitle}"`);
+	} catch (error) {
+		console.error("Failed to update title:", error);
+		// Use inputElement.parentElement for error message context, as input is inside .title-edit-container
+		handleError(
+			`Error updating title: ${error.message}`,
+			inputElement.parentElement,
+		);
+		throw error; // Re-throw to allow caller to handle UI revert
+	}
+}
+
+function clearErrorMessages(container) {
+	if (!container) return;
+	const errorMessages = container.querySelectorAll(".error-message");
+	errorMessages.forEach((msg) => msg.remove());
+}
+
+function handleError(message, contextElement) {
+	// If contextElement is provided, try to place the error message near it.
+	// Otherwise, use a general container.
+	let targetContainer;
+	if (contextElement) {
+		// If it's an input, place error after its parent (li) or the input itself
+		if (contextElement.tagName === "INPUT" && contextElement.parentElement) {
+			targetContainer = contextElement.parentElement;
+		} else {
+			targetContainer = contextElement;
+		}
+	} else {
+		targetContainer =
+			document.getElementById("conversation-list-container") ||
+			document.getElementById("messages-container") || // For conversation detail page
+			document.body;
+	}
+
+	// Remove existing error messages within this specific context if possible
+	if (targetContainer !== document.body) {
+		// Avoid clearing all errors if falling back to body
+		clearErrorMessages(targetContainer);
+	}
+
 	const errorP = document.createElement("p");
-	errorP.className = "error-message"; // Add a class for styling errors if needed
-	errorP.style.color = "red";
+	errorP.className = "error-message";
 	errorP.textContent = escapeHtml(message);
-	if (
+
+	if (targetContainer.tagName === "LI") {
+		// Specific for conversation list items
+		targetContainer.appendChild(errorP); // Add error message within the li
+	} else if (
 		targetContainer.firstChild &&
 		targetContainer.firstChild.nodeName === "H1"
 	) {
 		targetContainer.firstChild.insertAdjacentElement("afterend", errorP);
 	} else {
-		targetContainer.prepend(errorP);
+		targetContainer.prepend(errorP); // General placement
 	}
 }

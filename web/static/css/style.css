@@ -128,3 +128,72 @@ li {
     padding: 8px;
     border: 1px solid #333333;
 }
+
+/* Styles for conversation list with title inputs */
+#conversation-list-container ul li {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 5px 0; /* Add some padding for better spacing */
+}
+
+#conversation-list-container ul li a {
+    margin-right: 15px; /* More space between ID and input */
+    white-space: nowrap; /* Prevent ID from wrapping if it's very long */
+    /* existing 'a' styles will apply for color etc. */
+}
+
+.conversation-list-title {
+    margin-left: 10px; /* Space from the ID link */
+    color: #c0c0c0; 
+}
+
+/* Style for the conversation title H1 on the conversation page */
+#conversation-id-display {
+    display: flex; 
+    align-items: center;
+    word-break: break-all; /* In case of very long title without spaces */
+    /* Existing h1 styles from general rules will apply for font-size, color etc. */
+    margin-bottom: 10px; /* Space it out from the input */
+}
+
+.title-section {
+    margin-bottom: 20px;
+}
+
+.title-edit-container {
+    display: flex;
+    align-items: center;
+}
+
+.title-edit-container label {
+    margin-right: 10px;
+    font-weight: bold;
+    color: #c0c0c0; 
+}
+
+#conversation-title-input {
+    flex-grow: 1;
+    padding: 8px 10px;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border: 1px solid #444444;
+    border-radius: 0;
+    font-family: inherit;
+    font-size: 1.1em; /* Make it a bit prominent */
+}
+
+#conversation-title-input:focus {
+    outline: none;
+    border-color: #61afef;
+    background-color: #303030;
+}
+
+.error-message {
+    color: #ff6b6b; /* A more vibrant red for errors */
+    background-color: #2e1c1c;
+    border: 1px solid #773333;
+    padding: 8px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}

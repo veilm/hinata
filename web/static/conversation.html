@@ -14,7 +14,13 @@
 	<body>
 		<div class="container">
 			<a href="/" class="back-link">&larr; Back to Conversations List</a>
-			<h1 id="conversation-title">Loading conversation...</h1>
+			<div class="title-section">
+				<h1 id="conversation-id-display">Loading conversation...</h1>
+				<div class="title-edit-container">
+					<label for="conversation-title-input">Title:</label>
+					<input type="text" id="conversation-title-input" />
+				</div>
+			</div>
 
 			<div id="messages-container">
 				<!-- Messages will be rendered here by JavaScript -->
