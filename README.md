@@ -11,8 +11,8 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 basic LLM API in/out. significantly faster startup than openai-python
 ```sh
 $ export OPENROUTER_API_KEY=...
-$ echo "hello 😊" | hnt-llm --model openrouter/deepseek/deepseek-chat-v3-0324:free
-Hello! 😊 How can I brighten your day today?
+$ echo "hello 🐙" | hnt-llm --model openrouter/deepseek/deepseek-chat-v3-0324:free
+Hello! 🌊 Looks like you're saying hi to an octopus emoji—how cute! [...]
 ```
 
 ### [`hnt-chat`](./chat/)
