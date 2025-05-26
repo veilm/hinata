@@ -253,7 +253,9 @@ def main():
         help="User instruction message. If not provided, $EDITOR will be opened.",
     )
     parser.add_argument(
-        "source_files", nargs="+", help="One or more source files to edit."
+        "source_files",
+        nargs="*",
+        help="Source files to edit. Required if --continue-dir is not used.",
     )
     parser.add_argument("--model", help="Model to use (passed through to hnt-llm)")
     parser.add_argument(
@@ -267,6 +269,11 @@ def main():
         help="Enable unsafe debugging options in hnt-llm",
     )
     args = parser.parse_args()
+
+    # If --continue-dir is not used, source_files are required.
+    if not args.continue_dir and not args.source_files:
+        parser.error("source_files are required when not using --continue-dir")
+
     debug_log(args, "Arguments parsed:", args)
 
     conversation_dir = None  # Will be set by new or continue logic
