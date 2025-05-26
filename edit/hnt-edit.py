@@ -394,6 +394,55 @@ def main():
         sys.exit(1)
     debug_log(args, "Conversation directory created:", conversation_dir)
 
+    # 4a. Compute and write absolute file paths
+    debug_log(args, "Computing absolute paths for source files...")
+    absolute_paths = []
+    for f_path_str in args.source_files:
+        try:
+            # Path(f_path_str).resolve() gives the absolute path
+            # Path.resolve() handles non-existent files correctly for our purpose (creates an absolute path string)
+            # if it's a new file to be created. If it must exist, an error would be raised.
+            # Since we touch/create files earlier, this should be fine.
+            abs_path = Path(f_path_str).resolve()
+            absolute_paths.append(str(abs_path))
+            debug_log(args, f"  Original: {f_path_str}, Absolute: {abs_path}")
+        except Exception as e:
+            # This might happen if f_path_str is somehow invalid for Path resolution
+            # though unlikely given prior checks and creations.
+            print(
+                f"Warning: Could not resolve absolute path for {f_path_str}: {e}",
+                file=sys.stderr,
+            )
+            debug_log(args, f"Error resolving path for {f_path_str}: {e}")
+            # Decide if this is critical. For now, let's add a placeholder or skip.
+            # For robustness, we'll skip problematic ones but log it.
+            # Or, we could append the original relative path as a fallback. Let's stick to absolute or nothing.
+
+    if absolute_paths:
+        abs_paths_file = Path(conversation_dir) / "absolute_file_paths.txt"
+        debug_log(args, f"Writing absolute paths to {abs_paths_file}...")
+        try:
+            with open(abs_paths_file, "w") as f:
+                for p in absolute_paths:
+                    f.write(p + "\n")
+            debug_log(args, f"Successfully wrote absolute paths to {abs_paths_file}.")
+        except IOError as e:
+            print(
+                f"Warning: Could not write absolute file paths to {abs_paths_file}: {e}",
+                file=sys.stderr,
+            )
+            debug_log(args, f"IOError writing {abs_paths_file}: {e}")
+        except Exception as e:  # Catch any other unexpected errors during file write
+            print(
+                f"Warning: Unexpected error writing {abs_paths_file}: {e}",
+                file=sys.stderr,
+            )
+            debug_log(args, f"Unexpected error writing {abs_paths_file}: {e}")
+    else:
+        debug_log(
+            args, "No absolute paths were resolved or source_files list was empty."
+        )
+
     # 5. Add system message to conversation
     debug_log(args, "Adding system message via hnt-chat add...")
     hnt_chat_add_system_cmd = ["hnt-chat", "add", "system", "-c", conversation_dir]
