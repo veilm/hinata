@@ -16,6 +16,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any
 import uvicorn
+import time
+import shutil
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -38,6 +40,11 @@ class ModelUpdateRequest(BaseModel):
 # Pydantic model for adding new messages
 class MessageAddRequest(BaseModel):
     role: str
+    content: str
+
+
+# Pydantic model for updating message content
+class MessageContentUpdateRequest(BaseModel):
     content: str
 
 
@@ -645,6 +652,101 @@ async def api_gen_assistant_message(conversation_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_msg,
+        )
+
+
+# Endpoint to archive a message
+@app.post(
+    "/api/conversation/{conversation_id}/message/{filename}/archive",
+    status_code=status.HTTP_200_OK,
+)
+async def api_archive_message(conversation_id: str, filename: str):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    message_file_path = conv_path / filename
+    if not message_file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Message file '{filename}' not found in conversation '{conversation_id}'.",
+        )
+
+    try:
+        # Generate archived filename
+        archived_filename = f"{int(time.time())}-archived-{filename}"
+        archived_file_path = message_file_path.parent / archived_filename
+
+        # Perform the move/rename operation
+        message_file_path.rename(archived_file_path)
+
+        return {
+            "message": "Message archived successfully.",
+            "archived_filename": archived_filename,
+        }
+    except Exception as e:
+        error_msg = f"Error archiving message '{filename}': {str(e)}"
+        print(f"Error in api_archive_message: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg
+        )
+
+
+# Endpoint to edit a message
+@app.put(
+    "/api/conversation/{conversation_id}/message/{filename}/edit",
+    status_code=status.HTTP_200_OK,
+)
+async def api_edit_message(
+    conversation_id: str, filename: str, request: MessageContentUpdateRequest
+):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    message_file_path = conv_path / filename
+    if not message_file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Message file '{filename}' not found in conversation '{conversation_id}'.",
+        )
+
+    try:
+        # 1. Copy the current version to an archive file
+        archived_filename = f"{int(time.time())}-archived-{filename}"
+        archived_file_path = message_file_path.parent / archived_filename
+        shutil.copy2(str(message_file_path), str(archived_file_path))
+
+        # 2. Overwrite the original file with new content
+        message_file_path.write_text(request.content, encoding="utf-8")
+
+        return {
+            "message": "Message updated successfully.",
+            "filename": filename,
+            "new_content": request.content,
+            "archived_as": archived_filename,
+        }
+    except Exception as e:
+        error_msg = f"Error editing message '{filename}': {str(e)}"
+        print(f"Error in api_edit_message: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg
         )
 
 

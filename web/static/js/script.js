@@ -235,6 +235,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				data.messages.forEach((msg) => {
 					const messageDiv = document.createElement("div");
 					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
+					messageDiv.dataset.filename = msg.filename; // Store filename for actions
 
 					const headerDiv = document.createElement("div");
 					headerDiv.className = "message-header";
@@ -250,13 +251,42 @@ document.addEventListener("DOMContentLoaded", () => {
 					headerDiv.appendChild(roleSpan);
 					headerDiv.appendChild(filenameSpan);
 
-					const contentDiv = document.createElement("div");
-					// Content is pre-wrap, so textContent is fine.
-					// If content could contain HTML that needs to be rendered as HTML this would be different.
-					contentDiv.textContent = msg.content;
+					// Wrapper for content to allow easy replacement (text <-> textarea)
+					const contentWrapperDiv = document.createElement("div");
+					contentWrapperDiv.className = "message-content-wrapper";
+					contentWrapperDiv.textContent = msg.content; // Initial content display
+
+					// Actions (Edit, Archive)
+					const actionsDiv = document.createElement("div");
+					actionsDiv.className = "message-actions";
+
+					const editButton = createActionButton("✏️", "btn-edit", () =>
+						// Emoji: Pencil
+						toggleEditState(
+							messageDiv,
+							contentWrapperDiv,
+							actionsDiv,
+							msg.content,
+							conversationId,
+							msg.filename,
+						),
+					);
+					editButton.title = "Edit"; // Tooltip for accessibility
+
+					const archiveButton = createActionButton(
+						"🗑️", // Emoji: Trash can
+						"btn-archive",
+						() =>
+							handleArchiveMessage(messageDiv, conversationId, msg.filename),
+					);
+					archiveButton.title = "Archive"; // Tooltip for accessibility
+
+					actionsDiv.appendChild(editButton);
+					actionsDiv.appendChild(archiveButton);
 
 					messageDiv.appendChild(headerDiv);
-					messageDiv.appendChild(contentDiv);
+					messageDiv.appendChild(contentWrapperDiv);
+					messageDiv.appendChild(actionsDiv);
 					messagesContainer.appendChild(messageDiv);
 				});
 			} else {
@@ -397,6 +427,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 	}
 
+	// Helper to create main action buttons (Add User, System, etc.)
 	function createButton(id, text, onClick) {
 		const button = document.createElement("button");
 		button.id = id;
@@ -410,6 +441,205 @@ document.addEventListener("DOMContentLoaded", () => {
 		buttons.forEach((btn) => {
 			if (btn) btn.disabled = disabled;
 		});
+	}
+
+	// Helper to create action buttons for individual messages (Edit, Archive, Save, Cancel)
+	function createActionButton(text, className, onClick) {
+		const button = document.createElement("button");
+		button.type = "button";
+		button.textContent = text;
+		button.className = className; // Add class for styling
+		button.addEventListener("click", onClick);
+		return button;
+	}
+
+	function toggleEditState(
+		messageElement,
+		contentWrapperDiv,
+		actionsDiv,
+		originalContent,
+		conversationId,
+		filename,
+	) {
+		const isEditing = messageElement.dataset.editing === "true";
+
+		if (isEditing) {
+			// ---- Switching from Edit to View (Cancel or Save) ----
+			// Note: originalContent is passed as argument, could be the newly saved content
+			contentWrapperDiv.innerHTML = ""; // Clear textarea
+			contentWrapperDiv.textContent = originalContent; // Restore/set content
+
+			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
+			const editButton = createActionButton("✏️", "btn-edit", () =>
+				// Emoji: Pencil
+				toggleEditState(
+					messageElement,
+					contentWrapperDiv,
+					actionsDiv,
+					originalContent, // This is now the current content
+					conversationId,
+					filename,
+				),
+			);
+			editButton.title = "Edit";
+
+			const archiveButton = createActionButton("🗑️", "btn-archive", () =>
+				// Emoji: Trash can
+				handleArchiveMessage(messageElement, conversationId, filename),
+			);
+			archiveButton.title = "Archive";
+
+			actionsDiv.appendChild(editButton);
+			actionsDiv.appendChild(archiveButton);
+
+			delete messageElement.dataset.editing;
+			delete messageElement.dataset.originalContentForEdit; // Clean up
+		} else {
+			// ---- Switching from View to Edit ----
+			messageElement.dataset.editing = "true";
+			// Store original content on the element in case of cancel
+			messageElement.dataset.originalContentForEdit = originalContent;
+
+			contentWrapperDiv.innerHTML = ""; // Clear current text content
+			const textarea = document.createElement("textarea");
+			textarea.value = originalContent;
+			// autoresize textarea
+			textarea.style.height = "auto"; // Temporarily set to auto to get scrollHeight
+			textarea.style.height = `${textarea.scrollHeight}px`;
+			textarea.addEventListener("input", () => {
+				// Adjust height on input
+				textarea.style.height = "auto";
+				textarea.style.height = `${textarea.scrollHeight}px`;
+			});
+			contentWrapperDiv.appendChild(textarea);
+			textarea.focus();
+
+			actionsDiv.innerHTML = ""; // Clear Edit/Archive buttons
+			const saveButton = createActionButton("💾", "btn-save", () =>
+				// Emoji: Floppy Disk (Save)
+				handleSaveMessage(
+					messageElement,
+					contentWrapperDiv,
+					actionsDiv,
+					textarea, // Pass textarea to get its current value
+					conversationId,
+					filename,
+				),
+			);
+			saveButton.title = "Save";
+
+			const cancelButton = createActionButton("❌", "btn-cancel", () =>
+				// Emoji: Cross Mark (Cancel)
+				// Revert to view mode with the stored original content
+				toggleEditState(
+					messageElement,
+					contentWrapperDiv,
+					actionsDiv,
+					messageElement.dataset.originalContentForEdit, // Use stored original
+					conversationId,
+					filename,
+				),
+			);
+			cancelButton.title = "Cancel";
+
+			actionsDiv.appendChild(saveButton);
+			actionsDiv.appendChild(cancelButton);
+		}
+	}
+
+	async function handleArchiveMessage(
+		messageElement,
+		conversationId,
+		filename,
+	) {
+		// Clear previous errors specifically for this message's actions
+		if (messageElement) {
+			clearErrorMessages(
+				messageElement.querySelector(".message-actions") || messageElement,
+			);
+		}
+
+		try {
+			const response = await fetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(filename)}/archive`,
+				{
+					method: "POST",
+				},
+			);
+
+			if (!response.ok) {
+				const errorData = await response
+					.json()
+					.catch(() => ({ detail: "Failed to archive message." }));
+				throw new Error(errorData.detail || `HTTP error ${response.status}`);
+			}
+
+			// On success, remove the message element from the DOM
+			messageElement.remove();
+			// No need to reload full conversation, message is gone from this view.
+			// It will appear in "Other Files" on next full load/refresh.
+			// To refresh "Other Files" immediately, one could call loadConversationDetails(conversationId)
+			// but that's a full reload. For now, let it update on page refresh.
+		} catch (error) {
+			console.error("Error archiving message:", error);
+			handleError(
+				`Error archiving message: ${error.message}`,
+				messageElement.querySelector(".message-actions") || messageElement,
+			);
+		}
+	}
+
+	async function handleSaveMessage(
+		messageElement,
+		contentWrapperDiv,
+		actionsDiv,
+		textareaElement,
+		conversationId,
+		filename,
+	) {
+		const newContent = textareaElement.value;
+
+		// Clear previous errors from actions area
+		clearErrorMessages(actionsDiv);
+
+		// Disable Save/Cancel temporarily
+		const saveCancelButtons = actionsDiv.querySelectorAll("button");
+		setButtonsDisabledState(Array.from(saveCancelButtons), true);
+
+		try {
+			const response = await fetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(filename)}/edit`,
+				{
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ content: newContent }),
+				},
+			);
+
+			if (!response.ok) {
+				const errorData = await response
+					.json()
+					.catch(() => ({ detail: "Failed to save message." }));
+				throw new Error(errorData.detail || `HTTP error ${response.status}`);
+			}
+
+			// const responseData = await response.json(); // Contains new_content, archived_as
+			// Successfully saved. Update UI to view mode with new content.
+			// The newContent is now the "original" content for future edits.
+			toggleEditState(
+				messageElement,
+				contentWrapperDiv,
+				actionsDiv,
+				newContent, // Pass the new content to be displayed and set as original
+				conversationId,
+				filename,
+			);
+		} catch (error) {
+			console.error("Error saving message:", error);
+			handleError(`Error saving message: ${error.message}`, actionsDiv);
+			// Re-enable Save/Cancel buttons on error
+			setButtonsDisabledState(Array.from(saveCancelButtons), false);
+		}
 	}
 
 	async function handleAddMessage(
