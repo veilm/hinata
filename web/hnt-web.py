@@ -465,9 +465,26 @@ async def api_create_conversation():
         )
 
         if process.returncode == 0:
-            # `hnt-chat create` might output the new conversation ID or other info.
-            # For now, a generic success message is sufficient as the frontend reloads.
-            return {"message": "Conversation created successfully."}
+            # `hnt-chat new` outputs the full path to the new conversation directory.
+            full_conversation_path_str = process.stdout.strip()
+            if not full_conversation_path_str:
+                # This case should ideally not happen if hnt-chat new works correctly
+                error_detail = "Failed to create conversation: `hnt-chat new` did not return a path."
+                print(
+                    f"Error in api_create_conversation: {error_detail}", file=sys.stderr
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_detail,
+                )
+
+            # Extract just the final directory name (the ID) from the path
+            new_conversation_id = Path(full_conversation_path_str).name
+
+            return {
+                "message": "Conversation created successfully.",
+                "conversation_id": new_conversation_id,  # This is the directory name
+            }
         else:
             error_detail = f"Failed to create conversation. `hnt-chat new` exited with code {process.returncode}."
             if process.stderr:

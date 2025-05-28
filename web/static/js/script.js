@@ -106,10 +106,26 @@ document.addEventListener("DOMContentLoaded", () => {
 				throw new Error(errorDetail);
 			}
 
-			// Success! Reload the page to see the new conversation in the list.
-			window.location.reload();
+			const responseData = await response.json();
+			if (responseData && responseData.conversation_id) {
+				// Success! Navigate to the new conversation page.
+				window.location.href = `/conversation-page/${encodeURIComponent(responseData.conversation_id)}`;
+			} else {
+				// Fallback if conversation_id is not in response, though backend should ensure it
+				throw new Error(
+					"Conversation created, but ID was not returned. Reloading list.",
+				);
+			}
 		} catch (error) {
 			console.error("Error creating conversation:", error);
+			// If navigation fails or ID is missing, reload the list page as a fallback.
+			// This part of the catch block handles the custom error thrown above or other fetch errors.
+			if (
+				error.message ===
+				"Conversation created, but ID was not returned. Reloading list."
+			) {
+				window.location.reload(); // Reload to show it in the list at least
+			}
 			// Display error message near the button or in a general area
 			handleError(
 				error.message,
