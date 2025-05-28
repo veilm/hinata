@@ -1,5 +1,6 @@
 body {
-	font-family: "Consolas", "Menlo", "Courier New", Courier, monospace; /* Monospace font */
+	font-family: "Roboto Mono", "Consolas", "Menlo", "Courier New", Courier,
+		monospace; /* Monospace font */
 	margin: 0;
 	padding: 0; /* Default padding to 0 for mobile */
 	background-color: #121212; /* Dark background */
