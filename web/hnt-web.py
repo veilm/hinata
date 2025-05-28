@@ -15,12 +15,13 @@ import re
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any
+import asyncio
 import uvicorn
 import time
 import shutil
 
 from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -586,14 +587,12 @@ async def api_add_message_to_conversation(
         )
 
 
-@app.post(
-    "/api/conversation/{conversation_id}/gen-assistant",
-    status_code=status.HTTP_201_CREATED,
-)
-async def api_gen_assistant_message(conversation_id: str):
+@app.post("/api/conversation/{conversation_id}/gen-assistant")
+async def api_gen_assistant_message_stream(conversation_id: str):
     try:
         conv_base_dir = get_conversations_dir()
     except RuntimeError as e:
+        # This error occurs if base dir cannot be determined, critical.
         raise HTTPException(status_code=500, detail=str(e))
 
     conv_path = conv_base_dir / conversation_id
@@ -604,71 +603,120 @@ async def api_gen_assistant_message(conversation_id: str):
         )
 
     model_file_path = conv_path / "model.txt"
-    model_to_use = DEFAULT_MODEL_NAME
-
+    model_to_use = DEFAULT_MODEL_NAME  # Default defined elsewhere
     try:
         if model_file_path.is_file():
             model_content = model_file_path.read_text(encoding="utf-8").strip()
             if model_content:
                 model_to_use = model_content
     except Exception as e:
+        # Log warning but proceed with default model
         print(
             f"Warning: Error reading model.txt for conversation {conversation_id}, using default model '{model_to_use}': {e}",
             file=sys.stderr,
         )
 
-    try:
-        cmd = [
-            "hnt-chat",
-            "gen",
-            "--merge",
-            "--separate-reasoning",
-            "--model",
-            model_to_use,
-            "--conversation",
-            str(conv_path.resolve()),
-        ]
+    cmd = [
+        "hnt-chat",
+        "gen",
+        "--merge",  # Merge context before sending to LLM
+        "--separate-reasoning",  # Write reasoning to a file, implies --write
+        "--model",
+        model_to_use,
+        "--conversation",
+        str(conv_path.resolve()),
+        # DO NOT use --output-filename here, as it prints filename to stdout,
+        # which would be mixed with the LLM stream.
+        # --separate-reasoning (or --write) is sufficient for file saving.
+    ]
 
-        process = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            env=os.environ.copy(),
-        )
+    async def stream_generator():
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ.copy(),
+            )
 
-        if process.returncode == 0:
-            return {"message": "Assistant message generated successfully."}
-        else:
-            error_detail = f"Failed to generate assistant message. `hnt-chat gen` exited with code {process.returncode}."
-            if process.stderr:
-                error_detail += f" Stderr: {process.stderr.strip()}"
-            if process.stdout and process.returncode != 0:
-                error_detail += f" Stdout: {process.stdout.strip()}"
+            if process.stdout:
+                while True:
+                    chunk = await process.stdout.read(4096)
+                    if not chunk:
+                        break
+                    yield chunk  # Yield bytes directly
 
+            return_code = await process.wait()
+
+            if return_code != 0:
+                stderr_output = ""
+                if process.stderr:
+                    stderr_bytes = await process.stderr.read()
+                    stderr_output = stderr_bytes.decode(errors="replace").strip()
+                print(
+                    f"Error: hnt-chat gen (stream) exited with code {return_code} for conversation {conversation_id}.",
+                    file=sys.stderr,
+                )
+                if stderr_output:
+                    print(f"hnt-chat stderr: {stderr_output}", file=sys.stderr)
+                # The stream would have ended. Client will do a full reload.
+                # If hnt-chat errored before/during writing files, reload will show that state.
+                # No explicit error yielding in the stream body to keep it simple.
+
+        except FileNotFoundError:
+            # This specific exception will be caught by the outer try/except
+            # and handled with an HTTP_500_INTERNAL_SERVER_ERROR *before*
+            # StreamingResponse is even created if it's raised by create_subprocess_exec itself.
+            # If it happens during the generator's execution (less likely for FNF),
+            # the stream might have started. For now, we assume FNF is caught by outer block.
             print(
-                f"Error in api_gen_assistant_message: {error_detail}", file=sys.stderr
+                f"Error: 'hnt-chat' command not found during stream generation for {conversation_id}.",
+                file=sys.stderr,
             )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error_detail,
+            # Yielding an error message in-stream is complex.
+            # Rely on outer try-except or client reload.
+            yield b"Error: hnt-chat command not found server-side."  # Crude, better handled by outer if possible
+            # This yielding of error text into the stream is a fallback;
+            # typically FileNotFoundError should be caught before stream_generator starts.
+        except Exception as e:
+            print(
+                f"An unexpected error occurred during hnt-chat stream generation for {conversation_id}: {e}",
+                file=sys.stderr,
+            )
+            # Yielding an error message in-stream.
+            yield f"Unexpected server error during stream: {str(e)}".encode(
+                "utf-8", "replace"
             )
 
-    except FileNotFoundError:
-        error_msg = "`hnt-chat` command not found. Please ensure it is installed and in the system PATH."
-        print(f"Error in api_gen_assistant_message: {error_msg}", file=sys.stderr)
+    try:
+        # Quick check for hnt-chat before starting the stream process
+        if not shutil.which("hnt-chat"):
+            raise FileNotFoundError(
+                "`hnt-chat` command not found. Please ensure it is installed and in the system PATH."
+            )
+        # Return the streaming response
+        return StreamingResponse(
+            stream_generator(), media_type="text/plain; charset=utf-8"
+        )
+
+    except (
+        FileNotFoundError
+    ) as fnf_error:  # Catches the explicit raise if shutil.which fails
+        print(
+            f"Setup error for api_gen_assistant_message_stream: {str(fnf_error)}",
+            file=sys.stderr,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_msg,
+            detail=str(fnf_error),
         )
-    except Exception as e:
-        error_msg = (
-            f"An unexpected error occurred while generating assistant message: {str(e)}"
-        )
-        print(f"Error in api_gen_assistant_message: {error_msg}", file=sys.stderr)
+    except Exception as e:  # Catch other unexpected errors setting up the stream
+        error_msg_setup = f"An unexpected error occurred setting up assistant message stream for {conversation_id}: {str(e)}"
+        print(error_msg_setup, file=sys.stderr)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_msg,
+            detail=error_msg_setup,
         )
 
 

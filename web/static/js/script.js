@@ -713,7 +713,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
 	async function handleGenAssistant(conversationId, allButtons) {
 		setButtonsDisabledState(allButtons, true);
-		clearErrorMessages(document.getElementById("message-input-area"));
+		const messageInputArea = document.getElementById("message-input-area");
+		if (messageInputArea) {
+			clearErrorMessages(messageInputArea);
+		}
+
+		// Remove any existing placeholder
+		const existingPlaceholder = document.getElementById(
+			"assistant-streaming-placeholder",
+		);
+		if (existingPlaceholder) {
+			existingPlaceholder.remove();
+		}
+
+		// Create a new placeholder div for the streaming assistant message
+		const messagesContainer = document.getElementById("messages-container");
+		const placeholderDiv = document.createElement("div");
+		placeholderDiv.id = "assistant-streaming-placeholder";
+		placeholderDiv.className = "message message-assistant";
+
+		const headerDiv = document.createElement("div");
+		headerDiv.className = "message-header";
+		const roleSpan = document.createElement("span");
+		roleSpan.className = "message-role";
+		roleSpan.textContent = "Assistant";
+		const filenameSpan = document.createElement("span");
+		filenameSpan.className = "message-filename";
+		filenameSpan.textContent = "Generating..."; // Placeholder text
+		headerDiv.appendChild(roleSpan);
+		headerDiv.appendChild(filenameSpan);
+
+		const contentWrapperDiv = document.createElement("div");
+		contentWrapperDiv.className = "message-content-wrapper";
+		// contentWrapperDiv.style.whiteSpace = "pre-wrap"; // Ensure pre-wrap for streaming
+
+		placeholderDiv.appendChild(headerDiv);
+		placeholderDiv.appendChild(contentWrapperDiv);
+		messagesContainer.appendChild(placeholderDiv);
+		// Removed: placeholderDiv.scrollIntoView({ behavior: "smooth", block: "end" });
 
 		try {
 			const response = await fetch(
@@ -724,22 +761,49 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 
 			if (!response.ok) {
+				// This handles errors sent *before* the stream starts (e.g., server 500)
 				const errorData = await response.json().catch(() => ({
-					detail: "Failed to generate assistant message.",
+					detail: `Failed to start assistant message generation. Server responded with ${response.status}.`,
 				}));
 				throw new Error(errorData.detail || `HTTP error ${response.status}`);
 			}
 
-			loadConversationDetails(conversationId); // Reload to show new message(s)
+			// Handle the stream
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder(); // Defaults to 'utf-8'
+
+			let done = false;
+			while (!done) {
+				const { value, done: readerDone } = await reader.read();
+				done = readerDone;
+				if (value) {
+					const chunk = decoder.decode(value, { stream: !done });
+					contentWrapperDiv.textContent += chunk;
+					// Removed: placeholderDiv.scrollIntoView({ block: "end" });
+				}
+			}
+			// Stream finished
 		} catch (error) {
 			console.error("Error generating assistant message:", error);
-			handleError(
-				`Error generating assistant message: ${error.message}`,
-				document.getElementById("message-input-area"),
-			);
-			setButtonsDisabledState(allButtons, false); // Re-enable buttons on error if not reloading
+			if (messageInputArea) {
+				handleError(
+					`Error generating assistant message: ${error.message}`,
+					messageInputArea,
+				);
+			}
+			// Update placeholder to show error if stream itself failed or setup failed.
+			filenameSpan.textContent = "Error";
+			contentWrapperDiv.textContent = `Error during generation: ${escapeHtml(error.message)}`;
+			// Do not re-enable buttons here, `finally` block below calls loadConversationDetails
+			// which will fully reconstruct the input area.
+			// If loadConversationDetails is skipped on error, then buttons should be re-enabled.
+			// However, the design is to always try to load details.
+		} finally {
+			// Regardless of success or failure of the stream, reload the conversation details
+			// to get the final state from the server (new messages, files, etc.)
+			// This will also remove the placeholder and re-enable buttons correctly.
+			loadConversationDetails(conversationId);
 		}
-		// No 'finally' block for same reason as handleAddMessage.
 	}
 
 	async function updateConversationTitle(
