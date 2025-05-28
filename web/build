@@ -1,9 +1,17 @@
 #!/bin/sh -e
 
+cd "$(dirname "$0")"
+
 if ! which uv > /dev/null 2>&1
 then
 	echo "web/build: uv required"
 	exit 0
+fi
+
+if ! which hnt-chat > /dev/null 2>&1
+then
+	echo "web/build: building hnt-chat"
+	../chat/build
 fi
 
 web="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/web"
