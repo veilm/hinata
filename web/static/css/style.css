@@ -1,10 +1,18 @@
 body {
 	font-family: "Consolas", "Menlo", "Courier New", Courier, monospace; /* Monospace font */
 	margin: 0;
-	padding: 20px;
+	padding: 0; /* Default padding to 0 for mobile */
 	background-color: #121212; /* Dark background */
 	color: #e0e0e0; /* Light text */
 }
+
+/* Apply padding for desktop screens */
+@media (min-width: 768px) {
+	body {
+		padding: 20px;
+	}
+}
+
 h1,
 h2 {
 	color: #e0e0e0;
