@@ -349,8 +349,9 @@ li {
 	border: none; /* Removed border */
 	border-radius: 0;
 	cursor: pointer;
-	transition: background-color 0.2s ease;
+	transition: background-color 0.2s ease, filter 0.2s ease; /* Added filter to transition */
 	font-family: inherit; /* Ensure monospace font (though emojis might have own metrics) */
+	filter: grayscale(100%); /* Make buttons grayscale */
 }
 .message-actions button:hover {
 	background-color: #5c6370; /* Consistent lighten on hover */
