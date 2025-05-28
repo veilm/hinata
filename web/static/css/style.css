@@ -414,3 +414,30 @@ li {
 	border-color: #ff615e; /* Theme color for focus */
 	background-color: #303030; /* Slightly lighter background on focus */
 }
+
+/* Fork Conversation Button Style */
+#fork-conversation-btn {
+	padding: 10px 15px;
+	background-color: #ff615e; /* Theme color, like create new */
+	color: #1e1e1e; /* Dark text for contrast */
+	border: none;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1em; /* Consistent with create new */
+	cursor: pointer;
+	transition: background-color 0.2s ease;
+	margin-top: 15px; /* Space above */
+	display: block; /* Takes its own line */
+	width: fit-content; /* Doesn't span full width unless content requires */
+	margin-left: 0; /* Align left by default */
+}
+
+#fork-conversation-btn:hover {
+	background-color: #e0504d; /* Darker theme color on hover */
+}
+
+#fork-conversation-btn:disabled {
+	background-color: #4a4a4a;
+	color: #888888;
+	cursor: not-allowed;
+}

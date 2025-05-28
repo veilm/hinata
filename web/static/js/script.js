@@ -353,6 +353,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			// After rendering messages and other files, set up the input area
 			setupMessageInputArea(conversationId);
+
+			// Setup Fork button listener
+			const forkButton = document.getElementById("fork-conversation-btn");
+			if (forkButton) {
+				forkButton.addEventListener("click", () => {
+					handleForkConversation(conversationId);
+				});
+			} else {
+				console.warn("Fork button (#fork-conversation-btn) not found in DOM.");
+			}
 		} catch (error) {
 			handleError(
 				`Failed to load conversation: ${safeConvId}.`,
@@ -844,7 +854,12 @@ document.addEventListener("DOMContentLoaded", () => {
 		let targetContainer;
 		if (contextElement) {
 			// If it's an input, place error after its parent (li) or the input itself
-			if (contextElement.tagName === "INPUT" && contextElement.parentElement) {
+			// Also handle if contextElement is the button itself, place error near its parent or button
+			if (
+				(contextElement.tagName === "INPUT" ||
+					contextElement.tagName === "BUTTON") &&
+				contextElement.parentElement
+			) {
 				targetContainer = contextElement.parentElement;
 			} else {
 				targetContainer = contextElement;
@@ -876,6 +891,56 @@ document.addEventListener("DOMContentLoaded", () => {
 			targetContainer.firstChild.insertAdjacentElement("afterend", errorP);
 		} else {
 			targetContainer.prepend(errorP); // General placement
+		}
+	}
+
+	async function handleForkConversation(conversationId) {
+		const forkBtn = document.getElementById("fork-conversation-btn");
+		if (forkBtn) forkBtn.disabled = true;
+
+		const titleSection = document.querySelector(".title-section");
+		if (titleSection) clearErrorMessages(titleSection);
+
+		try {
+			const response = await fetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/fork`,
+				{
+					method: "POST",
+					headers: {
+						// "Content-Type": "application/json", // Not strictly needed as no body is sent
+					},
+				},
+			);
+
+			if (!response.ok) {
+				let errorDetail = "Failed to fork conversation.";
+				try {
+					const errorData = await response.json();
+					if (errorData && errorData.detail) {
+						errorDetail = errorData.detail;
+					}
+				} catch (e) {
+					errorDetail += ` Server responded with: ${response.status} ${response.statusText}`;
+				}
+				throw new Error(errorDetail);
+			}
+
+			const responseData = await response.json();
+			if (responseData && responseData.new_conversation_id) {
+				window.location.href = `/conversation-page/${encodeURIComponent(responseData.new_conversation_id)}`;
+			} else {
+				throw new Error(
+					"Fork successful, but new conversation ID was not returned.",
+				);
+			}
+		} catch (error) {
+			console.error("Error forking conversation:", error);
+			// Display error near the title section or button's parent
+			handleError(
+				error.message,
+				titleSection || (forkBtn ? forkBtn.parentElement : null),
+			);
+			if (forkBtn) forkBtn.disabled = false; // Re-enable on error
 		}
 	}
 });

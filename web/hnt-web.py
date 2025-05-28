@@ -767,6 +767,116 @@ async def api_edit_message(
         )
 
 
+@app.post(
+    "/api/conversation/{conversation_id}/fork", status_code=status.HTTP_201_CREATED
+)
+async def api_fork_conversation(conversation_id: str):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    source_conv_path = conv_base_dir / conversation_id
+    if not source_conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Source conversation '{conversation_id}' not found for forking.",
+        )
+
+    # 1. Create a new conversation (B) using hnt-chat new
+    new_conversation_id = None
+    new_conv_path = None
+    try:
+        process = subprocess.run(
+            ["hnt-chat", "new"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=os.environ.copy(),
+        )
+        if process.returncode != 0:
+            error_detail = f"Failed to create new conversation base for fork. `hnt-chat new` exited with code {process.returncode}."
+            if process.stderr:
+                error_detail += f" Stderr: {process.stderr.strip()}"
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_detail
+            )
+
+        new_conv_full_path_str = process.stdout.strip()
+        if not new_conv_full_path_str:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="`hnt-chat new` did not return a path for the forked conversation.",
+            )
+        new_conv_path = Path(new_conv_full_path_str)
+        new_conversation_id = new_conv_path.name
+
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="`hnt-chat` command not found during fork. Please ensure it is installed and in PATH.",
+        )
+    except Exception as e:  # Catch other subprocess or path errors
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred creating new conversation base for fork: {str(e)}",
+        )
+
+    # 2. Copy every file in the A directory to B's directory
+    try:
+        for item in source_conv_path.iterdir():
+            if item.is_file():
+                shutil.copy2(item, new_conv_path / item.name)
+    except Exception as e:
+        # If copying fails, it's a critical error for the fork.
+        # Consider cleanup of new_conv_path if it should be atomic, but for now, error out.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to copy files during fork from '{conversation_id}' to '{new_conversation_id}': {str(e)}",
+        )
+
+    # 3. Modify B's title.txt
+    title_file_path_in_b = new_conv_path / "title.txt"
+    effective_title_from_a = "-"  # Default if title.txt wasn't copied or was empty
+
+    if title_file_path_in_b.is_file():
+        try:
+            title_content_from_a = title_file_path_in_b.read_text(
+                encoding="utf-8"
+            ).strip()
+            if title_content_from_a:
+                effective_title_from_a = title_content_from_a
+        except Exception as e:
+            print(
+                f"Fork: Error reading title.txt from newly copied {title_file_path_in_b}, defaulting to '-': {e}",
+                file=sys.stderr,
+            )
+            # effective_title_from_a remains "-"
+
+    match = re.match(r"^(.*)-(\d+)$", effective_title_from_a)
+    if match:
+        base_title_part = match.group(1)
+        numeric_suffix_part = match.group(2)
+        # Ensure base_title_part is not empty if effective_title_from_a was like "-1"
+        # If base_title_part is "" (e.g. title was "-1"), new title will be "-2". This is fine.
+        forked_title_str = f"{base_title_part}-{int(numeric_suffix_part) + 1}"
+    else:
+        forked_title_str = f"{effective_title_from_a}-0"
+
+    try:
+        title_file_path_in_b.write_text(forked_title_str, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fork: Error writing new title to {title_file_path_in_b}: {str(e)}",
+        )
+
+    return {
+        "message": "Conversation forked successfully.",
+        "new_conversation_id": new_conversation_id,
+    }
+
+
 if __name__ == "__main__":
     # Run the application directly using Uvicorn when hnt-web.py is executed.
     # Reload=True is convenient for development.
