@@ -390,7 +390,64 @@ document.addEventListener("DOMContentLoaded", () => {
 		const textarea = document.createElement("textarea");
 		textarea.id = "new-message-content";
 		textarea.placeholder = "Enter message content...";
-		textarea.rows = 4;
+		// textarea.rows = 4; // Replaced by dynamic height adjustment and CSS min-height
+		textarea.style.overflowY = "hidden"; // Start with hidden scrollbar, JS will manage
+		textarea.style.resize = "none"; // Prevent manual resize conflicting with auto-resize
+
+		// Function to adjust textarea height dynamically
+		function adjustTextareaHeightOnInput(ta) {
+			const computedStyle = getComputedStyle(ta);
+			const fontSize = parseFloat(computedStyle.fontSize) || 16; // Base font size from computed style or fallback
+			// Ensure lineHeight is a number. If 'normal', approximate as 1.2 * fontSize.
+			const lineHeight =
+				computedStyle.lineHeight === "normal"
+					? fontSize * 1.2
+					: parseFloat(computedStyle.lineHeight);
+
+			const paddingTop = parseFloat(computedStyle.paddingTop);
+			const paddingBottom = parseFloat(computedStyle.paddingBottom);
+			const borderTopWidth = parseFloat(computedStyle.borderTopWidth);
+			const borderBottomWidth = parseFloat(computedStyle.borderBottomWidth);
+
+			const M_MAX_LINES = 8;
+
+			// Calculate max content height based on M_MAX_LINES
+			const maxContentHeight = M_MAX_LINES * lineHeight;
+			// Calculate max border-box height (since box-sizing: border-box is used)
+			const maxBorderBoxHeight =
+				maxContentHeight +
+				paddingTop +
+				paddingBottom +
+				borderTopWidth +
+				borderBottomWidth;
+
+			// Temporarily reset height to 'auto'. This allows scrollHeight to accurately report the full content height.
+			// The CSS min-height will ensure it doesn't visually collapse too much during this brief phase.
+			ta.style.height = "auto";
+
+			// scrollHeight includes content height + padding height.
+			const currentScrollHeight = ta.scrollHeight;
+
+			// Calculate the desired border-box height based on current content.
+			// This includes the content, padding (already in scrollHeight), and border.
+			const desiredBorderBoxHeight =
+				currentScrollHeight + borderTopWidth + borderBottomWidth;
+
+			if (desiredBorderBoxHeight > maxBorderBoxHeight) {
+				ta.style.height = maxBorderBoxHeight + "px";
+				ta.style.overflowY = "auto"; // Show scrollbar as content exceeds max height
+			} else {
+				// Set height to what content needs (as border-box).
+				// If desiredBorderBoxHeight is less than CSS min-height, CSS min-height takes precedence.
+				ta.style.height = desiredBorderBoxHeight + "px";
+				ta.style.overflowY = "hidden"; // Hide scrollbar if content fits
+			}
+		}
+
+		textarea.addEventListener("input", () =>
+			adjustTextareaHeightOnInput(textarea),
+		);
+		// Initial call to set height will be done after textarea is appended to DOM.
 
 		const buttonsDiv = document.createElement("div");
 		buttonsDiv.id = "message-buttons";
@@ -445,11 +502,13 @@ document.addEventListener("DOMContentLoaded", () => {
 				);
 				mainPageContainer.appendChild(messageInputArea);
 			}
+			adjustTextareaHeightOnInput(textarea); // Initial height adjustment
 		} else {
 			console.error(
 				"Could not find '.container' to append message input area.",
 			);
 			document.body.appendChild(messageInputArea); // Fallback
+			adjustTextareaHeightOnInput(textarea); // Initial height adjustment
 		}
 	}
 

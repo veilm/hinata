@@ -441,3 +441,39 @@ li {
 	color: #888888;
 	cursor: not-allowed;
 }
+
+/* Custom Scrollbars */
+/* For Webkit-based browsers (Chrome, Safari, Edge, Opera) */
+::-webkit-scrollbar {
+	width: 8px; /* Width of vertical scrollbar */
+	height: 8px; /* Height of horizontal scrollbar */
+}
+
+::-webkit-scrollbar-track {
+	background: #1e1e1e; /* Background of the scrollbar track, match container bg */
+	border-radius: 4px; /* Optional: rounding for the track */
+}
+
+::-webkit-scrollbar-thumb {
+	background-color: #555555; /* Color of the scrollbar thumb */
+	border-radius: 4px; /* Rounded corners for the thumb */
+	/* Create a "padding" effect by making the border same color as the track */
+	border: 2px solid #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background-color: #777777; /* Color of the thumb on hover */
+}
+
+/* For Firefox */
+html {
+	scrollbar-width: thin; /* "auto" or "thin" */
+	scrollbar-color: #555555 #1e1e1e; /* thumbColor trackColor */
+}
+
+/* Ensure specific elements with potential overflow also respect this, if needed, though html rule should be enough */
+.other-file-content,
+#new-message-content {
+	/* TextArea might show scrollbar if JS max-height is reached */
+	/* Firefox scrollbar styles should be inherited from html */
+}
