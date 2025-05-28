@@ -38,12 +38,15 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
-			const data = await response.json(); // Expects { conversations: [{id: "...", title: "..."}, ...] }
+			const data = await response.json(); // Expects { conversations: [{id: "...", title: "...", is_pinned: bool}, ...] }
 
 			if (data.conversations && data.conversations.length > 0) {
 				const ul = document.createElement("ul");
 				data.conversations.forEach((conv) => {
 					const li = document.createElement("li");
+					if (conv.is_pinned) {
+						li.classList.add("pinned-conversation");
+					}
 
 					const a = document.createElement("a");
 					a.href = `/conversation-page/${encodeURIComponent(conv.id)}`;
@@ -52,12 +55,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 					const titleSpan = document.createElement("span");
 					titleSpan.className = "conversation-list-title";
-					// Display title read-only. Default to "-" if title is empty, null, or just whitespace.
 					let displayTitle = escapeHtml(conv.title).trim();
 					if (!displayTitle) {
 						displayTitle = "-";
 					}
-					titleSpan.textContent = ` - ${displayTitle}`;
+					let titleContent = ` - ${displayTitle}`;
+					if (conv.is_pinned) {
+						titleContent += ` <span class="pin-emoji">📌</span>`;
+					}
+					titleSpan.innerHTML = titleContent; // Use innerHTML for the emoji span
 					li.appendChild(titleSpan);
 
 					ul.appendChild(li);
@@ -143,7 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			"conversation-id-display",
 		);
 		const titleEditInput = document.getElementById("conversation-title-input");
-		const modelEditInput = document.getElementById("conversation-model-input"); // New model input
+		const modelEditInput = document.getElementById("conversation-model-input");
+		const pinToggleButton = document.getElementById("pin-toggle-btn");
 		const messagesContainer = document.getElementById("messages-container");
 		const otherFilesContainer = document.getElementById(
 			"other-files-container",
@@ -151,13 +158,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		const safeConvId = escapeHtml(conversationId);
 
-		// Initial title before fetching full data
+		// Initial state for inputs and buttons
 		document.title = `Loading: ${safeConvId}`;
 		mainTitleDisplayElement.textContent = `Loading conversation: ${safeConvId}...`;
-		titleEditInput.value = ""; // Clear initially
-		titleEditInput.disabled = true; // Disable until data loaded
-		modelEditInput.value = ""; // Clear initially
-		modelEditInput.disabled = true; // Disable until data loaded
+		titleEditInput.value = "";
+		titleEditInput.disabled = true;
+		modelEditInput.value = "";
+		modelEditInput.disabled = true;
+		if (pinToggleButton) {
+			pinToggleButton.disabled = true;
+			pinToggleButton.textContent = "Pin"; // Default before loading
+		}
 
 		try {
 			const response = await fetch(
@@ -166,10 +177,10 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
-			const data = await response.json(); // Expects { conversation_id, title, model, messages, other_files }
+			const data = await response.json(); // Expects { ..., title, model, is_pinned, messages, ... }
 
 			// --- Title Handling ---
-			const convTitle = data.title || "-"; // Default to "-" if title is null/undefined/empty
+			const convTitle = data.title || "-";
 			const updateDisplayedTitle = (currentTitle) => {
 				const displayPageTitle =
 					currentTitle && currentTitle !== "-"
@@ -244,6 +255,23 @@ document.addEventListener("DOMContentLoaded", () => {
 			modelEditInput.addEventListener("keypress", (event) => {
 				if (event.key === "Enter") modelEditInput.blur();
 			});
+
+			// --- Pin/Unpin Button Setup ---
+			if (pinToggleButton) {
+				pinToggleButton.textContent = data.is_pinned ? "Unpin" : "Pin";
+				pinToggleButton.disabled = false;
+				// It's better to use addEventListener if this function might be called multiple times,
+				// but for a full page/details load, direct onclick assignment is often simpler.
+				// To be safe and avoid multiple listeners if this logic could be re-run without full DOM replacement:
+				const newPinButton = pinToggleButton.cloneNode(true); // Clone to remove old listeners
+				pinToggleButton.parentNode.replaceChild(newPinButton, pinToggleButton);
+				newPinButton.addEventListener("click", () =>
+					handlePinToggle(conversationId, newPinButton),
+				);
+
+				// Update the reference
+				// pinToggleButton = newPinButton; // if pinToggleButton is used later in this function
+			}
 
 			// Render messages
 			messagesContainer.innerHTML = ""; // Clear potential loading/error states
@@ -995,25 +1023,80 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 
 		// Remove existing error messages within this specific context if possible
-		if (targetContainer !== document.body) {
-			// Avoid clearing all errors if falling back to body
-			clearErrorMessages(targetContainer);
+		// Ensure clearErrorMessages is robust if targetContainer doesn't have querySelectorAll (e.g. text node)
+		if (
+			targetContainer &&
+			typeof targetContainer.querySelectorAll === "function"
+		) {
+			if (targetContainer !== document.body) {
+				// Avoid clearing all errors if falling back to body
+				clearErrorMessages(targetContainer);
+			}
 		}
 
 		const errorP = document.createElement("p");
 		errorP.className = "error-message";
 		errorP.textContent = escapeHtml(message);
 
-		if (targetContainer.tagName === "LI") {
+		if (targetContainer && targetContainer.tagName === "LI") {
 			// Specific for conversation list items
 			targetContainer.appendChild(errorP); // Add error message within the li
 		} else if (
+			targetContainer &&
 			targetContainer.firstChild &&
 			targetContainer.firstChild.nodeName === "H1"
 		) {
 			targetContainer.firstChild.insertAdjacentElement("afterend", errorP);
-		} else {
+		} else if (targetContainer) {
 			targetContainer.prepend(errorP); // General placement
+		} else {
+			// Fallback if targetContainer is null for some reason
+			document.body.appendChild(errorP);
+		}
+	}
+
+	async function handlePinToggle(conversationId, buttonElement) {
+		if (buttonElement) buttonElement.disabled = true;
+		const titleSection = document.querySelector(".title-section");
+		if (titleSection) clearErrorMessages(titleSection);
+
+		try {
+			const response = await fetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/pin-toggle`,
+				{
+					method: "POST",
+					headers: {
+						// No Content-Type needed for empty body POST
+					},
+				},
+			);
+
+			if (!response.ok) {
+				let errorDetail = "Failed to toggle pin status.";
+				try {
+					const errorData = await response.json();
+					if (errorData && errorData.detail) {
+						errorDetail = errorData.detail;
+					}
+				} catch (e) {
+					errorDetail += ` Server responded with: ${response.status} ${response.statusText}`;
+				}
+				throw new Error(errorDetail);
+			}
+
+			const responseData = await response.json(); // Expects {"pinned": boolean, "message": "..."}
+			if (buttonElement) {
+				buttonElement.textContent = responseData.pinned ? "Unpin" : "Pin";
+			}
+			// Optionally, provide a success message, though button text change is often enough.
+		} catch (error) {
+			console.error("Error toggling pin status:", error);
+			handleError(
+				error.message,
+				titleSection || (buttonElement ? buttonElement.parentElement : null),
+			);
+		} finally {
+			if (buttonElement) buttonElement.disabled = false;
 		}
 	}
 

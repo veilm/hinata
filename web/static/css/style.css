@@ -417,30 +417,59 @@ li {
 }
 
 /* Fork Conversation Button Style */
-#fork-conversation-btn {
+/* General style for page-level action buttons like Pin/Fork */
+.page-action-button {
 	padding: 10px 15px;
-	background-color: #ff615e; /* Theme color, like create new */
-	color: #1e1e1e; /* Dark text for contrast */
 	border: none;
 	border-radius: 0;
 	font-family: inherit;
-	font-size: 1em; /* Consistent with create new */
+	font-size: 1em;
 	cursor: pointer;
 	transition: background-color 0.2s ease;
-	margin-top: 15px; /* Space above */
-	display: block; /* Takes its own line */
-	width: fit-content; /* Doesn't span full width unless content requires */
-	margin-left: 0; /* Align left by default */
+	margin-top: 10px; /* Consistent top margin */
+	margin-right: 10px; /* Add some space between buttons if they become inline */
+	display: block; /* Default to block, can be overridden if wrapped in a flex container */
+	width: fit-content;
+	margin-left: 0; /* Align left for block */
 }
 
+.page-action-button:disabled {
+	background-color: #4a4a4a !important; /* Use !important to override specific styles if needed */
+	color: #888888 !important;
+	cursor: not-allowed;
+}
+
+/* Specific style for Fork Conversation Button */
+#fork-conversation-btn {
+	background-color: #ff615e; /* Theme color */
+	color: #1e1e1e; /* Dark text */
+}
 #fork-conversation-btn:hover {
 	background-color: #e0504d; /* Darker theme color on hover */
 }
 
-#fork-conversation-btn:disabled {
-	background-color: #4a4a4a;
-	color: #888888;
-	cursor: not-allowed;
+/* Specific style for Pin/Unpin Toggle Button */
+#pin-toggle-btn {
+	background-color: #6c757d; /* Neutral gray/blue */
+	color: #ffffff; /* Light text */
+}
+#pin-toggle-btn:hover {
+	background-color: #5a6268; /* Darker gray/blue on hover */
+}
+
+/* Styling for pinned items in the conversation list */
+#conversation-list-container ul li.pinned-conversation a,
+#conversation-list-container
+	ul
+	li.pinned-conversation
+	.conversation-list-title {
+	font-weight: bold;
+}
+
+.pin-emoji {
+	filter: grayscale(100%);
+	display: inline-block; /* Better control over styling if needed */
+	margin-left: 4px; /* Space from title */
 }
 
 /* Custom Scrollbars */

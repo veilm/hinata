@@ -133,20 +133,27 @@ def get_conversations_dir():
 
 # API endpoint to list conversations
 @app.get("/api/conversations")
-async def api_list_conversations() -> Dict[str, List[Dict[str, str]]]:
+async def api_list_conversations() -> Dict[
+    str, List[Dict[str, Any]]
+]:  # Return type changed for is_pinned
     conv_data_list = []
     try:
         conv_base_dir = get_conversations_dir()
-        conversation_dirs = sorted(
+        # Get all directories first, initial sort is not strictly necessary here
+        # as we will sort the conv_data_list later based on multiple criteria.
+        # However, processing in a consistent order (e.g., by name) can be good practice.
+        conversation_dirs_initial = sorted(
             [d for d in conv_base_dir.iterdir() if d.is_dir()],
             key=lambda p: p.name,
-            reverse=True,  # Show newest first based on ID
+            reverse=True,  # Process newest first, though final sort order will dominate
         )
 
-        for conv_dir in conversation_dirs:
+        for conv_dir in conversation_dirs_initial:
             conv_id = conv_dir.name
             title_file = conv_dir / "title.txt"
+            pinned_file = conv_dir / "pinned.txt"
             title = "-"
+            is_pinned = False
 
             try:
                 if title_file.is_file():
@@ -164,7 +171,16 @@ async def api_list_conversations() -> Dict[str, List[Dict[str, str]]]:
                 print(f"Error processing title for {conv_id}: {e}", file=sys.stderr)
                 title = "-"  # Fallback title
 
-            conv_data_list.append({"id": conv_id, "title": title})
+            is_pinned = pinned_file.is_file()
+
+            conv_data_list.append(
+                {"id": conv_id, "title": title, "is_pinned": is_pinned}
+            )
+
+        # Sort: Pinned conversations first (is_pinned=True), then by ID (descending, newest first)
+        # Python's sort is stable. Sort by ID first, then by pinned status.
+        conv_data_list.sort(key=lambda x: x["id"], reverse=True)
+        conv_data_list.sort(key=lambda x: x["is_pinned"], reverse=True)
 
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -329,10 +345,15 @@ async def api_read_conversation(conversation_id: str) -> Dict[str, Any]:
         )
         # model remains DEFAULT_MODEL_NAME
 
+    # Check if conversation is pinned
+    pinned_file_path = conv_path / "pinned.txt"
+    is_pinned = pinned_file_path.is_file()
+
     return {
         "conversation_id": conversation_id,
         "title": title,
         "model": model,
+        "is_pinned": is_pinned,  # Add pinned status
         "messages": messages_data,
         "other_files": other_files_data,
     }
@@ -925,6 +946,51 @@ async def api_fork_conversation(conversation_id: str):
     }
 
 
+# API endpoint to toggle pin status of a conversation
+@app.post(
+    "/api/conversation/{conversation_id}/pin-toggle", status_code=status.HTTP_200_OK
+)
+async def api_toggle_pin_conversation(conversation_id: str):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    pinned_file_path = conv_path / "pinned.txt"
+    new_pinned_status: bool
+
+    try:
+        if pinned_file_path.is_file():
+            # File exists, so unpin (delete the file)
+            pinned_file_path.unlink()
+            new_pinned_status = False
+            action_message = "Conversation unpinned successfully."
+        else:
+            # File does not exist, so pin (create the file)
+            pinned_file_path.touch()
+            new_pinned_status = True
+            action_message = "Conversation pinned successfully."
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating pin status for conversation '{conversation_id}': {str(e)}",
+        )
+
+    return JSONResponse(
+        content={"message": action_message, "pinned": new_pinned_status},
+        status_code=status.HTTP_200_OK,
+    )
+
+
+# Note: this block has to be at the very end of the file. It won't recognize any routes defined below it
 if __name__ == "__main__":
     # Run the application directly using Uvicorn when hnt-web.py is executed.
     # Reload=True is convenient for development.
