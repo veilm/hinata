@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		const conversationId = parts[parts.length - 1];
 		if (conversationId) {
 			loadConversationDetails(conversationId);
+			// setupMessageInputArea will be called from within loadConversationDetails
 		} else {
 			handleError("Conversation ID missing in URL.");
 		}
@@ -303,6 +304,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				otherFilesContainer.appendChild(heading);
 				otherFilesContainer.appendChild(ul);
 			}
+
+			// After rendering messages and other files, set up the input area
+			setupMessageInputArea(conversationId);
 		} catch (error) {
 			handleError(
 				`Failed to load conversation: ${safeConvId}.`,
@@ -310,7 +314,165 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			console.error(`Error loading conversation ${conversationId}:`, error);
 			otherFilesContainer.innerHTML = ""; // Clear other files section on error too
+			// Ensure input area is not set up or is cleared on error
+			const messageInputArea = document.getElementById("message-input-area");
+			if (messageInputArea) messageInputArea.innerHTML = "";
 		}
+	}
+
+	function setupMessageInputArea(conversationId) {
+		let messageInputArea = document.getElementById("message-input-area");
+
+		// Clear previous input area if any (e.g., on reload/re-render)
+		if (messageInputArea) {
+			messageInputArea.remove();
+		}
+
+		messageInputArea = document.createElement("div");
+		messageInputArea.id = "message-input-area";
+
+		const textarea = document.createElement("textarea");
+		textarea.id = "new-message-content";
+		textarea.placeholder = "Enter message content...";
+		textarea.rows = 4;
+
+		const buttonsDiv = document.createElement("div");
+		buttonsDiv.id = "message-buttons";
+
+		// References to all buttons for easy disabling/enabling
+		const allButtons = [];
+
+		const btnAddUser = createButton("btn-add-user", "Add User", () =>
+			handleAddMessage(conversationId, "user", textarea, allButtons),
+		);
+		allButtons.push(btnAddUser);
+
+		const btnAddSystem = createButton("btn-add-system", "Add System", () =>
+			handleAddMessage(conversationId, "system", textarea, allButtons),
+		);
+		allButtons.push(btnAddSystem);
+
+		const btnAddAssistant = createButton(
+			"btn-add-assistant",
+			"Add Assistant",
+			() => handleAddMessage(conversationId, "assistant", textarea, allButtons),
+		);
+		allButtons.push(btnAddAssistant);
+
+		const btnGenAssistant = createButton(
+			"btn-gen-assistant",
+			"Gen Assistant",
+			() => handleGenAssistant(conversationId, allButtons),
+		);
+		allButtons.push(btnGenAssistant);
+
+		buttonsDiv.appendChild(btnAddUser);
+		buttonsDiv.appendChild(btnAddSystem);
+		buttonsDiv.appendChild(btnAddAssistant);
+		buttonsDiv.appendChild(btnGenAssistant);
+
+		messageInputArea.appendChild(textarea);
+		messageInputArea.appendChild(buttonsDiv);
+
+		// Append the whole message input area to the main .container div
+		const mainPageContainer = document.querySelector("div.container");
+		if (mainPageContainer) {
+			mainPageContainer.appendChild(messageInputArea);
+		} else {
+			console.error(
+				"Could not find '.container' to append message input area.",
+			);
+			document.body.appendChild(messageInputArea); // Fallback
+		}
+	}
+
+	function createButton(id, text, onClick) {
+		const button = document.createElement("button");
+		button.id = id;
+		button.type = "button";
+		button.textContent = text;
+		button.addEventListener("click", onClick);
+		return button;
+	}
+
+	function setButtonsDisabledState(buttons, disabled) {
+		buttons.forEach((btn) => {
+			if (btn) btn.disabled = disabled;
+		});
+	}
+
+	async function handleAddMessage(
+		conversationId,
+		role,
+		textareaElement,
+		allButtons,
+	) {
+		const content = textareaElement.value; // Keep original content with leading/trailing spaces if user entered them
+		// No client-side check for empty content, backend/hnt-chat handles it.
+
+		setButtonsDisabledState(allButtons, true);
+		clearErrorMessages(document.getElementById("message-input-area"));
+
+		try {
+			const response = await fetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/add-message`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ role: role, content: content }),
+				},
+			);
+
+			if (!response.ok) {
+				const errorData = await response
+					.json()
+					.catch(() => ({ detail: "Failed to add message." }));
+				throw new Error(errorData.detail || `HTTP error ${response.status}`);
+			}
+
+			textareaElement.value = ""; // Clear textarea on success
+			loadConversationDetails(conversationId); // Reload to show new message
+		} catch (error) {
+			console.error(`Error adding ${role} message:`, error);
+			handleError(
+				`Error adding ${role} message: ${error.message}`,
+				document.getElementById("message-input-area"),
+			);
+			setButtonsDisabledState(allButtons, false); // Re-enable buttons on error if not reloading
+		}
+		// No 'finally' block to re-enable buttons because loadConversationDetails will recreate them.
+		// If loadConversationDetails failed or an error occurred before it, buttons are re-enabled in catch.
+	}
+
+	async function handleGenAssistant(conversationId, allButtons) {
+		setButtonsDisabledState(allButtons, true);
+		clearErrorMessages(document.getElementById("message-input-area"));
+
+		try {
+			const response = await fetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/gen-assistant`,
+				{
+					method: "POST",
+				},
+			);
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({
+					detail: "Failed to generate assistant message.",
+				}));
+				throw new Error(errorData.detail || `HTTP error ${response.status}`);
+			}
+
+			loadConversationDetails(conversationId); // Reload to show new message(s)
+		} catch (error) {
+			console.error("Error generating assistant message:", error);
+			handleError(
+				`Error generating assistant message: ${error.message}`,
+				document.getElementById("message-input-area"),
+			);
+			setButtonsDisabledState(allButtons, false); // Re-enable buttons on error if not reloading
+		}
+		// No 'finally' block for same reason as handleAddMessage.
 	}
 
 	async function updateConversationTitle(

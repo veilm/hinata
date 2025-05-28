@@ -12,6 +12,7 @@
 import os
 import sys
 import re
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Any
 import uvicorn
@@ -32,6 +33,12 @@ class TitleUpdateRequest(BaseModel):
 # Pydantic model for model update requests
 class ModelUpdateRequest(BaseModel):
     model: str
+
+
+# Pydantic model for adding new messages
+class MessageAddRequest(BaseModel):
+    role: str
+    content: str
 
 
 DEFAULT_MODEL_NAME = "openrouter/deepseek/deepseek-chat-v3-0324:free"
@@ -440,8 +447,6 @@ except HTTPException as e:
 # API endpoint to create a new conversation
 @app.post("/api/conversations/create", status_code=status.HTTP_201_CREATED)
 async def api_create_conversation():
-    import subprocess  # Import locally to keep other imports clean or move to top
-
     try:
         # Assuming `hnt-chat` is in PATH. Pass the current environment.
         process = subprocess.run(
@@ -457,7 +462,7 @@ async def api_create_conversation():
             # For now, a generic success message is sufficient as the frontend reloads.
             return {"message": "Conversation created successfully."}
         else:
-            error_detail = f"Failed to create conversation. `hnt-chat create` exited with code {process.returncode}."
+            error_detail = f"Failed to create conversation. `hnt-chat new` exited with code {process.returncode}."
             if process.stderr:
                 error_detail += f" Stderr: {process.stderr.strip()}"
             print(f"Error in api_create_conversation: {error_detail}", file=sys.stderr)
@@ -476,6 +481,167 @@ async def api_create_conversation():
     except Exception as e:
         error_msg = f"An unexpected error occurred while trying to create conversation: {str(e)}"
         print(f"Error in api_create_conversation: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
+
+@app.post(
+    "/api/conversation/{conversation_id}/add-message",
+    status_code=status.HTTP_201_CREATED,
+)
+async def api_add_message_to_conversation(
+    conversation_id: str, request: MessageAddRequest
+):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    if request.role not in ["user", "system", "assistant"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role specified. Must be 'user', 'system', or 'assistant'.",
+        )
+
+    try:
+        cmd = [
+            "hnt-chat",
+            "add",
+            request.role,
+            "--conversation",
+            str(conv_path.resolve()),
+        ]
+
+        process = subprocess.run(
+            cmd,
+            input=request.content,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=os.environ.copy(),
+        )
+
+        if process.returncode == 0:
+            new_filename = process.stdout.strip()
+            return {"message": "Message added successfully.", "filename": new_filename}
+        else:
+            error_detail = f"Failed to add message. `hnt-chat add` exited with code {process.returncode}."
+            if process.stderr:
+                error_detail += f" Stderr: {process.stderr.strip()}"
+            print(
+                f"Error in api_add_message_to_conversation: {error_detail}",
+                file=sys.stderr,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_detail,
+            )
+
+    except FileNotFoundError:
+        error_msg = "`hnt-chat` command not found. Please ensure it is installed and in the system PATH."
+        print(f"Error in api_add_message_to_conversation: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+    except Exception as e:
+        error_msg = f"An unexpected error occurred while adding message: {str(e)}"
+        print(f"Error in api_add_message_to_conversation: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
+
+@app.post(
+    "/api/conversation/{conversation_id}/gen-assistant",
+    status_code=status.HTTP_201_CREATED,
+)
+async def api_gen_assistant_message(conversation_id: str):
+    try:
+        conv_base_dir = get_conversations_dir()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    conv_path = conv_base_dir / conversation_id
+    if not conv_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation '{conversation_id}' not found.",
+        )
+
+    model_file_path = conv_path / "model.txt"
+    model_to_use = DEFAULT_MODEL_NAME
+
+    try:
+        if model_file_path.is_file():
+            model_content = model_file_path.read_text(encoding="utf-8").strip()
+            if model_content:
+                model_to_use = model_content
+    except Exception as e:
+        print(
+            f"Warning: Error reading model.txt for conversation {conversation_id}, using default model '{model_to_use}': {e}",
+            file=sys.stderr,
+        )
+
+    try:
+        cmd = [
+            "hnt-chat",
+            "gen",
+            "--merge",
+            "--separate-reasoning",
+            "--model",
+            model_to_use,
+            "--conversation",
+            str(conv_path.resolve()),
+        ]
+
+        process = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=os.environ.copy(),
+        )
+
+        if process.returncode == 0:
+            return {"message": "Assistant message generated successfully."}
+        else:
+            error_detail = f"Failed to generate assistant message. `hnt-chat gen` exited with code {process.returncode}."
+            if process.stderr:
+                error_detail += f" Stderr: {process.stderr.strip()}"
+            if process.stdout and process.returncode != 0:
+                error_detail += f" Stdout: {process.stdout.strip()}"
+
+            print(
+                f"Error in api_gen_assistant_message: {error_detail}", file=sys.stderr
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_detail,
+            )
+
+    except FileNotFoundError:
+        error_msg = "`hnt-chat` command not found. Please ensure it is installed and in the system PATH."
+        print(f"Error in api_gen_assistant_message: {error_msg}", file=sys.stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+    except Exception as e:
+        error_msg = (
+            f"An unexpected error occurred while generating assistant message: {str(e)}"
+        )
+        print(f"Error in api_gen_assistant_message: {error_msg}", file=sys.stderr)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_msg,
