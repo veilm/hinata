@@ -283,40 +283,28 @@ li {
 
 #message-buttons button {
 	padding: 10px 15px;
-	background-color: #4a4a4a; /* A neutral dark gray */
-	color: #e0e0e0;
-	border: 1px solid #555555;
-	border-radius: 0;
+	background-color: #ff615e; /* New theme color, matches #create-conversation-btn */
+	color: #1e1e1e; /* Dark text for contrast, matches #create-conversation-btn */
+	border: none; /* Matches #create-conversation-btn */
+	border-radius: 0; /* Consistent with minimal theme */
 	font-family: inherit;
-	font-size: 0.9em;
+	font-size: 1em; /* Matches #create-conversation-btn */
 	cursor: pointer;
 	transition: background-color 0.2s ease;
 }
 
 #message-buttons button:hover {
-	background-color: #5a5a5a;
+	background-color: #e0504d; /* Slightly darker version, matches #create-conversation-btn:hover */
 }
 
 #message-buttons button:disabled {
-	background-color: #333333;
-	color: #777777;
-	cursor: not-allowed;
-	border-color: #444444;
+	background-color: #4a4a4a; /* Disabled look, matches #create-conversation-btn:disabled */
+	color: #888888; /* Matches #create-conversation-btn:disabled */
+	cursor: not-allowed; /* Matches #create-conversation-btn:disabled */
+	border: none; /* Ensure no border on disabled state */
 }
 
-#btn-gen-assistant {
-	background-color: #ff615e; /* Theme color for special action */
-	color: #1e1e1e; /* Dark text for contrast */
-	border-color: #ff615e;
-}
-
-#btn-gen-assistant:hover {
-	background-color: #e0504d; /* Slightly darker on hover */
-	border-color: #e0504d;
-}
-
-#btn-gen-assistant:disabled {
-	background-color: #4a4a4a; /* Consistent disabled look */
-	color: #888888;
-	border-color: #555555; /* Match other disabled button border */
-}
+/*
+The #btn-gen-assistant specific styles are no longer needed as the general
+#message-buttons button style now provides the themed appearance for all buttons.
+*/

@@ -374,10 +374,21 @@ document.addEventListener("DOMContentLoaded", () => {
 		messageInputArea.appendChild(textarea);
 		messageInputArea.appendChild(buttonsDiv);
 
-		// Append the whole message input area to the main .container div
+		// Append the whole message input area
 		const mainPageContainer = document.querySelector("div.container");
+		const otherFilesDiv = document.getElementById("other-files-container");
+
 		if (mainPageContainer) {
-			mainPageContainer.appendChild(messageInputArea);
+			if (otherFilesDiv) {
+				// Insert the message input area before the "Other Files" container
+				mainPageContainer.insertBefore(messageInputArea, otherFilesDiv);
+			} else {
+				// Fallback: if other-files-container is not found, append to main container.
+				console.warn(
+					"#other-files-container not found, appending message input to end of main container.",
+				);
+				mainPageContainer.appendChild(messageInputArea);
+			}
 		} else {
 			console.error(
 				"Could not find '.container' to append message input area.",
