@@ -358,12 +358,25 @@ li {
 	border: none; /* Removed border */
 	border-radius: 0;
 	cursor: pointer;
-	transition: background-color 0.2s ease, filter 0.2s ease; /* Added filter to transition */
-	font-family: inherit; /* Ensure monospace font (though emojis might have own metrics) */
-	filter: grayscale(100%); /* Make buttons grayscale */
+	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s
+		ease;
+	/* font-family: inherit; -- Not essential for icon-only buttons */
+	/* filter: grayscale(100%); REMOVED */
+	display: inline-flex; /* Helps center SVG if it's the only child */
+	align-items: center;
+	justify-content: center;
+	line-height: 1; /* Prevents extra space if button just has icon */
+	background-color: transparent;
+	color: #ff615e; /* Theme color for SVG stroke and potential text */
+	border: 1px solid #ff615e; /* Theme color border */
 }
 .message-actions button:hover {
-	background-color: #5c6370; /* Consistent lighten on hover */
+	background-color: rgba(255, 97, 94, 0.1); /* Slight theme color background on hover */
+}
+
+.message-actions button svg {
+	width: 1em; /* Scales with button's font-size */
+	height: 1em; /* Scales with button's font-size */
 }
 
 /* Specific class styles for .btn-edit, .btn-archive, .btn-save, .btn-cancel are now mostly covered by the base .message-actions button style above.
@@ -473,9 +486,16 @@ li {
 }
 
 .pin-emoji {
-	filter: grayscale(100%);
+	/* filter: grayscale(100%); REMOVED */
 	display: inline-block; /* Better control over styling if needed */
 	margin-left: 4px; /* Space from title */
+	color: white; /* For SVG stroke="currentColor" */
+}
+
+.pin-emoji svg {
+	width: 1em; /* Scale with surrounding text font-size */
+	height: 1em;
+	vertical-align: -0.15em; /* Fine-tune baseline alignment */
 }
 
 /* Custom Scrollbars */

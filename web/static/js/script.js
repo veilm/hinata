@@ -1,6 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
 	const DEFAULT_MODEL_NAME = "openrouter/deepseek/deepseek-chat-v3-0324:free";
 
+	// Lucide Icon SVG Strings
+	const ICON_PIN = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pin-icon lucide-pin"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`;
+	const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pen-line-icon lucide-pen-line"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>`;
+	const ICON_ARCHIVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`;
+	const ICON_SAVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save-icon lucide-save"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>`;
+	const ICON_X = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+
 	const path = window.location.pathname;
 
 	if (path === "/") {
@@ -61,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					}
 					let titleContent = ` - ${displayTitle}`;
 					if (conv.is_pinned) {
-						titleContent += ` <span class="pin-emoji">📌</span>`;
+						titleContent += ` <span class="pin-emoji">${ICON_PIN}</span>`; // Use SVG icon
 					}
 					titleSpan.innerHTML = titleContent; // Use innerHTML for the emoji span
 					li.appendChild(titleSpan);
@@ -304,8 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					const actionsDiv = document.createElement("div");
 					actionsDiv.className = "message-actions";
 
-					const editButton = createActionButton("✏️", "btn-edit", () =>
-						// Emoji: Pencil
+					const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
 						toggleEditState(
 							messageDiv,
 							contentWrapperDiv,
@@ -318,7 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					editButton.title = "Edit"; // Tooltip for accessibility
 
 					const archiveButton = createActionButton(
-						"🗑️", // Emoji: Trash can
+						ICON_ARCHIVE,
 						"btn-archive",
 						() =>
 							handleArchiveMessage(messageDiv, conversationId, msg.filename),
@@ -557,10 +563,10 @@ document.addEventListener("DOMContentLoaded", () => {
 	}
 
 	// Helper to create action buttons for individual messages (Edit, Archive, Save, Cancel)
-	function createActionButton(text, className, onClick) {
+	function createActionButton(svgIconHtml, className, onClick) {
 		const button = document.createElement("button");
 		button.type = "button";
-		button.textContent = text;
+		button.innerHTML = svgIconHtml; // Use innerHTML for SVG icons
 		button.className = className; // Add class for styling
 		button.addEventListener("click", onClick);
 		return button;
@@ -583,8 +589,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			contentWrapperDiv.textContent = originalContent; // Restore/set content
 
 			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
-			const editButton = createActionButton("✏️", "btn-edit", () =>
-				// Emoji: Pencil
+			const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
 				toggleEditState(
 					messageElement,
 					contentWrapperDiv,
@@ -596,9 +601,10 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			editButton.title = "Edit";
 
-			const archiveButton = createActionButton("🗑️", "btn-archive", () =>
-				// Emoji: Trash can
-				handleArchiveMessage(messageElement, conversationId, filename),
+			const archiveButton = createActionButton(
+				ICON_ARCHIVE,
+				"btn-archive",
+				() => handleArchiveMessage(messageElement, conversationId, filename),
 			);
 			archiveButton.title = "Archive";
 
@@ -628,8 +634,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			textarea.focus();
 
 			actionsDiv.innerHTML = ""; // Clear Edit/Archive buttons
-			const saveButton = createActionButton("💾", "btn-save", () =>
-				// Emoji: Floppy Disk (Save)
+			const saveButton = createActionButton(ICON_SAVE, "btn-save", () =>
 				handleSaveMessage(
 					messageElement,
 					contentWrapperDiv,
@@ -641,8 +646,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			saveButton.title = "Save";
 
-			const cancelButton = createActionButton("❌", "btn-cancel", () =>
-				// Emoji: Cross Mark (Cancel)
+			const cancelButton = createActionButton(ICON_X, "btn-cancel", () =>
 				// Revert to view mode with the stored original content
 				toggleEditState(
 					messageElement,
