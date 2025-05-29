@@ -353,9 +353,9 @@ li {
 .message-actions button {
 	padding: 6px 10px; /* Smaller buttons */
 	font-size: 0.85em; /* Will be overridden by emoji size mostly, but good for consistency */
-	background-color: #4a4a4a; /* Consistent gray background */
-	color: #e0e0e0; /* Light text for emoji or text */
-	border: none; /* Removed border */
+	/* background-color: #4a4a4a; Original, but overridden by transparent below */
+	/* color: #e0e0e0; Original, but overridden by theme color below */
+	/* border: none; Original, but overridden by theme color border below */
 	border-radius: 0;
 	cursor: pointer;
 	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s
@@ -366,12 +366,52 @@ li {
 	align-items: center;
 	justify-content: center;
 	line-height: 1; /* Prevents extra space if button just has icon */
-	background-color: transparent;
-	color: #ff615e; /* Theme color for SVG stroke and potential text */
-	border: 1px solid #ff615e; /* Theme color border */
+	background-color: transparent; /* Keep transparent background */
+	border-width: 1px;
+	border-style: solid;
+	/* Default icon/border color (matches assistant, acts as fallback for unknown message types) */
+	color: #ff615e;
+	border-color: #ff615e;
 }
 .message-actions button:hover {
-	background-color: rgba(255, 97, 94, 0.1); /* Slight theme color background on hover */
+	/* Default hover background (matches assistant, acts as fallback) */
+	background-color: rgba(255, 97, 94, 0.1);
+}
+
+/* User Message Icons */
+.message-user .message-actions button {
+	color: #81ae9d; /* Green */
+	border-color: #81ae9d;
+}
+.message-user .message-actions button:hover {
+	background-color: rgba(129, 174, 157, 0.1); /* Greenish tint */
+}
+
+/* Assistant Message Icons (explicitly sets the default, good for clarity) */
+.message-assistant .message-actions button {
+	color: #ff615e; /* Orange-red */
+	border-color: #ff615e;
+}
+.message-assistant .message-actions button:hover {
+	background-color: rgba(255, 97, 94, 0.1); /* Orange-red tint */
+}
+
+/* System Message Icons */
+.message-system .message-actions button {
+	color: #e0e0e0; /* White-ish */
+	border-color: #e0e0e0;
+}
+.message-system .message-actions button:hover {
+	background-color: rgba(224, 224, 224, 0.1); /* White-ish tint */
+}
+
+/* Assistant Reasoning Message Icons */
+.message-assistant-reasoning .message-actions button {
+	color: #bb3967; /* slightly lighter Purple */
+	border-color: #bb3967;
+}
+.message-assistant-reasoning .message-actions button:hover {
+	background-color: rgba(187, 57, 103, 0.1); /* Purple tint */
 }
 
 .message-actions button svg {
