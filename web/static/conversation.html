@@ -30,15 +30,17 @@
 					<label for="conversation-model-input">Model:</label>
 					<input type="text" id="conversation-model-input" />
 				</div>
-				<button type="button" id="pin-toggle-btn" class="page-action-button">
-					Pin
-				</button>
-				<!-- Text dynamically set by JS -->
-				<button
-					type="button"
-					id="fork-conversation-btn"
-					class="page-action-button"
-				>Fork Conversation</button>
+				<div class="page-actions-group">
+					<button
+						type="button"
+						id="fork-conversation-btn"
+						class="page-action-button"
+					>Fork Conversation</button>
+					<button type="button" id="pin-toggle-btn" class="page-action-button">
+						Pin
+					</button>
+					<!-- Pin button text (Pin/Unpin) dynamically set by JS -->
+				</div>
 			</div>
 
 			<div id="messages-container">

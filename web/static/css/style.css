@@ -417,6 +417,14 @@ li {
 }
 
 /* Fork Conversation Button Style */
+/* Grouping for page-level action buttons */
+.page-actions-group {
+	display: flex;
+	align-items: flex-start; /* Align items to the start of the cross axis */
+	gap: 10px; /* Spacing between buttons in the group */
+	margin-top: 10px; /* Top margin for the group */
+}
+
 /* General style for page-level action buttons like Pin/Fork */
 .page-action-button {
 	padding: 10px 15px;
@@ -426,11 +434,9 @@ li {
 	font-size: 1em;
 	cursor: pointer;
 	transition: background-color 0.2s ease;
-	margin-top: 10px; /* Consistent top margin */
-	margin-right: 10px; /* Add some space between buttons if they become inline */
-	display: block; /* Default to block, can be overridden if wrapped in a flex container */
+	display: block; /* Behaves as flex item; width determined by content */
 	width: fit-content;
-	margin-left: 0; /* Align left for block */
+	/* Margins are handled by the parent flex container (.page-actions-group) if applicable */
 }
 
 .page-action-button:disabled {
@@ -450,11 +456,11 @@ li {
 
 /* Specific style for Pin/Unpin Toggle Button */
 #pin-toggle-btn {
-	background-color: #6c757d; /* Neutral gray/blue */
-	color: #ffffff; /* Light text */
+	background-color: #ff615e; /* Match Fork button: Theme color */
+	color: #1e1e1e; /* Match Fork button: Dark text */
 }
 #pin-toggle-btn:hover {
-	background-color: #5a6268; /* Darker gray/blue on hover */
+	background-color: #e0504d; /* Match Fork button: Darker theme color on hover */
 }
 
 /* Styling for pinned items in the conversation list */
