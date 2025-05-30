@@ -528,29 +528,9 @@ document.addEventListener("DOMContentLoaded", () => {
 		messageInputArea.appendChild(textarea);
 		messageInputArea.appendChild(buttonsDiv);
 
-		// Append the whole message input area
-		const mainPageContainer = document.querySelector("div.container");
-		const otherFilesDiv = document.getElementById("other-files-container");
-
-		if (mainPageContainer) {
-			if (otherFilesDiv) {
-				// Insert the message input area before the "Other Files" container
-				mainPageContainer.insertBefore(messageInputArea, otherFilesDiv);
-			} else {
-				// Fallback: if other-files-container is not found, append to main container.
-				console.warn(
-					"#other-files-container not found, appending message input to end of main container.",
-				);
-				mainPageContainer.appendChild(messageInputArea);
-			}
-			adjustTextareaHeightOnInput(textarea); // Initial height adjustment
-		} else {
-			console.error(
-				"Could not find '.container' to append message input area.",
-			);
-			document.body.appendChild(messageInputArea); // Fallback
-			adjustTextareaHeightOnInput(textarea); // Initial height adjustment
-		}
+		// Append the whole message input area directly to the body for fixed positioning
+		document.body.appendChild(messageInputArea);
+		adjustTextareaHeightOnInput(textarea); // Initial height adjustment
 	}
 
 	// Helper to create main action buttons (Add User, System, etc.)

@@ -2,7 +2,11 @@ body {
 	font-family: "Roboto Mono", "Consolas", "Menlo", "Courier New", Courier,
 		monospace; /* Monospace font */
 	margin: 0;
-	padding: 0; /* Default padding to 0 for mobile */
+	/* Default padding for mobile, split for clarity: */
+	padding-left: 0;
+	padding-right: 0;
+	padding-top: 0;
+	padding-bottom: 300px; /* Generous space for the fixed message input area */
 	background-color: #121212; /* Dark background */
 	color: #e0e0e0; /* Light text */
 }
@@ -10,7 +14,10 @@ body {
 /* Apply padding for desktop screens */
 @media (min-width: 768px) {
 	body {
-		padding: 20px;
+		padding: 20px; /* Sets top, left, right to 20px, bottom also 20px */
+		/* Override padding-bottom to ensure space for fixed input area + original 20px margin */
+		/* 300px for input area + 20px desired original bottom spacing for content */
+		padding-bottom: 320px;
 	}
 }
 
@@ -260,9 +267,24 @@ li {
 
 /* Styles for the message input area at the bottom of conversation page */
 #message-input-area {
-	margin-top: 20px;
-	padding-top: 20px;
-	border-top: 1px solid #444444;
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	/* width: auto; implicitly, controlled by left/right offsets */
+	box-sizing: border-box;
+	background-color: #1e1e1e; /* Match .container background or a suitable bar color */
+	padding: 10px 20px; /* Vertical 10px, horizontal 20px for content inside the bar. Desktop will adjust left/right. */
+	z-index: 1000; /* Ensure it's above other content */
+	border-top: 1px solid #333333; /* Consistent border color for separation */
+}
+
+/* Adjust #message-input-area positioning on desktop to align with body padding */
+@media (min-width: 768px) {
+	#message-input-area {
+		left: 20px; /* Align with body's own padding */
+		right: 20px; /* Align with body's own padding */
+	}
 }
 
 #new-message-content {
