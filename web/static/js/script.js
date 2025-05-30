@@ -391,7 +391,14 @@ document.addEventListener("DOMContentLoaded", () => {
 			// Setup Fork button listener
 			const forkButton = document.getElementById("fork-conversation-btn");
 			if (forkButton) {
-				forkButton.addEventListener("click", () => {
+				// Clone the button to remove any previously attached event listeners
+				const newForkButton = forkButton.cloneNode(true);
+				forkButton.parentNode.replaceChild(newForkButton, forkButton);
+
+				// Ensure the button is enabled (it might have been disabled from a previous action/error)
+				newForkButton.disabled = false;
+
+				newForkButton.addEventListener("click", () => {
 					handleForkConversation(conversationId);
 				});
 			} else {
