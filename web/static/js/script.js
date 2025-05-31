@@ -549,6 +549,32 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
+	// Helper function to update the state of global action buttons (Add User, System, etc.)
+	function updateGlobalActionButtonsState() {
+		const isAnyMessageEditing = !!document.querySelector(
+			".message[data-editing='true']",
+		);
+
+		const btnAddUser = document.getElementById("btn-add-user");
+		const btnAddSystem = document.getElementById("btn-add-system");
+		const btnAddAssistant = document.getElementById("btn-add-assistant");
+		const btnGenAssistant = document.getElementById("btn-gen-assistant");
+
+		const buttonsToUpdate = [
+			btnAddUser,
+			btnAddSystem,
+			btnAddAssistant,
+			btnGenAssistant,
+		];
+
+		buttonsToUpdate.forEach((button) => {
+			if (button) {
+				// Ensure button exists in the DOM
+				button.disabled = isAnyMessageEditing;
+			}
+		});
+	}
+
 	// Helper to create action buttons for individual messages (Edit, Archive, Save, Cancel)
 	function createActionButton(svgIconHtml, className, onClick) {
 		const button = document.createElement("button");
@@ -600,6 +626,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			delete messageElement.dataset.editing;
 			delete messageElement.dataset.originalContentForEdit; // Clean up
+			updateGlobalActionButtonsState(); // Update global buttons state
 		} else {
 			// ---- Switching from View to Edit ----
 			messageElement.dataset.editing = "true";
@@ -648,6 +675,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			actionsDiv.appendChild(saveButton);
 			actionsDiv.appendChild(cancelButton);
+			updateGlobalActionButtonsState(); // Update global buttons state
 		}
 	}
 
@@ -680,6 +708,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			// On success, remove the message element from the DOM
 			messageElement.remove();
+			updateGlobalActionButtonsState(); // Check if this removal affects global buttons state
 			// No need to reload full conversation, message is gone from this view.
 			// It will appear in "Other Files" on next full load/refresh.
 			// To refresh "Other Files" immediately, one could call loadConversationDetails(conversationId)
