@@ -420,28 +420,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				);
 				newJumpButton.disabled = false; // Enable the button
 
-				newJumpButton.addEventListener("click", () => {
-					const messagesContainerElem =
-						document.getElementById("messages-container");
-					if (messagesContainerElem) {
-						const messageElements =
-							messagesContainerElem.querySelectorAll(".message");
-						if (messageElements.length > 0) {
-							const lastMessageElement =
-								messageElements[messageElements.length - 1];
-							lastMessageElement.scrollIntoView({
-								behavior: "smooth",
-								block: "end",
-							});
-						} else {
-							// If no messages, scroll to the bottom of the (empty) messages container
-							messagesContainerElem.scrollIntoView({
-								behavior: "smooth",
-								block: "end",
-							});
-						}
-					}
-				});
+				newJumpButton.addEventListener("click", jumpToLatestMessage);
 			} else {
 				console.warn(
 					"Jump to latest button (#jump-to-latest-btn) not found in DOM.",
@@ -618,6 +597,24 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
+	function jumpToLatestMessage() {
+		const messagesContainerElem = document.getElementById("messages-container");
+		if (messagesContainerElem) {
+			const messageElements =
+				messagesContainerElem.querySelectorAll(".message");
+			if (messageElements.length > 0) {
+				const lastMessageElement = messageElements[messageElements.length - 1];
+				lastMessageElement.scrollIntoView({ behavior: "smooth", block: "end" });
+			} else {
+				// If no messages, scroll to the bottom of the (empty) messages container
+				messagesContainerElem.scrollIntoView({
+					behavior: "smooth",
+					block: "end",
+				});
+			}
+		}
+	}
+
 	// Helper to create action buttons for individual messages (Edit, Archive, Save, Cancel)
 	function createActionButton(svgIconHtml, className, onClick) {
 		const button = document.createElement("button");
@@ -752,6 +749,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			// On success, remove the message element from the DOM
 			messageElement.remove();
 			updateGlobalActionButtonsState(); // Check if this removal affects global buttons state
+			jumpToLatestMessage(); // Scroll to the latest message after archiving one
+
 			// No need to reload full conversation, message is gone from this view.
 			// It will appear in "Other Files" on next full load/refresh.
 			// To refresh "Other Files" immediately, one could call loadConversationDetails(conversationId)
