@@ -8,39 +8,35 @@ import subprocess
 
 def find_hnt_shell_commands(input_text):
     """
-    Scans the input text for <hnt-shell> ... </hnt-shell> blocks where
-    tags are on their own lines.
-    Returns a list of content strings from valid blocks.
+    Finds the last (i.e., the most recently closed) valid <hnt-shell> block in the input text.
+    The tags must be on their own lines. Only the last block is returned.
+    Returns a list containing the content string of the block (so the list has at most one element),
+    or an empty list if no valid block is found.
     """
     lines = input_text.split("\n")
-    valid_blocks_contents = []
+    # Find the last occurrence of the closing tag
+    closing_index = None
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i] == "</hnt-shell>":
+            closing_index = i
+            break
 
-    i = 0
-    while i < len(lines):
-        # Check for opening tag on its own line
+    if closing_index is None:
+        return []  # no closing tag found
+
+    # Now, look upwards for the nearest opening tag
+    opening_index = None
+    for i in range(closing_index - 1, -1, -1):
         if lines[i] == "<hnt-shell>":
-            # open_tag_line_idx = i # Not strictly needed beyond this point with collector
-            content_lines_collector = []
-            j = i + 1  # Start looking for content or closing tag from next line
-            while j < len(lines):
-                # Check for closing tag on its own line
-                if lines[j] == "</hnt-shell>":
-                    # Found a valid block. Content is lines between open_tag_line_idx and j.
-                    current_block_content = "\n".join(content_lines_collector)
-                    valid_blocks_contents.append(current_block_content)
-                    i = j  # Continue search after this closing tag
-                    break
-                # Collect the current line as part of the content
-                content_lines_collector.append(lines[j])
-                j += 1
-            # If the inner loop finished without break, it means an opening tag
-            # was found but not its corresponding closing tag.
-            # In this case, 'i' will be incremented by the outer loop at its end,
-            # effectively skipping this unclosed tag and its content.
-            # The outer loop continues from 'j' (if block found) or 'i+1' (if no block or unclosed).
-        i += 1
+            opening_index = i
+            break
 
-    return valid_blocks_contents
+    if opening_index is None:
+        return []  # no opening tag found
+
+    content_lines = lines[opening_index + 1 : closing_index]
+    content = "\n".join(content_lines)
+    return [content]
 
 
 def main():
@@ -81,11 +77,6 @@ def main():
             "Error: No valid <hnt-shell>...</hnt-shell> block found where tags are on their own lines.\n"
         )
         sys.exit(1)
-
-    if len(hnt_shell_blocks) > 1:
-        sys.stderr.write(
-            "Warning: Multiple valid <hnt-shell> blocks found. Only the last one will be considered.\n"
-        )
 
     # "extract the content of the very last one, not including trailing whitespace on either side"
     # This means stripping the whole content block.
