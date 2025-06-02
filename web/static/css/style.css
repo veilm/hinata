@@ -538,6 +538,15 @@ li {
 	background-color: #e0504d; /* Match Fork button: Darker theme color on hover */
 }
 
+/* Specific style for Jump to Latest Message Button */
+#jump-to-latest-btn {
+	background-color: #2c2c2c; /* Match 'Add System' button background */
+	color: #e0e0e0; /* Match 'Add System' button text color */
+}
+#jump-to-latest-btn:hover {
+	background-color: #3a3a3a; /* Match 'Add System' button hover background */
+}
+
 /* Styling for pinned items in the conversation list */
 #conversation-list-container ul li.pinned-conversation a,
 #conversation-list-container

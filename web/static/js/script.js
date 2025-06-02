@@ -158,6 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		const titleEditInput = document.getElementById("conversation-title-input");
 		const modelEditInput = document.getElementById("conversation-model-input");
 		const pinToggleButton = document.getElementById("pin-toggle-btn");
+		const jumpToLatestBtn = document.getElementById("jump-to-latest-btn");
 		const messagesContainer = document.getElementById("messages-container");
 		const otherFilesContainer = document.getElementById(
 			"other-files-container",
@@ -175,6 +176,9 @@ document.addEventListener("DOMContentLoaded", () => {
 		if (pinToggleButton) {
 			pinToggleButton.disabled = true;
 			pinToggleButton.textContent = "Pin"; // Default before loading
+		}
+		if (jumpToLatestBtn) {
+			jumpToLatestBtn.disabled = true;
 		}
 
 		try {
@@ -403,6 +407,45 @@ document.addEventListener("DOMContentLoaded", () => {
 				});
 			} else {
 				console.warn("Fork button (#fork-conversation-btn) not found in DOM.");
+			}
+
+			// Setup Jump to Latest button listener
+			const jumpToLatestButton = document.getElementById("jump-to-latest-btn");
+			if (jumpToLatestButton) {
+				// Clone to remove old listeners, consistent with other buttons
+				const newJumpButton = jumpToLatestButton.cloneNode(true);
+				jumpToLatestButton.parentNode.replaceChild(
+					newJumpButton,
+					jumpToLatestButton,
+				);
+				newJumpButton.disabled = false; // Enable the button
+
+				newJumpButton.addEventListener("click", () => {
+					const messagesContainerElem =
+						document.getElementById("messages-container");
+					if (messagesContainerElem) {
+						const messageElements =
+							messagesContainerElem.querySelectorAll(".message");
+						if (messageElements.length > 0) {
+							const lastMessageElement =
+								messageElements[messageElements.length - 1];
+							lastMessageElement.scrollIntoView({
+								behavior: "smooth",
+								block: "end",
+							});
+						} else {
+							// If no messages, scroll to the bottom of the (empty) messages container
+							messagesContainerElem.scrollIntoView({
+								behavior: "smooth",
+								block: "end",
+							});
+						}
+					}
+				});
+			} else {
+				console.warn(
+					"Jump to latest button (#jump-to-latest-btn) not found in DOM.",
+				);
 			}
 		} catch (error) {
 			handleError(
