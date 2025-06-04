@@ -10,3 +10,5 @@ fi
 
 chmod +x main.py
 sudo cp main.py /usr/local/bin/qb-eval
+
+echo "qb-eval/build: installed /usr/local/bin/qb-eval"
