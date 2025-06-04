@@ -5,11 +5,17 @@
 # just try rewording your original prompt. you can make your own UI management
 # by passing a --message to hnt-edit so this is just for us
 
-# /home/oboro/src/hinata/fmt/hinata.kak
+# env cp /home/oboro/src/hinata/fmt/hinata.kak /home/oboro/sync/config/kak/hinata.kak
 
 define-command hinata-auto-clear %{
 	hook global -once ClientCreate ".*" %{
-		exec -with-hooks "%%c"
+		# See ./claude-0.md. If you just use hinata.kak directly then it's over
+		# for you, but that's unlikely in any case considering kakoune's culture
+		# of DIY autism
+
+		# exec -with-hooks "%%c"
+		# exec -with-hooks "%%chello! could you please update this code based on the following?<ret>"
+		exec -with-hooks "%%cplease "
 	}
 }
 
