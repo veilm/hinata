@@ -129,25 +129,11 @@ static void process_sse_data(const char* json_data, struct StreamData* sd) {
 					int has_content_token =
 					    (text_content && strlen(text_content) > 0);
 
-					// Determine if this chunk signals a transition to the
-					// content phase
+					// A chunk signals a transition to the content phase if and
+					// only if it contains actual content tokens. An empty
+					// content string ("") or a null content field does not
+					// count as an actual content token.
 					int is_transitioning_to_content = has_content_token;
-					if (!is_transitioning_to_content && j_content != NULL) {
-						// If no actual content token in this chunk, but content
-						// field exists, check if reasoning became null (signal
-						// for transition)
-						int reasoning_is_null_marker = 0;
-						if (j_reasoning && json_is_null(j_reasoning)) {
-							reasoning_is_null_marker = 1;
-						}
-						if (j_reasoning_content &&
-						    json_is_null(j_reasoning_content)) {
-							reasoning_is_null_marker = 1;
-						}
-						if (reasoning_is_null_marker) {
-							is_transitioning_to_content = 1;
-						}
-					}
 
 					if (sd->current_output_phase == PHASE_INIT) {
 						if (has_reasoning_token) {
