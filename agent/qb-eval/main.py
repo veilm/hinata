@@ -85,6 +85,7 @@ def main():
             "qutebrowser",
             f":set downloads.location.directory {abs_temp_dir_path_str} ;; "
             f"set downloads.location.prompt false ;; "
+            f"set downloads.remove_finished 0 ;; "
             f"jseval -f -w main {extract_js_path.resolve()}",
         ]
         # print(f"DEBUG: Executing: {' '.join(qutebrowser_cmd_extract)}", file=sys.stderr)
