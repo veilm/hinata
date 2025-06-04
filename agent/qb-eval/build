@@ -1,0 +1,12 @@
+#!/bin/sh
+
+cd "$(dirname "$0")"
+
+if ! which qutebrowser > /dev/null 2>&1
+then
+	echo "qb-eval/build: qutebrowser not installed? what are you even doing"
+	exit 1
+fi
+
+chmod +x main.py
+sudo cp main.py /usr/local/bin/qb-eval
