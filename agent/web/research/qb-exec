@@ -1,8 +1,0 @@
-#!/bin/sh
-
-cd $(dirname $0)
-headless_browse_f=$(realpath ./headless-browse.js)
-
-qutebrowser ":jseval $(cat $headless_browse_f)"
-qutebrowser ":jseval llmPack()"
-qutebrowser ":jseval llmDisplayVisual()"
