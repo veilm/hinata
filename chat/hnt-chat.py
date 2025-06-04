@@ -152,27 +152,42 @@ def handle_add_command(args):
     # 2. Read from stdin
     if sys.stdin.isatty():
         print("hnt-chat: reading from stdin...", file=sys.stderr)
-    content = sys.stdin.read()
+    full_content_from_stdin = sys.stdin.read()
 
-    # 3. Generate filename and check for existence
-    timestamp_ns = time.time_ns()
-    relative_filename = f"{timestamp_ns}-{role}.md"
-    output_filepath = conv_dir_path / relative_filename
+    content_for_main_file = full_content_from_stdin
+    main_message_relative_filename = (
+        None  # Stores filename of user, system, or main assistant message
+    )
 
-    if output_filepath.exists():
-        print(f"Error: Output file already exists: {output_filepath}", file=sys.stderr)
-        sys.exit(1)
+    # 3. Handle --separate-reasoning if applicable
+    if role == "assistant" and args.separate_reasoning:
+        # Regex to find <think>...</think> at the beginning of the string.
+        # re.DOTALL allows '.' to match newlines within the think block.
+        think_block_match = re.match(
+            r"^(<think>.*?</think>)", full_content_from_stdin, re.DOTALL
+        )
+        if think_block_match:
+            extracted_reasoning = think_block_match.group(0)
+            # Write reasoning to its own file. _write_message_file handles timestamp and filename.
+            # The filename of the reasoning file is not printed to stdout.
+            _write_message_file(
+                conv_dir_path, "assistant-reasoning", extracted_reasoning
+            )
+            # Update content for the main assistant file
+            content_for_main_file = full_content_from_stdin[
+                len(extracted_reasoning) :
+            ].lstrip()
+            # If all content was reasoning, content_for_main_file might be empty.
+            # An empty assistant message file will be created by _write_message_file.
 
-    # 4. Write file
-    try:
-        with open(output_filepath, "w", encoding="utf-8") as f:
-            f.write(content)
-    except OSError as e:
-        print(f"Error writing to file {output_filepath}: {e}", file=sys.stderr)
-        sys.exit(1)
+    # 4. Write the main message file (for user, system, or assistant role)
+    # _write_message_file generates a timestamp and handles file naming.
+    main_message_relative_filename = _write_message_file(
+        conv_dir_path, role, content_for_main_file
+    )
 
-    # 5. Print relative filename to stdout
-    print(relative_filename)
+    # 5. Print the relative filename of the main message file to stdout
+    print(main_message_relative_filename)
 
 
 def handle_pack_command(
@@ -537,6 +552,11 @@ def main():
         "--conversation",
         type=Path,
         help="Path to the conversation directory (overrides $HINATA_CHAT_CONVERSATION, defaults to latest)",
+    )
+    parser_add.add_argument(
+        "--separate-reasoning",
+        action="store_true",
+        help="For 'assistant' role only. If input starts with <think>...</think>, save it to a separate reasoning file.",
     )
     parser_add.set_defaults(func=handle_add_command)
 

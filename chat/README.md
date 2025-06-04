@@ -45,6 +45,7 @@ role is either `user`, `assistant`, or `system`
 - `-c PATH`, `--conversation PATH`: Specifies the path to the target conversation directory. If provided, this overrides any other method of selecting the conversation.
 - If `-c`/`--conversation` is *not* provided, `hnt-chat` checks the `$HINATA_CHAT_CONVERSATION` environment variable. If set, its value is used as the path to the conversation directory.
 - If neither the flag nor the environment variable is set, `hnt-chat` automatically selects the *latest* conversation directory found within the base conversations directory (determined by the alphabetically largest directory name, which corresponds to the latest timestamp). An error occurs if no conversations exist.
+- `--separate-reasoning`: *Only applicable when `role` is `assistant`.* If the input message from `stdin` begins with a `<think>...</think>` block, this block will be saved to a separate `[timestamp]-assistant-reasoning.md` file. The rest of the input will be saved as the main `[timestamp]-assistant.md` message. Only the filename of the main assistant message is written to `stdout`. If no `<think>` block is found, or if the role is not `assistant`, or if this option is not used, the entire input is saved as the main message for the specified role.
 
 it reads the message content from stdin, and will write the filename of the
 created message file to stdout, relative to the configured conv directory
