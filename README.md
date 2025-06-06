@@ -9,7 +9,7 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 # quick tour
 ### [`hnt-llm`](./llm/)
 basic LLM API in/out. significantly faster startup than openai-python
-```sh
+```
 $ export OPENROUTER_API_KEY=...
 $ echo "hello 🐙" | hnt-llm --model openrouter/deepseek/deepseek-chat-v3-0324:free
 Hello! 🌊 Looks like you're saying hi to an octopus emoji—how cute! [...]
@@ -17,7 +17,7 @@ Hello! 🌊 Looks like you're saying hi to an octopus emoji—how cute! [...]
 
 ### [`hnt-chat`](./chat/)
 chat history management using plaintext files and conversation directories
-```sh
+```
 $ conversation=$(hnt-chat new)
 $ echo "please write a poem about the user's given theme" | hnt-chat add system
 $ echo "iteration" | hnt-chat add user
@@ -31,24 +31,21 @@ $ hnt-chat generate --write --model openrouter/deepseek/deepseek-chat-v3-0324:fr
 
 Again, the brushstroke on the page,  
 A line retraced, a word replayed.
-...
+[...]
 ```
 
 ### [`hnt-edit`](./edit)
 simple hnt-chat wrapper for editing source code or other plaintext files
 
-```sh
+```
 $ export DEEPSEEK_API_KEY=...
-$ model="deepseek/deepseek-chat"
-$ message="please enable debugging in the config"
-$ files=$(fd -g "*.h")
 
-# (This will have syntax highlighting in your terminal)
-$ hnt-edit -m "$message" --model "$model" $files
-I'll enable debugging by changing the DEBUG flag from 0 to 1 in util.h. Here's
-the edit:
-...
-# (V3.1's output cropped for brevity)
+$ hnt-edit \
+	-m "please enable debugging in the config" \
+	--model "deepseek/deepseek-chat" \
+	$(fd -g "*.h")
+I'll enable debugging by changing the DEBUG flag from 0 to 1 in util.h. Here's the edit:
+[...]
 
 $ git diff
 diff --git a/src/util.h b/src/util.h
@@ -71,7 +68,7 @@ editing performance is higher than Aider's for my usual infra and web use cases,
 as of Apr 2025
 
 # build everything
-```sh
+```
 git clone https://github.com/michaelskyba/hinata
 cd hinata
 ./build
