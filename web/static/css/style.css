@@ -87,7 +87,8 @@ li {
 	border-left: 4px solid #fcddf2; /* Light pink */
 }
 .message-user {
-	border-left: 4px solid #81ae9d; /* Green */
+	/*border-left: 4px solid #81ae9d;*/ /* Green */
+	border-left: 4px solid #9d81ae; /* Soft purple */
 }
 .message-assistant {
 	border-left: 4px solid #ff615e; /* Orange-red  */
@@ -346,7 +347,8 @@ li {
 
 /* "Add User" button: green */
 #btn-add-user {
-	background-color: #81ae9d; /* Green from .message-user border */
+	/* background-color: #81ae9d; */ /* Green from .message-user border */
+	background-color: #9d81ae; /* Purple from .message-user border */
 	color: #1e1e1e; /* Dark text for contrast */
 }
 #btn-add-user:hover {
@@ -402,8 +404,15 @@ li {
 
 /* User Message Icons */
 .message-user .message-actions button {
-	color: #81ae9d; /* Green */
+	/* Green */
+	/*
+	color: #81ae9d;
 	border-color: #81ae9d;
+	*/
+
+	/* Purple */
+	color: #9d81ae;
+	border-color: #9d81ae;
 }
 .message-user .message-actions button:hover {
 	background-color: rgba(129, 174, 157, 0.1); /* Greenish tint */
