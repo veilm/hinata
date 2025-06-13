@@ -841,114 +841,127 @@ cat /etc/os-release
 
             # Start the interaction loop
             while True:
-                # Confirmation before running hnt-shell-apply (using current llm_message_raw)
-                if not args.no_confirm:
-                    while True:
-                        try:
-                            print("")  # Ensure prompt is on a new line
-                            user_choice_apply_raw = input(
-                                "proceed to hnt-shell-apply (y/n)? "
-                            )
-                            user_choice_apply = user_choice_apply_raw.strip().lower()
-                            if user_choice_apply == "y":
-                                break  # Proceed with hnt-shell-apply
-                            elif user_choice_apply == "n":
-                                print(
-                                    "Aborted by user before hnt-shell-apply.",
-                                    file=sys.stderr,
-                                )
-                                # To exit the outer while True loop for interaction
-                                # we need a way to signal this choice.
-                                # A simple break here will exit the inner confirmation loop.
-                                # We'll use a flag or re-evaluate the break for the outer loop.
-                                # For now, this break exits the confirmation loop.
-                                # The outer loop's break will be handled by setting a flag.
-                                original_exit_code = 0  # Mark as clean exit
-                                sys.exit(
-                                    0
-                                )  # Simplest way to exit the script cleanly as per original logic
-                            else:
-                                print(
-                                    "Invalid input. Please enter 'y' or 'n'.",
-                                    file=sys.stderr,
-                                )
-                                # Loop will continue to re-prompt
-                        except EOFError:
-                            print(
-                                "\nEOFError: No input for hnt-shell-apply confirmation. Aborting.",
-                                file=sys.stderr,
-                            )
-                            sys.exit(1)  # Exit only on EOF
-                        except KeyboardInterrupt:
-                            print(
-                                "\nUser interrupted confirmation. Aborting program.",
-                                file=sys.stderr,
-                            )
-                            # Exit with code 130 for SIGINT (Ctrl+C)
-                            sys.exit(130)
-
-                # Run hnt-shell-apply (adapting original 7)
-                debug_log(args, "Running hnt-shell-apply with LLM message as stdin...")
-                hnt_shell_apply_cmd = ["hnt-shell-apply", session_name]
-                debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
-
-                shell_apply_process = run_command(
-                    hnt_shell_apply_cmd,
-                    stdin_content=llm_message_raw,
-                    capture_output=True,
-                    check=False,  # Manually check returncode
-                    text=True,
-                )
-                shell_apply_stdout = shell_apply_process.stdout
-                shell_apply_stderr = shell_apply_process.stderr
-                shell_apply_rc = shell_apply_process.returncode
-
-                debug_log(args, f"hnt-shell-apply exited with code {shell_apply_rc}")
-                if shell_apply_stdout:
+                # If the LLM message doesn't contain a shell command, skip applying it
+                # and go straight to the "no action" prompt.
+                if not (
+                    "<hnt-shell>" in llm_message_raw
+                    and "</hnt-shell>" in llm_message_raw
+                ):
                     debug_log(
                         args,
-                        "hnt-shell-apply stdout (first 200 chars):\n",
-                        textwrap.shorten(
-                            shell_apply_stdout, width=200, placeholder="..."
-                        ),
+                        "LLM message does not contain shell tags, skipping to user prompt.",
                     )
-                if shell_apply_stderr:
+                    # Fake a return code of 2 to trigger the no-action-found logic path.
+                    shell_apply_rc = 2
+                    shell_apply_stdout = ""
+                    shell_apply_stderr = ""
+                else:
+                    # Confirmation before running hnt-shell-apply (using current llm_message_raw)
+                    if not args.no_confirm:
+                        while True:
+                            try:
+                                print("")  # Ensure prompt is on a new line
+                                user_choice_apply_raw = input(
+                                    "proceed to hnt-shell-apply (y/n)? "
+                                )
+                                user_choice_apply = (
+                                    user_choice_apply_raw.strip().lower()
+                                )
+                                if user_choice_apply == "y":
+                                    break  # Proceed with hnt-shell-apply
+                                elif user_choice_apply == "n":
+                                    print(
+                                        "Aborted by user before hnt-shell-apply.",
+                                        file=sys.stderr,
+                                    )
+                                    sys.exit(0)
+                                else:
+                                    print(
+                                        "Invalid input. Please enter 'y' or 'n'.",
+                                        file=sys.stderr,
+                                    )
+                            except EOFError:
+                                print(
+                                    "\nEOFError: No input for hnt-shell-apply confirmation. Aborting.",
+                                    file=sys.stderr,
+                                )
+                                sys.exit(1)  # Exit only on EOF
+                            except KeyboardInterrupt:
+                                print(
+                                    "\nUser interrupted confirmation. Aborting program.",
+                                    file=sys.stderr,
+                                )
+                                # Exit with code 130 for SIGINT (Ctrl+C)
+                                sys.exit(130)
+
+                    # Run hnt-shell-apply (adapting original 7)
                     debug_log(
-                        args,
-                        "hnt-shell-apply stderr (first 200 chars):\n",
-                        textwrap.shorten(
-                            shell_apply_stderr, width=200, placeholder="..."
-                        ),
+                        args, "Running hnt-shell-apply with LLM message as stdin..."
                     )
+                    hnt_shell_apply_cmd = ["hnt-shell-apply", session_name]
+                    debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
 
-                # Print hnt-shell-apply's output (adapting original 8)
-                if shell_apply_stdout:
-                    tool_header, tool_footer = get_header_footer_lines(
-                        f"hnt-shell-apply <{shell_apply_idx}>"
+                    shell_apply_process = run_command(
+                        hnt_shell_apply_cmd,
+                        stdin_content=llm_message_raw,
+                        capture_output=True,
+                        check=False,  # Manually check returncode
+                        text=True,
                     )
-                    sys.stdout.write(
-                        f"\n{TOOL_OUTPUT_COLOR}"
-                    )  # Newline before header, start color
-                    print(tool_header)  # print() adds newline
+                    shell_apply_stdout = shell_apply_process.stdout
+                    shell_apply_stderr = shell_apply_process.stderr
+                    shell_apply_rc = shell_apply_process.returncode
 
-                    sys.stdout.write(shell_apply_stdout)  # Content
-                    if not shell_apply_stdout.endswith(
-                        "\n"
-                    ):  # Ensure newline after content
-                        sys.stdout.write("\n")
+                    debug_log(
+                        args, f"hnt-shell-apply exited with code {shell_apply_rc}"
+                    )
+                    if shell_apply_stdout:
+                        debug_log(
+                            args,
+                            "hnt-shell-apply stdout (first 200 chars):\n",
+                            textwrap.shorten(
+                                shell_apply_stdout, width=200, placeholder="..."
+                            ),
+                        )
+                    if shell_apply_stderr:
+                        debug_log(
+                            args,
+                            "hnt-shell-apply stderr (first 200 chars):\n",
+                            textwrap.shorten(
+                                shell_apply_stderr, width=200, placeholder="..."
+                            ),
+                        )
 
-                    print(tool_footer)  # print() adds newline
-                    sys.stdout.write(RESET_COLOR)  # Reset color
-                    sys.stdout.write("\n")  # Extra newline for spacing
-                    sys.stdout.flush()
-                    shell_apply_idx += 1
+                    # Print hnt-shell-apply's output (adapting original 8)
+                    if shell_apply_stdout:
+                        tool_header, tool_footer = get_header_footer_lines(
+                            f"hnt-shell-apply <{shell_apply_idx}>"
+                        )
+                        sys.stdout.write(
+                            f"\n{TOOL_OUTPUT_COLOR}"
+                        )  # Newline before header, start color
+                        print(tool_header)  # print() adds newline
 
-                if shell_apply_stderr:
-                    sys.stderr.write("\n--- Error output from hnt-shell-apply ---\n")
-                    sys.stderr.write(shell_apply_stderr)
-                    if not shell_apply_stderr.endswith("\n"):
-                        sys.stderr.write("\n")
-                sys.stderr.flush()
+                        sys.stdout.write(shell_apply_stdout)  # Content
+                        if not shell_apply_stdout.endswith(
+                            "\n"
+                        ):  # Ensure newline after content
+                            sys.stdout.write("\n")
+
+                        print(tool_footer)  # print() adds newline
+                        sys.stdout.write(RESET_COLOR)  # Reset color
+                        sys.stdout.write("\n")  # Extra newline for spacing
+                        sys.stdout.flush()
+                        shell_apply_idx += 1
+
+                    if shell_apply_stderr and shell_apply_rc != 2:
+                        sys.stderr.write(
+                            "\n--- Error output from hnt-shell-apply ---\n"
+                        )
+                        sys.stderr.write(shell_apply_stderr)
+                        if not shell_apply_stderr.endswith("\n"):
+                            sys.stderr.write("\n")
+                    sys.stderr.flush()
 
                 # Check hnt-shell-apply return code
                 if shell_apply_rc != 0:
@@ -1002,6 +1015,7 @@ cat /etc/os-release
                                         and new_message_content != initial_text.strip()
                                     ):
                                         # Valid message provided.
+                                        print()  # Add a newline for separation.
                                         print_user_instruction(
                                             new_message_content, user_instruction_idx
                                         )
