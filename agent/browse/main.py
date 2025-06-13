@@ -70,7 +70,10 @@ def open_url(url, headless_browse_js_path):
 
     with open(headless_browse_js_path, "r", encoding="utf-8") as f:
         js_content = f.read()
-    eval_js(js_content)
+    eval_js(
+        js_content
+        + "\n\nllmPack(); llmDisplayVisual(); window.qbe_out = formattedTree;"
+    )
 
 
 def main():
