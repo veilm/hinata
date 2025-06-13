@@ -10,8 +10,11 @@ import tempfile
 
 
 def main():
-    # 1. Read JavaScript from stdin
-    js_input_code = sys.stdin.read()
+    # 1. Read JavaScript from stdin and prepend reset logic to ensure a clean state.
+    js_input_code = (
+        "window.qbe_out = undefined; window.qbe_promise = undefined;\n"
+        + sys.stdin.read()
+    )
 
     # 2. Create a unique temporary directory
     # Using system's temp directory base and a subdirectory for our app
@@ -45,30 +48,47 @@ def main():
         )
 
         # 5. Create extract.js
-        extract_js_content = f"""
-(() => {{
-    let outputContent = window.qbe_out;
+        extract_js_content = """
+(() => {
+    // If window.qbe_promise is available, use it. This supports async operations.
+    // Otherwise, fall back to a promise that resolves immediately with window.qbe_out for sync operations.
+    const promise = window.qbe_promise || Promise.resolve(window.qbe_out);
 
-    if (typeof outputContent === 'undefined') {{
-        outputContent = 'undefined';
-    }} else if (outputContent === null) {{
-        outputContent = 'null';
-    }} else {{
-        outputContent = String(outputContent);
-    }}
+    promise.then(outputContent => {
+        if (typeof outputContent === 'undefined') {
+            outputContent = 'undefined';
+        } else if (outputContent === null) {
+            outputContent = 'null';
+        } else {
+            outputContent = String(outputContent);
+        }
 
-    let blob = new Blob([outputContent], {{type: 'text/plain'}});
-    let href = URL.createObjectURL(blob);
+        let blob = new Blob([outputContent], {type: 'text/plain'});
+        let href = URL.createObjectURL(blob);
 
-    let a = document.createElement('a');
-    a.href = href;
-    a.download = 'out.txt'; // Target filename for the download
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a); // Clean up the anchor element
-    URL.revokeObjectURL(href);    // Release the object URL
-}})();
+        let a = document.createElement('a');
+        a.href = href;
+        a.download = 'out.txt'; // Target filename for the download
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a); // Clean up the anchor element
+        URL.revokeObjectURL(href);    // Release the object URL
+    }).catch(error => {
+        console.error('qbe-eval promise failed:', error);
+        const errorMessage = `Promise rejected in qbe-eval: ${error.stack || String(error)}`;
+        let blob = new Blob([errorMessage], {type: 'text/plain'});
+        let href = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = href;
+        a.download = 'out.txt';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(href);
+    });
+})();
 """
         extract_js_path = temp_dir_path / "extract.js"
         extract_js_path.write_text(extract_js_content)

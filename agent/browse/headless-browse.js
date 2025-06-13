@@ -443,39 +443,118 @@
 	}
 
 	function llmPack(userConfig = {}) {
-		const configToUse = { ...defaultConfig, ...userConfig };
+		const instant = userConfig.instant || false;
+		// const settleTime = userConfig.settleTime || 1000;
+		// const settleTime = userConfig.settleTime || 500;
+		const settleTime = userConfig.settleTime || 300;
+		const maxWaitTime = userConfig.maxWaitTime || 10000;
 
-		window.contentTree = extractPageContentTree(configToUse);
-		window.formattedTree = formatTreeToString(window.contentTree, configToUse);
-		window.lastUsedConfigForTree = configToUse; // Store the config used for this tree
+		const packContent = () => {
+			const configToUse = { ...defaultConfig, ...userConfig };
 
-		// After computing IDs, create a global mapping from ID to DOM element
-		window.els = {};
-		function populateEls(node) {
-			if (!node) {
-				return;
-			}
-			if (node.id && node.domElement) {
-				window.els[node.id] = node.domElement;
-			}
-			if (node.childNodesProcessed) {
-				for (const child of node.childNodesProcessed) {
-					if (child.tagName) {
-						// Recurse on element nodes, skip text nodes
-						populateEls(child);
+			window.contentTree = extractPageContentTree(configToUse);
+			window.formattedTree = formatTreeToString(
+				window.contentTree,
+				configToUse,
+			);
+			window.lastUsedConfigForTree = configToUse; // Store the config used for this tree
+
+			// After computing IDs, create a global mapping from ID to DOM element
+			window.els = {};
+			function populateEls(node) {
+				if (!node) {
+					return;
+				}
+				if (node.id && node.domElement) {
+					window.els[node.id] = node.domElement;
+				}
+				if (node.childNodesProcessed) {
+					for (const child of node.childNodesProcessed) {
+						if (child.tagName) {
+							// Recurse on element nodes, skip text nodes
+							populateEls(child);
+						}
 					}
 				}
 			}
-		}
-		populateEls(window.contentTree);
+			populateEls(window.contentTree);
 
-		// Ensure formattedTree is used from window scope if it's being assigned to window
-		console.log(
-			location.href,
-			": ~",
-			(window.formattedTree || "").length / 4,
-			"tokens",
-		);
+			// Ensure formattedTree is used from window scope if it's being assigned to window
+			console.log(
+				location.href,
+				": ~",
+				(window.formattedTree || "").length / 4,
+				"tokens",
+			);
+		};
+
+		if (instant) {
+			packContent();
+			return Promise.resolve();
+		}
+
+		return new Promise((resolve) => {
+			const onReady = () => {
+				console.log("Page ready. Waiting for dynamic content to settle...");
+
+				let settleTimeoutId;
+				let maxWaitTimeoutId;
+				let observer;
+				let finalized = false;
+
+				const finalize = (reason) => {
+					if (finalized) return;
+					finalized = true;
+
+					clearTimeout(settleTimeoutId);
+					clearTimeout(maxWaitTimeoutId);
+					if (observer) observer.disconnect();
+
+					console.log(reason + " Packing content now.");
+					packContent();
+					resolve();
+				};
+
+				const debouncedFinalize = () => {
+					clearTimeout(settleTimeoutId);
+					settleTimeoutId = setTimeout(
+						() => finalize("DOM has settled."),
+						settleTime,
+					);
+				};
+
+				if (!document.body) {
+					console.warn(
+						"document.body not available for MutationObserver. Packing immediately.",
+					);
+					finalize("No document body.");
+					return;
+				}
+
+				observer = new MutationObserver(debouncedFinalize);
+
+				observer.observe(document.body, {
+					childList: true,
+					subtree: true,
+					attributes: true,
+					characterData: true,
+				});
+
+				maxWaitTimeoutId = setTimeout(
+					() => finalize("Max wait time reached."),
+					maxWaitTime,
+				);
+
+				debouncedFinalize(); // Start the first settlement timer
+			};
+
+			if (document.readyState === "complete") {
+				onReady();
+			} else {
+				console.log("Page is not complete. Waiting for 'load' event.");
+				window.addEventListener("load", onReady, { once: true });
+			}
+		});
 	}
 
 	function llmDisplay() {

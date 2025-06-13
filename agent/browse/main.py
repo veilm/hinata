@@ -73,13 +73,20 @@ def open_url(url):
     subprocess.run(["qutebrowser", command])
 
 
-def read_page(headless_browse_js_path):
+def read_page(headless_browse_js_path, instant=False):
     """Reads the current page content using headless-browse.js."""
     with open(headless_browse_js_path, "r", encoding="utf-8") as f:
         js_content = f.read()
+    llm_pack_options = "{ instant: true }" if instant else ""
     eval_js(
         js_content
-        + "\n\nllmPack(); llmDisplayVisual(); window.qbe_out = formattedTree;"
+        + f"""\n\n// We set qbe_out to null to signal to eval_js that it needs to use qb-eval
+window.qbe_out = null;
+window.qbe_promise = (async () => {{
+    await llmPack({llm_pack_options});
+    llmDisplayVisual();
+    return window.formattedTree;
+}})();"""
     )
 
 
@@ -89,8 +96,8 @@ def main():
 Commands:
   start          Starts a qutebrowser session if not running
   eval           Reads JS from stdin and evaluates it
-  open [--read] <URL>     Opens a URL and optionally reads it
-  read           Reads the content of the current page"""
+  open [--read] [--instant] <URL>     Opens a URL and optionally reads it
+  read [--instant]           Reads the content of the current page"""
 
     headless_browse_js_path = check_dependencies()
 
@@ -111,25 +118,32 @@ Commands:
         js_code = sys.stdin.read()
         eval_js(js_code)
     elif command == "open":
-        read_flag = False
-        url = ""
-        if len(sys.argv) > 2 and sys.argv[2] == "--read":
-            read_flag = True
-            if len(sys.argv) != 4:
-                panic(f"'open --read' requires a URL argument.\n{usage}")
-            url = sys.argv[3]
-        else:
-            if len(sys.argv) != 3:
-                panic(f"'open' command requires a URL argument.\n{usage}")
-            url = sys.argv[2]
+        args = sys.argv[2:]
+        read_flag = "--read" in args
+        if read_flag:
+            args.remove("--read")
+
+        instant_flag = "--instant" in args
+        if instant_flag:
+            args.remove("--instant")
+
+        if len(args) != 1:
+            panic(f"'open' command requires exactly one URL argument.\n{usage}")
+        url = args[0]
 
         open_url(url)
         if read_flag:
-            read_page(headless_browse_js_path)
+            read_page(headless_browse_js_path, instant=instant_flag)
     elif command == "read":
-        if len(sys.argv) != 2:
-            panic(f"'read' command takes no arguments.\n{usage}")
-        read_page(headless_browse_js_path)
+        args = sys.argv[2:]
+        instant_flag = "--instant" in args
+        if instant_flag:
+            args.remove("--instant")
+
+        if args:
+            panic(f"'read' command takes at most one argument: --instant.\n{usage}")
+
+        read_page(headless_browse_js_path, instant=instant_flag)
     else:
         panic(f"Unknown command: '{command}'.\n{usage}")
 
