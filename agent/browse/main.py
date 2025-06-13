@@ -44,6 +44,10 @@ def start_session():
 
 def eval_js(js_code):
     """Evaluates JavaScript code using either qb-eval or qutebrowser."""
+    # qutebrowser displays the direct output on the screen which we don't want,
+    # because it gets messy. Having undefined at the end will silence it.
+    js_code += "\n; undefined"
+
     if "qbe_out" in js_code:
         # Pipe JS to qb-eval and forward its stdout/stderr to ours.
         # stdout/stderr are inherited from parent by default.
