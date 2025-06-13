@@ -443,7 +443,7 @@ function llmDisplay() {
 
 let llmVisualizedElements = [];
 
-function llmDisplayVisual() {
+function llmDisplayVisual(showCloseButton = false) {
 	if (typeof document === "undefined" || !document.body) {
 		console.warn("DOM environment not available for visual display.");
 		return;
@@ -471,37 +471,39 @@ function llmDisplayVisual() {
 
 	const config = window.lastUsedConfigForTree || defaultConfig; // Fallback to defaultConfig
 
-	const closeButton = document.createElement("button");
-	closeButton.id = "dom-visual-close-button";
-	closeButton.textContent = "Close Visuals";
-	Object.assign(closeButton.style, {
-		position: "fixed",
-		top: "50px", // Positioned to potentially avoid overlap with text overlay's close button
-		right: "20px",
-		padding: "10px 18px",
-		cursor: "pointer",
-		backgroundColor: "#5bc0de", // Info blue, distinct from other buttons
-		color: "white",
-		border: "none",
-		borderRadius: "4px",
-		fontSize: "14px",
-		fontWeight: "bold",
-		zIndex: "2147483647", // Max z-index to ensure it's clickable
-	});
+	if (showCloseButton) {
+		const closeButton = document.createElement("button");
+		closeButton.id = "dom-visual-close-button";
+		closeButton.textContent = "Close Visuals";
+		Object.assign(closeButton.style, {
+			position: "fixed",
+			top: "50px", // Positioned to potentially avoid overlap with text overlay's close button
+			right: "20px",
+			padding: "10px 18px",
+			cursor: "pointer",
+			backgroundColor: "#5bc0de", // Info blue, distinct from other buttons
+			color: "white",
+			border: "none",
+			borderRadius: "4px",
+			fontSize: "14px",
+			fontWeight: "bold",
+			zIndex: "2147483647", // Max z-index to ensure it's clickable
+		});
 
-	closeButton.onclick = function () {
-		// Clear outlines
-		for (const item of llmVisualizedElements) {
-			item.element.style.outline = item.originalOutline;
-		}
-		llmVisualizedElements = []; // Clear the list
+		closeButton.onclick = function () {
+			// Clear outlines
+			for (const item of llmVisualizedElements) {
+				item.element.style.outline = item.originalOutline;
+			}
+			llmVisualizedElements = []; // Clear the list
 
-		// Remove the close button itself
-		if (closeButton.parentNode) {
-			closeButton.parentNode.removeChild(closeButton);
-		}
-	};
-	document.body.appendChild(closeButton);
+			// Remove the close button itself
+			if (closeButton.parentNode) {
+				closeButton.parentNode.removeChild(closeButton);
+			}
+		};
+		document.body.appendChild(closeButton);
+	}
 
 	function applyOutlinesRecursive(node, currentConfig) {
 		if (node && node.domElement && typeof node.visibilityScore === "number") {
