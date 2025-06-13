@@ -1,0 +1,15 @@
+#!/bin/sh -e
+
+cd "$(dirname "$0")"
+
+echo "browse/build: starting qb-eval/build"
+../qb-eval/build
+
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/agent/web"
+mkdir -p "$dir"
+cp ./headless-browse.js "$dir"
+echo "browse/build: installed headless-browse.js in $dir"
+
+chmod +x main.py
+sudo cp main.py /usr/local/bin/browse
+echo "browse/build: installed /usr/local/bin/browse"
