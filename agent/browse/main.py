@@ -43,28 +43,14 @@ def start_session():
 
 
 def eval_js(js_code):
-    """Evaluates JavaScript code using either qb-eval or qutebrowser."""
+    """Evaluates JavaScript code using qb-eval."""
     # qutebrowser displays the direct output on the screen which we don't want,
     # because it gets messy. Having undefined at the end will silence it.
     js_code += "\n; undefined"
 
-    if "console.log" in js_code:
-        # Pipe JS to qb-eval and forward its stdout/stderr to ours.
-        # stdout/stderr are inherited from parent by default.
-        subprocess.run(["qb-eval"], input=js_code.encode())
-    else:
-        # Write JS to a temp file and run qutebrowser :jseval
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".js", delete=False, encoding="utf-8"
-        ) as tmp_file:
-            tmp_file.write(js_code)
-            tmp_file_path = tmp_file.name
-
-        try:
-            command = f":jseval -f -w main {tmp_file_path}"
-            subprocess.run(["qutebrowser", command])
-        finally:
-            os.unlink(tmp_file_path)
+    # Pipe JS to qb-eval and forward its stdout/stderr to ours.
+    # stdout/stderr are inherited from parent by default.
+    subprocess.run(["qb-eval"], input=js_code.encode())
 
 
 def open_url(url):
