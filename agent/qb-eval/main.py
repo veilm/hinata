@@ -27,6 +27,9 @@ if (typeof window.qbe_eval_hooked === 'undefined') {{
     const formatArgs = (args) => {{
         return args.map(arg => {{
             if (typeof arg === 'object' && arg !== null) {{
+                if (arg instanceof Error) {{
+                    return arg.stack || String(arg);
+                }}
                 try {{
                     return JSON.stringify(arg, null, 2);
                 }} catch (e) {{
@@ -70,8 +73,10 @@ window.qbe_promise = (async () => {{
             stack: error.stack,
             name: error.name
         }};
-        // Also log the error to the output
-        console.error(error);
+        // Also log the error to the output. We push the raw error string
+        // instead of using console.error to avoid the "ERROR:" prefix for
+        // uncaught exceptions.
+        window.qbe_output_logs.push(error.stack || String(error));
     }}
     // The promise always resolves with the full log output.
     return window.qbe_output_logs.join('\\n');
