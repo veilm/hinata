@@ -48,7 +48,7 @@ def eval_js(js_code):
     # because it gets messy. Having undefined at the end will silence it.
     js_code += "\n; undefined"
 
-    if "qbe_out" in js_code:
+    if "console.log" in js_code:
         # Pipe JS to qb-eval and forward its stdout/stderr to ours.
         # stdout/stderr are inherited from parent by default.
         subprocess.run(["qb-eval"], input=js_code.encode())
@@ -80,13 +80,10 @@ def read_page(headless_browse_js_path, instant=False):
     llm_pack_options = "{ instant: true }" if instant else ""
     eval_js(
         js_content
-        + f"""\n\n// We set qbe_out to null to signal to eval_js that it needs to use qb-eval
-window.qbe_out = null;
-window.qbe_promise = (async () => {{
-    await llmPack({llm_pack_options});
-    llmDisplayVisual();
-    return window.formattedTree;
-}})();"""
+        + f"""\n
+await llmPack({llm_pack_options});
+llmDisplayVisual();
+console.log(window.formattedTree);"""
     )
 
 
