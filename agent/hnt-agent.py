@@ -93,6 +93,22 @@ def get_header_footer_lines(title_text_input):
     return header_display, footer_display
 
 
+def print_user_instruction(content, index):
+    """Prints a formatted block for user instructions."""
+    header, footer = get_header_footer_lines(f"User Instruction <{index}>")
+    sys.stdout.write(USER_INSTRUCTION_COLOR)
+    print(header)
+    # Ensure content ends with a newline for clean formatting
+    if content.endswith("\n"):
+        sys.stdout.write(content)
+    else:
+        print(content)  # print() will add a newline
+    print(footer)
+    sys.stdout.write(RESET_COLOR)
+    sys.stdout.write("\n")  # Extra newline for spacing
+    sys.stdout.flush()
+
+
 def run_command(cmd, stdin_content=None, capture_output=True, check=True, text=True):
     """Helper function to run a command."""
     process = None  # Initialize process to None for broader scope in error handling
@@ -477,6 +493,7 @@ def main():
     )
     llm_navigator_idx = 0
     shell_apply_idx = 0
+    user_instruction_idx = 0
 
     try:
         # 0. Create headlesh session
@@ -769,18 +786,8 @@ cat /etc/os-release
         debug_log(args, "REAL user request message added.")
 
         if not args.message:  # Show user query if it came from EDITOR
-            header, footer = get_header_footer_lines("User Instruction <0>")
-            sys.stdout.write(USER_INSTRUCTION_COLOR)
-            print(header)
-            # Ensure instruction ends with a newline for clean formatting
-            if instruction.endswith("\n"):
-                sys.stdout.write(instruction)
-            else:
-                print(instruction)  # print() will add a newline
-            print(footer)
-            sys.stdout.write(RESET_COLOR)
-            sys.stdout.write("\n")  # Mimic hnt-edit's extra newline for spacing
-            sys.stdout.flush()
+            print_user_instruction(instruction, user_instruction_idx)
+            user_instruction_idx += 1
 
         print(f"\nhnt-chat dir: {conversation_dir}", file=sys.stderr)
 
@@ -945,6 +952,124 @@ cat /etc/os-release
 
                 # Check hnt-shell-apply return code
                 if shell_apply_rc != 0:
+                    if shell_apply_rc == 2:
+                        # RC 2: No hnt-shell blocks found. Prompt user for next action.
+                        debug_log(args, "hnt-shell-apply returned 2. Prompting user.")
+
+                        while True:  # Loop for user choice (edit/quit)
+                            try:
+                                print("")  # Newline for cleaner prompt
+                                user_choice_raw = input(
+                                    "LLM provided no action. Provide user message? (edit/quit): "
+                                )
+                                user_choice = user_choice_raw.strip().lower()
+
+                                if user_choice in ("quit", "q"):
+                                    print("Aborted by user.", file=sys.stderr)
+                                    sys.exit(0)
+
+                                elif user_choice in ("edit", "e"):
+                                    # Open editor for user message
+                                    editor = os.environ.get("EDITOR", "vi")
+                                    initial_text = "# Provide your message to the LLM. Save and exit to send. Leave this empty or unchanged to return to the prompt."
+                                    tmp_path = None
+                                    new_message_content = None
+                                    try:
+                                        with tempfile.NamedTemporaryFile(
+                                            mode="w+",
+                                            prefix="hnt-agent-usermsg-",
+                                            suffix=".md",
+                                            delete=False,
+                                        ) as tmpfile:
+                                            tmpfile.write(initial_text)
+                                            tmpfile.flush()
+                                            tmp_path = tmpfile.name
+
+                                        run_command(
+                                            [editor, tmp_path],
+                                            capture_output=False,
+                                            check=True,
+                                        )
+
+                                        with open(tmp_path, "r") as f:
+                                            new_message_content = f.read().strip()
+                                    finally:
+                                        if tmp_path and os.path.exists(tmp_path):
+                                            os.unlink(tmp_path)
+
+                                    if (
+                                        new_message_content
+                                        and new_message_content != initial_text.strip()
+                                    ):
+                                        # Valid message provided.
+                                        print_user_instruction(
+                                            new_message_content, user_instruction_idx
+                                        )
+                                        user_instruction_idx += 1
+
+                                        wrapped_message = f"<user_request>\n{new_message_content}\n</user_request>"
+                                        debug_log(
+                                            args,
+                                            "Adding user-provided message to chat...",
+                                        )
+                                        run_command(
+                                            hnt_chat_add_user_cmd,
+                                            stdin_content=wrapped_message,
+                                            check=True,
+                                            text=True,
+                                        )
+
+                                        debug_log(
+                                            args,
+                                            "Generating new LLM response after user message...",
+                                        )
+                                        llm_message_raw = stream_and_capture_llm_output(
+                                            args,
+                                            hnt_chat_gen_cmd,
+                                            syntax_highlight_enabled,
+                                            effective_syntax_cmd,
+                                            description=f"LLM Navigator <{llm_navigator_idx}>",
+                                        )
+                                        llm_navigator_idx += 1
+
+                                        if not llm_message_raw.strip():
+                                            print(
+                                                "Warning: LLM produced no output after user message. Ending interaction.",
+                                                file=sys.stderr,
+                                            )
+                                            sys.exit(0)  # clean exit
+
+                                        # Break the user choice loop, will then continue the main loop
+                                        break
+                                    else:
+                                        print(
+                                            "No message provided or message unchanged. Please try again.",
+                                            file=sys.stderr,
+                                        )
+                                        # Loop again for edit/quit
+
+                                else:
+                                    print(
+                                        "Invalid choice. Please enter 'edit' or 'quit'.",
+                                        file=sys.stderr,
+                                    )
+
+                            except EOFError:
+                                print(
+                                    "\nEOFError: No input. Aborting.", file=sys.stderr
+                                )
+                                sys.exit(1)
+                            except KeyboardInterrupt:
+                                print(
+                                    "\nUser interrupted. Aborting program.",
+                                    file=sys.stderr,
+                                )
+                                sys.exit(130)
+
+                        # If we break from the inner while-loop, we continue the outer loop
+                        continue
+
+                    # Other non-zero return code for hnt-shell-apply
                     print(
                         f"\nError: hnt-shell-apply exited with code {shell_apply_rc}.",
                         file=sys.stderr,

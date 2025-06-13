@@ -76,7 +76,7 @@ def main():
         sys.stderr.write(
             "Error: No valid <hnt-shell>...</hnt-shell> block found where tags are on their own lines.\n"
         )
-        sys.exit(1)
+        sys.exit(2)
 
     # "extract the content of the very last one, not including trailing whitespace on either side"
     # This means stripping the whole content block.
