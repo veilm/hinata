@@ -7,8 +7,21 @@ const defaultConfig = {
 	urlCropLength: 75, // Default length for URL cropping; <= 0 means infinite
 };
 
+function generateUniqueId(generatedIds) {
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+	let id;
+	do {
+		id = "";
+		for (let i = 0; i < 3; i++) {
+			id += chars.charAt(Math.floor(Math.random() * chars.length));
+		}
+	} while (generatedIds.has(id));
+	generatedIds.add(id);
+	return id;
+}
+
 // Helper function to process a single element node and its children recursively
-function processElementNode(element, config) {
+function processElementNode(element, config, generatedIds) {
 	// Skip elements whose tag names are in the config's skippedTags list
 	if (config.skippedTags.includes(element.tagName)) {
 		return null;
@@ -155,7 +168,11 @@ function processElementNode(element, config) {
 				nodeInfo.childNodesProcessed.push({ type: "text", value: text });
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
-			const childElementOutput = processElementNode(child, config); // Pass config recursively
+			const childElementOutput = processElementNode(
+				child,
+				config,
+				generatedIds,
+			); // Pass config recursively
 			if (childElementOutput) {
 				// Add processed child element
 				nodeInfo.childNodesProcessed.push(childElementOutput);
@@ -203,6 +220,7 @@ function processElementNode(element, config) {
 	// Only return the node representation if its childNodesProcessed list is not empty OR it has a meaningfulReason.
 	// Empty text nodes and null/empty child elements were already filtered out before being added.
 	if (nodeInfo.childNodesProcessed.length > 0 || nodeInfo.meaningfulReason) {
+		nodeInfo.id = generateUniqueId(generatedIds);
 		return nodeInfo;
 	}
 
@@ -213,6 +231,7 @@ function processElementNode(element, config) {
 // Main function to extract page content as a tree structure
 function extractPageContentTree(userConfig = {}) {
 	const config = { ...defaultConfig, ...userConfig }; // Merge user config with defaults
+	const generatedIds = new Set();
 
 	// Start processing from document.body, as it's the typical container for page content
 	if (!document.body) {
@@ -222,7 +241,7 @@ function extractPageContentTree(userConfig = {}) {
 		return null;
 	}
 	// The root of our content tree will be the processed body element
-	return processElementNode(document.body, config);
+	return processElementNode(document.body, config, generatedIds);
 }
 
 // Helper function to format a node and its children recursively for string output
@@ -240,31 +259,14 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 
 	// Build the main line for the current node
 	let mainLine = indent + node.tagName;
-
-	// childNodesProcessed contains an ordered list of text objects and element nodes
-	const elementChildren = node.childNodesProcessed.filter((n) => n.tagName); // Element nodes have a tagName
-	const textNodeChildren = node.childNodesProcessed.filter(
-		(n) => n.type === "text",
-	); // Text nodes are {type: "text", value: "..."}
-
-	// If there are ONLY text children (no element children), display text inline with the tag
-	if (elementChildren.length === 0 && textNodeChildren.length > 0) {
-		const combinedText = textNodeChildren
-			.map((t) => t.value)
-			.join(" ")
-			.trim();
-		if (combinedText) {
-			// Ensure combined text is not empty after join/trim
-			let textToDisplay = combinedText;
-			if (config.escapeNewlinesInFormat) {
-				textToDisplay = textToDisplay.replace(/\n/g, "\\n");
-			}
-			mainLine += ": " + textToDisplay;
-		}
-	}
 	output += mainLine + "\n";
 
 	const childIndent = "\t".repeat(indentLevel + 1);
+
+	// Display the generated ID if it exists
+	if (node.id) {
+		output += childIndent + "id: " + node.id + "\n";
+	}
 
 	// If configured, show visibility score
 	if (config.showVisibility && node.hasOwnProperty("visibilityScore")) {
@@ -303,22 +305,19 @@ function formatNodeRecursive(node, indentLevel = 0, config) {
 		}
 	}
 
-	// If there ARE element children, iterate through ALL childNodesProcessed (both text and elements in order).
-	// Text nodes are printed as "text: value" on new lines, and element nodes are recursed.
-	// This handles mixed content like <span>text1<em>elem</em>text2</span>
-	if (elementChildren.length > 0) {
-		for (const child of node.childNodesProcessed) {
-			if (child.type === "text") {
-				// child.value is already trimmed and checked for emptiness in processElementNode
-				let textToDisplay = child.value;
-				if (config.escapeNewlinesInFormat) {
-					textToDisplay = textToDisplay.replace(/\n/g, "\\n");
-				}
-				output += childIndent + "text: " + textToDisplay + "\n";
-			} else if (child.tagName) {
-				// It's an element node
-				output += formatNodeRecursive(child, indentLevel + 1, config);
+	// Always iterate through all children (text and elements) to format them.
+	// Text nodes are printed as "text: value", and element nodes are recursed.
+	for (const child of node.childNodesProcessed) {
+		if (child.type === "text") {
+			// child.value is already trimmed and checked for emptiness in processElementNode
+			let textToDisplay = child.value;
+			if (config.escapeNewlinesInFormat) {
+				textToDisplay = textToDisplay.replace(/\n/g, "\\n");
 			}
+			output += childIndent + "text: " + textToDisplay + "\n";
+		} else if (child.tagName) {
+			// It's an element node
+			output += formatNodeRecursive(child, indentLevel + 1, config);
 		}
 	}
 	return output;
@@ -408,6 +407,26 @@ function llmPack(userConfig = {}) {
 	window.contentTree = extractPageContentTree(configToUse);
 	window.formattedTree = formatTreeToString(window.contentTree, configToUse);
 	window.lastUsedConfigForTree = configToUse; // Store the config used for this tree
+
+	// After computing IDs, create a global mapping from ID to DOM element
+	window.els = {};
+	function populateEls(node) {
+		if (!node) {
+			return;
+		}
+		if (node.id && node.domElement) {
+			window.els[node.id] = node.domElement;
+		}
+		if (node.childNodesProcessed) {
+			for (const child of node.childNodesProcessed) {
+				if (child.tagName) {
+					// Recurse on element nodes, skip text nodes
+					populateEls(child);
+				}
+			}
+		}
+	}
+	populateEls(window.contentTree);
 
 	// Ensure formattedTree is used from window scope if it's being assigned to window
 	console.log(
