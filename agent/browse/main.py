@@ -67,11 +67,14 @@ def eval_js(js_code):
             os.unlink(tmp_file_path)
 
 
-def open_url(url, headless_browse_js_path):
-    """Opens a URL in qutebrowser and then runs headless-browse.js."""
+def open_url(url):
+    """Opens a URL in qutebrowser."""
     command = f":open {url}"
     subprocess.run(["qutebrowser", command])
 
+
+def read_page(headless_browse_js_path):
+    """Reads the current page content using headless-browse.js."""
     with open(headless_browse_js_path, "r", encoding="utf-8") as f:
         js_content = f.read()
     eval_js(
@@ -86,7 +89,8 @@ def main():
 Commands:
   start          Starts a qutebrowser session if not running
   eval           Reads JS from stdin and evaluates it
-  open <URL>     Opens a URL in qutebrowser"""
+  open [--read] <URL>     Opens a URL and optionally reads it
+  read           Reads the content of the current page"""
 
     headless_browse_js_path = check_dependencies()
 
@@ -107,10 +111,25 @@ Commands:
         js_code = sys.stdin.read()
         eval_js(js_code)
     elif command == "open":
-        if len(sys.argv) != 3:
-            panic(f"'open' command requires a URL argument.\n{usage}")
-        url = sys.argv[2]
-        open_url(url, headless_browse_js_path)
+        read_flag = False
+        url = ""
+        if len(sys.argv) > 2 and sys.argv[2] == "--read":
+            read_flag = True
+            if len(sys.argv) != 4:
+                panic(f"'open --read' requires a URL argument.\n{usage}")
+            url = sys.argv[3]
+        else:
+            if len(sys.argv) != 3:
+                panic(f"'open' command requires a URL argument.\n{usage}")
+            url = sys.argv[2]
+
+        open_url(url)
+        if read_flag:
+            read_page(headless_browse_js_path)
+    elif command == "read":
+        if len(sys.argv) != 2:
+            panic(f"'read' command takes no arguments.\n{usage}")
+        read_page(headless_browse_js_path)
     else:
         panic(f"Unknown command: '{command}'.\n{usage}")
 
