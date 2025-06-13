@@ -28,12 +28,6 @@ $ qb-eval < example.js
 Google - 30
 ```
 
-at least in my testing this is not particularly performant, at least partially
-because of the polling that qb-eval does. qutebrowser gives no indication of
-when the JS finished, so it periodically checks for a configured output file
-
-(as of 1749062848 this is once per 0.5s, up to 180s)
-
 ## async usage
 `qb-eval` also supports asynchronous operations. If your script sets
 `window.qbe_promise` to a `Promise`, `qb-eval` will wait for that promise to

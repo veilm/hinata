@@ -118,21 +118,36 @@ def main():
 
         # 7. Wait for out.txt to appear, then read it and write to stdout
         output_file_path = temp_dir_path / "out.txt"
-
-        # timeout_seconds = 10  # Max time to wait for the file
         timeout_seconds = 180  # Max time to wait for the file
-        poll_interval = 1  # Time between checks
-        start_wait_time = time.monotonic()
 
-        while not output_file_path.exists():
-            if time.monotonic() - start_wait_time > timeout_seconds:
-                print(
-                    f"Error: Output file '{output_file_path}' not found after {timeout_seconds} seconds.",
-                    file=sys.stderr,
-                )
-                # print(f"DEBUG: Check if qutebrowser is running and responsive.", file=sys.stderr)
-                sys.exit(1)
-            time.sleep(poll_interval)
+        try:
+            wait_cmd = ["wait_until_file", str(output_file_path), str(timeout_seconds)]
+            result = subprocess.run(
+                wait_cmd,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            print(
+                "Error: 'wait_until_file' command not found. Is it in your PATH? Please run the build script.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # wait_until_file returns:
+        # 1: file found
+        # 2: timeout
+        # 3: bad args
+        # 4: other error
+        if result.returncode != 1:
+            print(
+                f"Error waiting for output file. wait_until_file exited with {result.returncode}.",
+                file=sys.stderr,
+            )
+            if result.stderr:
+                # The C program prints descriptive errors to stderr
+                sys.stderr.write(result.stderr)
+            sys.exit(1)
 
         # Small delay to allow file system to catch up / qutebrowser to finish writing
         time.sleep(0.2)
