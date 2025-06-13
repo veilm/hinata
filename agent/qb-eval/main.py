@@ -10,11 +10,74 @@ import tempfile
 
 
 def main():
-    # 1. Read JavaScript from stdin and prepend reset logic to ensure a clean state.
-    js_input_code = (
-        "window.qbe_out = undefined; window.qbe_promise = undefined;\n"
-        + sys.stdin.read()
-    )
+    # 1. Read JavaScript from stdin and wrap it in our console.log-based async executor.
+    user_code = sys.stdin.read()
+    js_input_code = f"""
+// --- qb-eval wrapper ---
+// This script is designed to be idempotent, so it can be run multiple times.
+
+// One-time console hook setup
+if (typeof window.qbe_eval_hooked === 'undefined') {{
+    window.qbe_eval_hooked = true;
+
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleError = console.error;
+
+    const formatArgs = (args) => {{
+        return args.map(arg => {{
+            if (typeof arg === 'object' && arg !== null) {{
+                try {{
+                    return JSON.stringify(arg, null, 2);
+                }} catch (e) {{
+                    return String(arg);
+                }}
+            }}
+            return String(arg);
+        }}).join(' ');
+    }};
+
+    console.log = function(...args) {{
+        window.qbe_output_logs.push(formatArgs(args));
+        // Optionally still call original for debugging in qutebrowser console
+        originalConsoleLog.apply(console, args);
+    }};
+
+    console.warn = function(...args) {{
+        window.qbe_output_logs.push('WARNING: ' + formatArgs(args));
+        originalConsoleWarn.apply(console, args);
+    }};
+
+    console.error = function(...args) {{
+        window.qbe_output_logs.push('ERROR: ' + formatArgs(args));
+        originalConsoleError.apply(console, args);
+    }};
+}}
+
+// Per-evaluation state
+window.qbe_output_logs = [];
+window.qbe_error = null;
+
+// Wrap user code in an async IIFE to allow top-level await
+window.qbe_promise = (async () => {{
+    try {{
+        // --- User code starts ---
+{user_code}
+        // --- User code ends ---
+    }} catch (error) {{
+        window.qbe_error = {{
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+        }};
+        // Also log the error to the output
+        console.error(error);
+    }}
+    // The promise always resolves with the full log output.
+    return window.qbe_output_logs.join('\\n');
+}})();
+// --- end qb-eval wrapper ---
+"""
 
     # 2. Create a unique temporary directory
     # Using system's temp directory base and a subdirectory for our app
@@ -50,9 +113,9 @@ def main():
         # 5. Create extract.js
         extract_js_content = """
 (() => {
-    // If window.qbe_promise is available, use it. This supports async operations.
-    // Otherwise, fall back to a promise that resolves immediately with window.qbe_out for sync operations.
-    const promise = window.qbe_promise || Promise.resolve(window.qbe_out);
+    // window.qbe_promise is always created by the input wrapper.
+    // It resolves with the accumulated logs as a single string.
+    const promise = window.qbe_promise;
 
     promise.then(outputContent => {
         if (typeof outputContent === 'undefined') {
@@ -75,8 +138,9 @@ def main():
         document.body.removeChild(a); // Clean up the anchor element
         URL.revokeObjectURL(href);    // Release the object URL
     }).catch(error => {
-        console.error('qbe-eval promise failed:', error);
-        const errorMessage = `Promise rejected in qbe-eval: ${error.stack || String(error)}`;
+        // This is a safeguard. The wrapper is designed to not reject the promise.
+        console.error('qbe-eval promise was unexpectedly rejected:', error);
+        const errorMessage = `Promise unexpectedly rejected in qbe-eval: ${error.stack || String(error)}`;
         let blob = new Blob([errorMessage], {type: 'text/plain'});
         let href = URL.createObjectURL(blob);
         let a = document.createElement('a');

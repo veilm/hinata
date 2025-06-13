@@ -1,4 +1,4 @@
 // ./async_example.js
-window.qbe_promise = fetch("https://api.ipify.org?format=json")
-	.then((response) => response.json())
-	.then((data) => `Your IP address is: ${data.ip}`);
+const response = await fetch("https://api.ipify.org?format=json");
+const data = await response.json();
+console.log(`Your IP address is: ${data.ip}`);

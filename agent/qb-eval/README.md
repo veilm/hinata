@@ -9,18 +9,19 @@ cd hinata/agent/qb-eval
 ```
 
 ## usage
-you write JS as stdin to `qb-eval`. it writes qutebrowser's final evaluation of
-`window.qbe_out` to stdout
+You write JavaScript to stdin of `qb-eval`. `qb-eval` captures all output from `console.log`, `console.warn`, and `console.error` and writes it to stdout when your script finishes.
 
-example:
+Your script is automatically wrapped in an `async` function, which means you can use `await` at the top level for asynchronous operations.
+
+### Synchronous Example
 
 ```js
 // ./example.js
-let a = 10
-let b = 20
-let c = a + b
+let a = 10;
+let b = 20;
+let c = a + b;
 
-window.qbe_out = document.title + " - " + c.toString()
+console.log(document.title + " - " + c.toString());
 ```
 ```sh
 $ qutebrowser ":open https://google.com"
@@ -28,21 +29,15 @@ $ qb-eval < example.js
 Google - 30
 ```
 
-## async usage
-`qb-eval` also supports asynchronous operations. If your script sets
-`window.qbe_promise` to a `Promise`, `qb-eval` will wait for that promise to
-resolve and use its resolved value as the output. If the promise is rejected,
-`qb-eval` will output an error message.
+### Asynchronous Example (Top-Level `await`)
 
-This is useful for tasks like fetching data from an API.
-
-Example:
+Because your code is run in an async context, you can use `await` directly without wrapping it in an `async` function yourself.
 
 ```js
 // ./async_example.js
-window.qbe_promise = fetch('https://api.ipify.org?format=json')
-    .then(response => response.json())
-    .then(data => `Your IP address is: ${data.ip}`);
+const response = await fetch("https://api.ipify.org?format=json");
+const data = await response.json();
+console.log(`Your IP address is: ${data.ip}`);
 ```
 ```sh
 $ qb-eval < async_example.js
@@ -51,8 +46,12 @@ Your IP address is: XXX.XXX.XXX.XXX
 
 ## architecture
 qb-eval does the following:
-1. executes your JS
-2. creates a Blob object and URL of `window.qbe_out` (or the results of `window.qbe_promise`)
-3. creates and clicks a download link of that blob URL
-4. saves the download to a tmp directory (overwriting your default qutebrowser save dir, for this session)
-5. reads the download
+1. Wraps your JavaScript from stdin inside a helper script. This wrapper:
+    a. Overrides `console.log`, `console.warn`, and `console.error` to capture all outputs into an array.
+    b. Executes your code inside an `async` function, allowing for top-level `await`.
+    c. Creates a `Promise` that resolves with the full captured output once your script has finished executing.
+2. Executes this combined script in the current qutebrowser page.
+3. Executes a second script that waits for the promise to resolve, creates a `Blob` containing the result, creates a temporary download link for this blob, and clicks it.
+4. The main `qb-eval` script configures qutebrowser to save this download to a temporary directory without prompting.
+5. It then waits for the file to be downloaded, reads its contents, and prints them to stdout.
+6. Finally, it cleans up all temporary files and directories.
