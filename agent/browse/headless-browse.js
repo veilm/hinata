@@ -7,12 +7,12 @@ const defaultConfig = {
 	urlCropLength: 75, // Default length for URL cropping; <= 0 means infinite
 };
 
-function generateUniqueId(generatedIds) {
+function generateUniqueId(generatedIds, length) {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 	let id;
 	do {
 		id = "";
-		for (let i = 0; i < 3; i++) {
+		for (let i = 0; i < length; i++) {
 			id += chars.charAt(Math.floor(Math.random() * chars.length));
 		}
 	} while (generatedIds.has(id));
@@ -21,7 +21,7 @@ function generateUniqueId(generatedIds) {
 }
 
 // Helper function to process a single element node and its children recursively
-function processElementNode(element, config, generatedIds) {
+function processElementNode(element, config) {
 	// Skip elements whose tag names are in the config's skippedTags list
 	if (config.skippedTags.includes(element.tagName)) {
 		return null;
@@ -168,11 +168,7 @@ function processElementNode(element, config, generatedIds) {
 				nodeInfo.childNodesProcessed.push({ type: "text", value: text });
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
-			const childElementOutput = processElementNode(
-				child,
-				config,
-				generatedIds,
-			); // Pass config recursively
+			const childElementOutput = processElementNode(child, config); // Pass config recursively
 			if (childElementOutput) {
 				// Add processed child element
 				nodeInfo.childNodesProcessed.push(childElementOutput);
@@ -220,7 +216,6 @@ function processElementNode(element, config, generatedIds) {
 	// Only return the node representation if its childNodesProcessed list is not empty OR it has a meaningfulReason.
 	// Empty text nodes and null/empty child elements were already filtered out before being added.
 	if (nodeInfo.childNodesProcessed.length > 0 || nodeInfo.meaningfulReason) {
-		nodeInfo.id = generateUniqueId(generatedIds);
 		return nodeInfo;
 	}
 
@@ -231,7 +226,6 @@ function processElementNode(element, config, generatedIds) {
 // Main function to extract page content as a tree structure
 function extractPageContentTree(userConfig = {}) {
 	const config = { ...defaultConfig, ...userConfig }; // Merge user config with defaults
-	const generatedIds = new Set();
 
 	// Start processing from document.body, as it's the typical container for page content
 	if (!document.body) {
@@ -240,8 +234,48 @@ function extractPageContentTree(userConfig = {}) {
 		);
 		return null;
 	}
-	// The root of our content tree will be the processed body element
-	return processElementNode(document.body, config, generatedIds);
+
+	// First pass: build the tree without IDs
+	const rootNode = processElementNode(document.body, config);
+
+	if (!rootNode) {
+		return null;
+	}
+
+	// Second pass: collect all nodes, calculate ID length, and assign IDs.
+	const nodes = [];
+	function collectNodes(node) {
+		nodes.push(node);
+		if (node.childNodesProcessed) {
+			for (const child of node.childNodesProcessed) {
+				if (child.tagName) {
+					// Recurse on element nodes, skip text nodes
+					collectNodes(child);
+				}
+			}
+		}
+	}
+	collectNodes(rootNode);
+
+	const totalIdsNeeded = nodes.length;
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+	let idLength = 1;
+
+	// Use Math.pow() to determine required ID length.
+	// Loop while the number of possible IDs is less than the number needed.
+	while (Math.pow(chars.length, idLength) < totalIdsNeeded) {
+		idLength++;
+	}
+	// A potential edge case: if Math.pow() were to fail because of too many IDs,
+	// we might get stuck, but the number of DOM nodes makes this astronomically unlikely.
+	// Also, if totalIdsNeeded = 0, loop doesn't run, idLength = 1, which is fine.
+
+	const generatedIds = new Set();
+	for (const node of nodes) {
+		node.id = generateUniqueId(generatedIds, idLength);
+	}
+
+	return rootNode;
 }
 
 // Helper function to format a node and its children recursively for string output
