@@ -98,6 +98,8 @@
 					props.push({ key: "value", value: attrs.value });
 				if (attrs.hasOwnProperty("placeholder"))
 					props.push({ key: "placeholder", value: attrs.placeholder });
+				if (attrs.hasOwnProperty("disabled"))
+					props.push({ key: "disabled", value: true });
 				return props;
 			},
 			TEXTAREA: (attrs) => {
@@ -106,6 +108,8 @@
 					props.push({ key: "name", value: attrs.name });
 				if (attrs.hasOwnProperty("placeholder"))
 					props.push({ key: "placeholder", value: attrs.placeholder });
+				if (attrs.hasOwnProperty("disabled"))
+					props.push({ key: "disabled", value: true });
 				return props;
 			},
 			BUTTON: (attrs) => {
@@ -113,12 +117,16 @@
 				// Buttons might not always have a name, but their existence is meaningful.
 				if (attrs.hasOwnProperty("name"))
 					props.push({ key: "name", value: attrs.name });
+				if (attrs.hasOwnProperty("disabled"))
+					props.push({ key: "disabled", value: true });
 				return props;
 			},
 			SELECT: (attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("name"))
 					props.push({ key: "name", value: attrs.name });
+				if (attrs.hasOwnProperty("disabled"))
+					props.push({ key: "disabled", value: true });
 				return props;
 			},
 			A: (attrs) => {
