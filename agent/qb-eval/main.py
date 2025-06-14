@@ -77,9 +77,12 @@ window.qbe_promise = (async () => {{
         // instead of using console.error to avoid the "ERROR:" prefix for
         // uncaught exceptions.
         window.qbe_output_logs.push(error.stack || String(error));
+    }} finally {{
+        // This 'finally' block ensures that we always return the captured logs,
+        // even if the user's code contains a 'return' statement.
+        // The return value from 'finally' overrides any return from 'try' or 'catch'.
+        return window.qbe_output_logs.join('\\n');
     }}
-    // The promise always resolves with the full log output.
-    return window.qbe_output_logs.join('\\n');
 }})();
 // --- end qb-eval wrapper ---
 """
