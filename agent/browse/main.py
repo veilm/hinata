@@ -20,6 +20,8 @@ def check_dependencies():
         panic("'qb-eval' not found in PATH")
     if not shutil.which("qutebrowser"):
         panic("'qutebrowser' not found in PATH")
+    if not shutil.which("git"):
+        panic("'git' not found in PATH")
 
     xdg_data_home = Path(
         os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
@@ -48,9 +50,11 @@ def eval_js(js_code):
     # because it gets messy. Having undefined at the end will silence it.
     js_code += "\n; undefined"
 
-    # Pipe JS to qb-eval and forward its stdout/stderr to ours.
-    # stdout/stderr are inherited from parent by default.
-    subprocess.run(["qb-eval"], input=js_code.encode())
+    # Pipe JS to qb-eval and capture its stdout. Stderr is forwarded to ours.
+    result = subprocess.run(["qb-eval"], input=js_code.encode(), capture_output=True)
+    if result.stderr:
+        sys.stderr.buffer.write(result.stderr)
+    return result.stdout.decode("utf-8")
 
 
 def open_url(url):
@@ -60,17 +64,37 @@ def open_url(url):
 
 
 def read_page(headless_browse_js_path, instant=False):
-    """Reads the current page content using headless-browse.js."""
+    """
+    Reads the current page content using headless-browse.js.
+    Saves page content to /tmp/browse/formattedTree.txt, and renames
+    an existing formattedTree.txt to formattedTree-prev.txt.
+    Returns the new page content as a string.
+    """
     with open(headless_browse_js_path, "r", encoding="utf-8") as f:
         js_content = f.read()
     llm_pack_options = "{ instant: true }" if instant else ""
-    eval_js(
+    js_to_run = (
         js_content
         + f"""\n
 await llmPack({llm_pack_options});
 llmDisplayVisual();
 console.log(window.formattedTree);"""
     )
+    formatted_tree = eval_js(js_to_run)
+
+    browse_tmp_dir = Path("/tmp/browse")
+    browse_tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    formatted_tree_path = browse_tmp_dir / "formattedTree.txt"
+    formatted_tree_prev_path = browse_tmp_dir / "formattedTree-prev.txt"
+
+    if formatted_tree_path.is_file():
+        shutil.move(formatted_tree_path, formatted_tree_prev_path)
+
+    with open(formatted_tree_path, "w", encoding="utf-8") as f:
+        f.write(formatted_tree)
+
+    return formatted_tree
 
 
 def main():
@@ -80,7 +104,8 @@ Commands:
   start          Starts a qutebrowser session if not running
   eval           Reads JS from stdin and evaluates it
   open [--read] [--instant] <URL>     Opens a URL and optionally reads it
-  read [--instant]           Reads the content of the current page"""
+  read [--instant]           Reads the content of the current page
+  read-diff [--instant]      Reads the current page and diffs with the previous read"""
 
     headless_browse_js_path = check_dependencies()
 
@@ -99,7 +124,8 @@ Commands:
                 f"'eval' command takes no arguments; it reads JS from stdin.\n{usage}"
             )
         js_code = sys.stdin.read()
-        eval_js(js_code)
+        output = eval_js(js_code)
+        print(output, end="")
     elif command == "open":
         args = sys.argv[2:]
         read_flag = "--read" in args
@@ -116,7 +142,8 @@ Commands:
 
         open_url(url)
         if read_flag:
-            read_page(headless_browse_js_path, instant=instant_flag)
+            page_content = read_page(headless_browse_js_path, instant=instant_flag)
+            print(page_content, end="")
     elif command == "read":
         args = sys.argv[2:]
         instant_flag = "--instant" in args
@@ -126,7 +153,39 @@ Commands:
         if args:
             panic(f"'read' command takes at most one argument: --instant.\n{usage}")
 
+        page_content = read_page(headless_browse_js_path, instant=instant_flag)
+        print(page_content, end="")
+    elif command == "read-diff":
+        args = sys.argv[2:]
+        instant_flag = "--instant" in args
+        if instant_flag:
+            args.remove("--instant")
+
+        if args:
+            panic(
+                f"'read-diff' command takes at most one argument: --instant.\n{usage}"
+            )
+
+        # This call will handle saving new tree and moving old one
         read_page(headless_browse_js_path, instant=instant_flag)
+
+        browse_tmp_dir = Path("/tmp/browse")
+        formatted_tree_path = browse_tmp_dir / "formattedTree.txt"
+        formatted_tree_prev_path = browse_tmp_dir / "formattedTree-prev.txt"
+
+        if not formatted_tree_prev_path.exists():
+            # Create empty prev file if it doesn't exist for the diff
+            formatted_tree_prev_path.touch()
+
+        subprocess.run(
+            [
+                "git",
+                "diff",
+                "--no-index",
+                str(formatted_tree_prev_path),
+                str(formatted_tree_path),
+            ]
+        )
     else:
         panic(f"Unknown command: '{command}'.\n{usage}")
 
