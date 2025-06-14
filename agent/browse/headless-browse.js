@@ -193,8 +193,10 @@
 
 		// NEW HEURISTIC: Collapse wrapper elements
 		// An element is a "wrapper" if its processed children list contains exactly one item,
-		// AND that item is an element node (identifiable by having a tagName property).
+		// AND that item is an element node (identifiable by having a tagName property),
+		// AND the element itself is not "meaningful".
 		if (
+			!nodeInfo.meaningfulReason &&
 			nodeInfo.childNodesProcessed.length === 1 &&
 			nodeInfo.childNodesProcessed[0].tagName // Ensures it's an element node
 		) {
