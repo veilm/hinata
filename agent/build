@@ -6,12 +6,10 @@ cd "$(dirname "$0")"
 if ! which headlesh > /dev/null 2>&1
 then
 	echo "agent/build: headlesh not found. compiling..."
-	cd headlesh
-	./build
-	cd -
+	./headlesh/build
 fi
 
-prompts_dir=$XDG_CONFIG_HOME/hinata/prompts
+prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
 bin=/usr/local/bin
 
 mkdir -p "$prompts_dir"

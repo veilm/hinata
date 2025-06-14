@@ -4,13 +4,10 @@
 cd "$(dirname "$0")"
 
 # hnt-llm is implicitly built by edit
-cd edit
-echo "build: running edit/build"
-./build
-cd - > /dev/null
+echo "root/build: running edit/build"
+./edit/build
 
-cd agent
-echo "build: running agent/build"
-./build
+echo "root/build: running agent/build"
+./agent/build
 
-echo "build: successfully installed all of hinata"
+echo "root/build: successfully installed all of hinata"

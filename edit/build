@@ -8,9 +8,7 @@ then
 	if which uv > /dev/null 2>&1
 	then
 		echo "edit/build: uv installed but hlmd-st not found. installing..."
-		cd ../fmt/highlight
-		./build
-		cd -
+		../fmt/highlight
 	else
 		echo "edit/build: not installing hldm-st because uv not found. lol what are you doing"
 	fi
@@ -19,28 +17,22 @@ fi
 if ! which hnt-chat > /dev/null 2>&1
 then
 	echo "edit/build: hnt-chat not found. installing..."
-	cd ../chat
-	./build
-	cd -
+	../chat/build
 fi
 
 if ! which hnt-escape > /dev/null 2>&1
 then
 	echo "edit/build: hnt-escape not found. compiling..."
-	cd ../llm
-	./build
-	cd -
+	../llm/build
 fi
 
 if ! which llm-pack > /dev/null 2>&1
 then
 	echo "edit/build: llm-pack not found. compiling..."
-	cd llm-pack
-	./build
-	cd -
+	./llm-pack/build
 fi
 
-prompts_dir=$XDG_CONFIG_HOME/hinata/prompts
+prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
 bin=/usr/local/bin
 
 mkdir -p "$prompts_dir"

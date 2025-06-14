@@ -4,9 +4,7 @@ cd "$(dirname "$0")"
 if ! which hnt-llm > /dev/null 2>&1
 then
 	echo "chat/build: hnt-llm not found. compiling..."
-	cd ../llm
-	./build
-	cd -
+	../llm/build
 fi
 
 chmod +x ./hnt-chat.py
