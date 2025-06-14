@@ -88,7 +88,7 @@
 		// Check if the element is "meaningful" and set a reason
 		const tagNameUpper = element.tagName.toUpperCase();
 		const meaningfulTagHandlers = {
-			INPUT: (attrs) => {
+			INPUT: (element, attrs) => {
 				const props = [];
 				props.push({ key: "type", value: attrs.type || "text" });
 				if (attrs.hasOwnProperty("name"))
@@ -102,17 +102,18 @@
 					props.push({ key: "disabled", value: true });
 				return props;
 			},
-			TEXTAREA: (attrs) => {
+			TEXTAREA: (element, attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("name"))
 					props.push({ key: "name", value: attrs.name });
+				props.push({ key: "value", value: element.value });
 				if (attrs.hasOwnProperty("placeholder"))
 					props.push({ key: "placeholder", value: attrs.placeholder });
 				if (attrs.hasOwnProperty("disabled"))
 					props.push({ key: "disabled", value: true });
 				return props;
 			},
-			BUTTON: (attrs) => {
+			BUTTON: (element, attrs) => {
 				const props = [];
 				// Buttons might not always have a name, but their existence is meaningful.
 				if (attrs.hasOwnProperty("name"))
@@ -121,21 +122,22 @@
 					props.push({ key: "disabled", value: true });
 				return props;
 			},
-			SELECT: (attrs) => {
+			SELECT: (element, attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("name"))
 					props.push({ key: "name", value: attrs.name });
+				props.push({ key: "value", value: element.value });
 				if (attrs.hasOwnProperty("disabled"))
 					props.push({ key: "disabled", value: true });
 				return props;
 			},
-			A: (attrs) => {
+			A: (element, attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("href"))
 					props.push({ key: "href", value: attrs.href });
 				return props;
 			},
-			IMG: (attrs) => {
+			IMG: (element, attrs) => {
 				const props = [];
 				// Order: src, then alt (based on common importance and user example)
 				if (attrs.hasOwnProperty("src"))
@@ -144,19 +146,19 @@
 					props.push({ key: "alt", value: attrs.alt }); // alt can be empty string ""
 				return props;
 			},
-			VIDEO: (attrs) => {
+			VIDEO: (element, attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("src"))
 					props.push({ key: "src", value: attrs.src });
 				return props;
 			},
-			AUDIO: (attrs) => {
+			AUDIO: (element, attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("src"))
 					props.push({ key: "src", value: attrs.src });
 				return props;
 			},
-			LABEL: (attrs) => {
+			LABEL: (element, attrs) => {
 				const props = [];
 				if (attrs.hasOwnProperty("for"))
 					props.push({ key: "for", value: attrs.for });
@@ -165,7 +167,10 @@
 		};
 
 		if (meaningfulTagHandlers[tagNameUpper]) {
-			const props = meaningfulTagHandlers[tagNameUpper](nodeInfo.attributes);
+			const props = meaningfulTagHandlers[tagNameUpper](
+				element,
+				nodeInfo.attributes,
+			);
 			// Only assign if props array is not empty, to keep meaningfulReason null otherwise.
 			// This helps ensure that elements are only considered "meaningful" if they have specific attributes.
 			// Correction: An empty props array is fine and means the tag itself (e.g. <button>) is meaningful.
@@ -174,21 +179,23 @@
 		}
 
 		// Process child nodes, preserving order
-		for (const child of element.childNodes) {
-			if (child.nodeType === Node.TEXT_NODE) {
-				const text = child.nodeValue.trim();
-				if (text) {
-					// Add text node representation
-					nodeInfo.childNodesProcessed.push({ type: "text", value: text });
+		if (tagNameUpper !== "TEXTAREA") {
+			for (const child of element.childNodes) {
+				if (child.nodeType === Node.TEXT_NODE) {
+					const text = child.nodeValue.trim();
+					if (text) {
+						// Add text node representation
+						nodeInfo.childNodesProcessed.push({ type: "text", value: text });
+					}
+				} else if (child.nodeType === Node.ELEMENT_NODE) {
+					const childElementOutput = processElementNode(child, config); // Pass config recursively
+					if (childElementOutput) {
+						// Add processed child element
+						nodeInfo.childNodesProcessed.push(childElementOutput);
+					}
 				}
-			} else if (child.nodeType === Node.ELEMENT_NODE) {
-				const childElementOutput = processElementNode(child, config); // Pass config recursively
-				if (childElementOutput) {
-					// Add processed child element
-					nodeInfo.childNodesProcessed.push(childElementOutput);
-				}
+				// Other node types (comments, etc.) are ignored
 			}
-			// Other node types (comments, etc.) are ignored
 		}
 
 		// NEW HEURISTIC: Collapse wrapper elements
