@@ -247,7 +247,7 @@
 	}
 
 	// Main function to extract page content as a tree structure
-	function extractPageContentTree(userConfig = {}) {
+	function extractPageContentTree(userConfig = {}, elementToIdMap = new Map()) {
 		const config = { ...defaultConfig, ...userConfig }; // Merge user config with defaults
 
 		// Start processing from document.body, as it's the typical container for page content
@@ -280,21 +280,35 @@
 		}
 		collectNodes(rootNode);
 
+		const generatedIds = new Set();
+		const nodesToGetNewId = [];
+
+		// Re-use IDs for existing elements from the previous run
+		for (const node of nodes) {
+			const existingId = elementToIdMap.get(node.domElement);
+			if (existingId && !generatedIds.has(existingId)) {
+				node.id = existingId;
+				generatedIds.add(existingId);
+			} else {
+				// This node is new or its old ID was already used (unlikely), so it needs a new ID
+				nodesToGetNewId.push(node);
+			}
+		}
+
 		const totalIdsNeeded = nodes.length;
 		const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 		let idLength = 1;
 
-		// Use Math.pow() to determine required ID length.
-		// Loop while the number of possible IDs is less than the number needed.
+		// Use Math.pow() to determine required ID length for new IDs.
+		// Loop while the number of possible IDs is less than the number needed for all nodes.
 		while (Math.pow(chars.length, idLength) < totalIdsNeeded) {
 			idLength++;
 		}
-		// A potential edge case: if Math.pow() were to fail because of too many IDs,
-		// we might get stuck, but the number of DOM nodes makes this astronomically unlikely.
-		// Also, if totalIdsNeeded = 0, loop doesn't run, idLength = 1, which is fine.
+		// This length is used for new IDs. It's based on total elements, ensuring
+		// enough capacity for new, unique IDs even if many IDs are reused.
 
-		const generatedIds = new Set();
-		for (const node of nodes) {
+		// Assign new, unique IDs to the remaining nodes.
+		for (const node of nodesToGetNewId) {
 			node.id = generateUniqueId(generatedIds, idLength);
 		}
 
@@ -469,7 +483,18 @@
 		const packContent = () => {
 			const configToUse = { ...defaultConfig, ...userConfig };
 
-			window.contentTree = extractPageContentTree(configToUse);
+			// Build a map from DOM element to existing ID from the previous run, if available.
+			const elementToIdMap = new Map();
+			if (window.els) {
+				for (const id in window.els) {
+					const element = window.els[id];
+					// The element might have been removed from the DOM. No check is needed here;
+					// if it's gone, it won't be in the new tree and this map entry won't be used.
+					elementToIdMap.set(element, id);
+				}
+			}
+
+			window.contentTree = extractPageContentTree(configToUse, elementToIdMap);
 			window.formattedTree = formatTreeToString(
 				window.contentTree,
 				configToUse,
