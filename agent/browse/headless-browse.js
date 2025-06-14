@@ -178,6 +178,29 @@
 			nodeInfo.meaningfulReason = props;
 		}
 
+		// An element is also meaningful if it is contenteditable.
+		if (element.isContentEditable) {
+			if (!nodeInfo.meaningfulReason) {
+				nodeInfo.meaningfulReason = [];
+			}
+		}
+
+		// For meaningful elements, also include role, aria-*, and data-* attributes.
+		if (nodeInfo.meaningfulReason) {
+			const existingKeys = new Set(nodeInfo.meaningfulReason.map((p) => p.key));
+			for (const attr of element.attributes) {
+				const attrName = attr.name;
+				if (
+					(attrName === "role" ||
+						attrName.startsWith("aria-") ||
+						attrName.startsWith("data-")) &&
+					!existingKeys.has(attrName)
+				) {
+					nodeInfo.meaningfulReason.push({ key: attrName, value: attr.value });
+				}
+			}
+		}
+
 		// Process child nodes, preserving order
 		if (tagNameUpper !== "TEXTAREA") {
 			for (const child of element.childNodes) {
