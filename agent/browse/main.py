@@ -329,8 +329,10 @@ def main():
         # First, navigate
         asyncio.run(eval_js(f"window.location.href = '{args.url}'", args.debug))
 
+        # 1749956996 headless-browse already takes care of the loading waiting.
+        # otherwise the LLM can rerun `read` if needed
         # This is a bit racey. We hope the navigation has started.
-        time.sleep(2)
+        # time.sleep(2)
 
         if args.read:
             headless_browse_js_path = get_headless_browse_js_path()
