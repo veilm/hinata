@@ -171,33 +171,105 @@ def get_headless_browse_js_path():
     return headless_browse_js
 
 
+def _get_console_log_wrapper(js_code):
+    """Wraps JS code to capture console.log outputs."""
+    return f"""
+// --- browse-eval wrapper ---
+// This script is designed to be idempotent, so it can be run multiple times.
+// One-time console hook setup
+if (typeof window.bws_eval_hooked === 'undefined') {{
+    window.bws_eval_hooked = true;
+
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleError = console.error;
+
+    const formatArgs = (args) => {{
+        return args.map(arg => {{
+            if (typeof arg === 'object' && arg !== null) {{
+                if (arg instanceof Error) {{
+                    return arg.stack || String(arg);
+                }}
+                try {{
+                    return JSON.stringify(arg, null, 2);
+                }} catch (e) {{
+                    return String(arg);
+                }}
+            }}
+            return String(arg);
+        }}).join(' ');
+    }};
+
+    console.log = function(...args) {{
+        window.bws_output_logs.push(formatArgs(args));
+        // Optionally still call original for debugging in the browser console
+        originalConsoleLog.apply(console, args);
+    }};
+
+    console.warn = function(...args) {{
+        window.bws_output_logs.push('WARNING: ' + formatArgs(args));
+        originalConsoleWarn.apply(console, args);
+    }};
+
+    console.error = function(...args) {{
+        window.bws_output_logs.push('ERROR: ' + formatArgs(args));
+        originalConsoleError.apply(console, args);
+    }};
+}}
+
+// Per-evaluation state
+window.bws_output_logs = [];
+
+(async () => {{
+    try {{
+        // --- User code starts ---
+{js_code}
+        // --- User code ends ---
+    }} catch (error) {{
+        // Also log the error to the output. We push the raw error string
+        // instead of using console.error to avoid the "ERROR:" prefix for
+        // uncaught exceptions.
+        window.bws_output_logs.push(error.stack || String(error));
+    }} finally {{
+        // This 'finally' block ensures that we always return the captured logs,
+        // even if the user's code contains a 'return' statement.
+        // The return value from 'finally' overrides any return from 'try' or 'catch'.
+        return window.bws_output_logs.join('\\n');
+    }}
+}})();
+"""
+
+
 async def read_page(headless_browse_js_path, instant=False, debug=False):
     """
     Reads the current page content using headless-browse.js.
     Saves page content to /tmp/browse/formattedTree.txt, and renames
     an existing formattedTree.txt to formattedTree-prev.txt.
-    Returns the new page content as a string.
+    Returns the new page content as a string of captured logs.
     """
     with open(headless_browse_js_path, "r", encoding="utf-8") as f:
         js_content = f.read()
 
     llm_pack_options = "{ instant: true }" if instant else "{}"
 
-    js_to_run = (
+    # The inner JS to run in the browser. It loads headless-browse.js, then
+    # calls llmPack to process the page, and finally console.logs the result.
+    inner_js = (
         js_content
         + "\n"
-        + "(async () => {"
-        + f" await llmPack({llm_pack_options});"
-        + " llmDisplayVisual();"
-        + " return window.formattedTree;"
-        + "})()"
+        + f"await llmPack({llm_pack_options});\n"
+        + "llmDisplayVisual();\n"
+        + "if (window.formattedTree) { console.log(window.formattedTree); }"
     )
 
-    formatted_tree = await eval_js(js_to_run, debug)
+    # This wrapper captures all console.log output.
+    js_to_run = _get_console_log_wrapper(inner_js)
 
-    if formatted_tree is None:
+    page_content = await eval_js(js_to_run, debug)
+
+    if page_content is None:
         panic(
-            "read_page: formatted_tree is None. JS execution might have failed silently."
+            "read_page: page_content is None. JS execution might have failed silently."
         )
 
     browse_tmp_dir = "/tmp/browse"
@@ -210,9 +282,9 @@ async def read_page(headless_browse_js_path, instant=False, debug=False):
         shutil.move(formatted_tree_path, formatted_tree_prev_path)
 
     with open(formatted_tree_path, "w", encoding="utf-8") as f:
-        f.write(formatted_tree)
+        f.write(page_content)
 
-    return formatted_tree
+    return page_content
 
 
 def main():
@@ -322,8 +394,9 @@ def main():
         if not js_code.strip():
             return
 
-        result = asyncio.run(eval_js(js_code, args.debug))
-        if result is not None:
+        wrapped_js_code = _get_console_log_wrapper(js_code)
+        result = asyncio.run(eval_js(wrapped_js_code, args.debug))
+        if result:
             print(result)
     elif args.command == "open":
         # First, navigate
