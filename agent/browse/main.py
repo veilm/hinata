@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 
-import sys
+import argparse
+import asyncio
+import json
 import os
+import random
 import shutil
 import subprocess
-import tempfile
-from pathlib import Path
+import sys
+import time
+import urllib.request
+import websockets
+
+CDP_PORT = 58205
+DEFAULT_URL = "about:blank"
+CDP_DIR = "/tmp/hnt-agent-cdp"
+CONNECTED_FILE = os.path.join(CDP_DIR, "connected.json")
+# USER_DATA_DIR = os.path.join(CDP_DIR, "user-data")
 
 
 def panic(msg):
@@ -15,179 +26,201 @@ def panic(msg):
 
 
 def check_dependencies():
-    """Checks for required executables and files. Returns path to headless-browse.js."""
-    if not shutil.which("qb-eval"):
-        panic("'qb-eval' not found in PATH")
-    if not shutil.which("qutebrowser"):
-        panic("'qutebrowser' not found in PATH")
-    if not shutil.which("git"):
-        panic("'git' not found in PATH")
-
-    xdg_data_home = Path(
-        os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
-    )
-    headless_browse_js = xdg_data_home / "hinata/agent/web/headless-browse.js"
-
-    if not headless_browse_js.is_file():
-        panic(f"headless-browse.js not found at {headless_browse_js}")
-
-    return headless_browse_js
+    """Checks for required executables."""
+    for exe in ["chromium", "chromium-browser"]:
+        if shutil.which(exe):
+            return exe
+    panic("'chromium' or 'chromium-browser' not found in PATH")
 
 
-def start_session():
-    """Starts a qutebrowser session if one is not already running."""
+def start_session(url, port):
+    """Starts a Chromium session and connects to it."""
+    executable = check_dependencies()
+    # os.makedirs(USER_DATA_DIR, exist_ok=True)
+
+    command = [
+        executable,
+        f"--remote-debugging-port={port}",
+        # f"--user-data-dir={USER_DATA_DIR}",
+        url,
+    ]
+    print(command)
+
     try:
-        subprocess.run(["pgrep", "qutebrowser"], check=True, capture_output=True)
-        print("WARNING: qutebrowser is already running.", file=sys.stderr)
-    except subprocess.CalledProcessError:
-        # qutebrowser is not running, start it in the background.
-        subprocess.Popen(["qutebrowser", "qute://help/changelog.html"])
+        subprocess.Popen(command)
+        print(f"Chromium started.", file=sys.stderr)
+    except FileNotFoundError:
+        panic(f"'{executable}' not found. Please install it.")
+
+    # Wait for browser to start up
+    time.sleep(1)
+
+    # Automatically connect
+    print("Connecting...", file=sys.stderr)
+    connect(port, url)
 
 
-def eval_js(js_code):
-    """Evaluates JavaScript code using qb-eval."""
-    # qutebrowser displays the direct output on the screen which we don't want,
-    # because it gets messy. Having undefined at the end will silence it.
-    js_code += "\n; undefined"
-
-    # Pipe JS to qb-eval and capture its stdout. Stderr is forwarded to ours.
-    result = subprocess.run(["qb-eval"], input=js_code.encode(), capture_output=True)
-    if result.stderr:
-        sys.stderr.buffer.write(result.stderr)
-    return result.stdout.decode("utf-8")
-
-
-def open_url(url):
-    """Opens a URL in qutebrowser."""
-    command = f":open {url}"
-    subprocess.run(["qutebrowser", command])
-
-
-def read_page(headless_browse_js_path, instant=False):
+def connect(port, url_to_find):
     """
-    Reads the current page content using headless-browse.js.
-    Saves page content to /tmp/browse/formattedTree.txt, and renames
-    an existing formattedTree.txt to formattedTree-prev.txt.
-    Returns the new page content as a string.
+    Connects to a CDP target and saves connection info.
     """
-    with open(headless_browse_js_path, "r", encoding="utf-8") as f:
-        js_content = f.read()
-    llm_pack_options = "{ instant: true }" if instant else ""
-    js_to_run = (
-        js_content
-        + f"""\n
-await llmPack({llm_pack_options});
-llmDisplayVisual();
-console.log(window.formattedTree);"""
-    )
-    formatted_tree = eval_js(js_to_run)
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list") as response:
+            if response.status != 200:
+                panic(f"HTTP request failed with status {response.status}")
 
-    browse_tmp_dir = Path("/tmp/browse")
-    browse_tmp_dir.mkdir(parents=True, exist_ok=True)
+            data = json.loads(response.read().decode("utf-8"))
+            target_page = None
+            for page in data:
+                if page.get("url") == url_to_find and page.get("type") == "page":
+                    target_page = page
+                    break
 
-    formatted_tree_path = browse_tmp_dir / "formattedTree.txt"
-    formatted_tree_prev_path = browse_tmp_dir / "formattedTree-prev.txt"
+            if target_page:
+                os.makedirs(CDP_DIR, exist_ok=True)
+                with open(CONNECTED_FILE, "w") as f:
+                    json.dump(target_page, f, indent=4)
+                print(f"Connected to {url_to_find}", file=sys.stderr)
+            else:
+                page_urls = [p.get("url", "N/A") for p in data]
+                panic(
+                    f"Could not find a page with URL: {url_to_find}.\n"
+                    f"Available page URLs: {page_urls}"
+                )
+    except urllib.error.URLError as e:
+        panic(
+            f"Could not connect to browser on port {port}. Is it running with --remote-debugging-port={port}? Error: {e}"
+        )
+    except Exception as e:
+        panic(f"An error occurred: {e}")
 
-    if formatted_tree_path.is_file():
-        shutil.move(formatted_tree_path, formatted_tree_prev_path)
 
-    with open(formatted_tree_path, "w", encoding="utf-8") as f:
-        f.write(formatted_tree)
+async def eval_js(js_code, debug=False):
+    """
+    Evaluates JavaScript in the connected tab via CDP.
+    """
+    if not os.path.exists(CONNECTED_FILE):
+        panic("Not connected. Run 'start' or 'connect' command first.")
 
-    return formatted_tree
+    with open(CONNECTED_FILE, "r") as f:
+        connection_info = json.load(f)
+
+    ws_url = connection_info.get("webSocketDebuggerUrl")
+    if not ws_url:
+        panic(f"webSocketDebuggerUrl not found in {CONNECTED_FILE}")
+
+    try:
+        async with websockets.connect(ws_url) as websocket:
+            request_id = random.randint(0, 1000000000)
+            payload = {
+                "id": request_id,
+                "method": "Runtime.evaluate",
+                "params": {"expression": js_code, "awaitPromise": True},
+            }
+            if debug:
+                print(f"-> {json.dumps(payload)}", file=sys.stderr)
+            await websocket.send(json.dumps(payload))
+
+            while True:
+                response_raw = await websocket.recv()
+                if debug:
+                    print(f"<- {response_raw}", file=sys.stderr)
+                response = json.loads(response_raw)
+
+                if response.get("id") == request_id:
+                    if "error" in response:
+                        panic(f"CDP error: {response['error']['message']}")
+
+                    result_wrapper = response.get("result", {})
+                    if "exceptionDetails" in result_wrapper:
+                        exc_details = result_wrapper["exceptionDetails"]["exception"]
+                        panic(
+                            f"JS exception: {exc_details.get('description', 'No description')}"
+                        )
+
+                    result = result_wrapper.get("result", {})
+
+                    result_type = result.get("type")
+                    result_subtype = result.get("subtype")
+
+                    if result_type == "undefined":
+                        pass
+                    elif result_subtype == "null":
+                        print("null")
+                    elif result_type == "object":
+                        print(result.get("description", "[object Object]"))
+                    elif "value" in result:
+                        print(result["value"])
+
+                    break
+    except Exception as e:
+        panic(f"An error occurred during WebSocket communication: {e}")
 
 
 def main():
-    """Parses command-line arguments and executes the corresponding command."""
-    usage = f"""Usage: {sys.argv[0]} <command> [args]
-Commands:
-  start          Starts a qutebrowser session if not running
-  eval           Reads JS from stdin and evaluates it
-  open [--read] [--instant] <URL>     Opens a URL and optionally reads it
-  read [--instant]           Reads the content of the current page
-  read-diff [--instant]      Reads the current page and diffs with the previous read"""
+    """
+    Main function to parse arguments and execute commands.
+    """
+    parser = argparse.ArgumentParser(
+        description="A tool for controlling a browser via Chrome DevTools Protocol."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    headless_browse_js_path = check_dependencies()
+    # start command
+    start_parser = subparsers.add_parser(
+        "start", help="Start a new chromium instance and connect to it."
+    )
+    start_parser.add_argument(
+        "--url", default=DEFAULT_URL, help=f"URL to open (default: {DEFAULT_URL})."
+    )
+    start_parser.add_argument(
+        "--port", type=int, default=CDP_PORT, help=f"CDP port (default: {CDP_PORT})."
+    )
 
-    if len(sys.argv) < 2:
-        panic(f"No command specified.\n{usage}")
+    # connect command
+    connect_parser = subparsers.add_parser(
+        "connect", help="Connect to an existing browser tab."
+    )
+    connect_parser.add_argument(
+        "--port", type=int, default=CDP_PORT, help=f"CDP port (default: {CDP_PORT})."
+    )
+    connect_parser.add_argument(
+        "--url",
+        default=DEFAULT_URL,
+        help=f"URL of the tab to connect to (default: {DEFAULT_URL}).",
+    )
 
-    command = sys.argv[1]
+    # eval command
+    eval_parser = subparsers.add_parser(
+        "eval", help="Evaluate JavaScript in the connected tab."
+    )
+    eval_parser.add_argument(
+        "js",
+        nargs="?",
+        default=None,
+        help="JavaScript to evaluate. Reads from stdin if not provided.",
+    )
+    eval_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show CDP communication.",
+    )
 
-    if command == "start":
-        if len(sys.argv) != 2:
-            panic(f"'start' command takes no arguments.\n{usage}")
-        start_session()
-    elif command == "eval":
-        if len(sys.argv) != 2:
-            panic(
-                f"'eval' command takes no arguments; it reads JS from stdin.\n{usage}"
-            )
-        js_code = sys.stdin.read()
-        output = eval_js(js_code)
-        print(output, end="")
-    elif command == "open":
-        args = sys.argv[2:]
-        read_flag = "--read" in args
-        if read_flag:
-            args.remove("--read")
+    args = parser.parse_args()
 
-        instant_flag = "--instant" in args
-        if instant_flag:
-            args.remove("--instant")
+    if args.command == "start":
+        start_session(args.url, args.port)
+    elif args.command == "connect":
+        connect(args.port, args.url)
+    elif args.command == "eval":
+        js_code = args.js
+        if js_code is None:
+            js_code = sys.stdin.read()
 
-        if len(args) != 1:
-            panic(f"'open' command requires exactly one URL argument.\n{usage}")
-        url = args[0]
+        if not js_code.strip():
+            return
 
-        open_url(url)
-        if read_flag:
-            page_content = read_page(headless_browse_js_path, instant=instant_flag)
-            print(page_content, end="")
-    elif command == "read":
-        args = sys.argv[2:]
-        instant_flag = "--instant" in args
-        if instant_flag:
-            args.remove("--instant")
-
-        if args:
-            panic(f"'read' command takes at most one argument: --instant.\n{usage}")
-
-        page_content = read_page(headless_browse_js_path, instant=instant_flag)
-        print(page_content, end="")
-    elif command == "read-diff":
-        args = sys.argv[2:]
-        instant_flag = "--instant" in args
-        if instant_flag:
-            args.remove("--instant")
-
-        if args:
-            panic(
-                f"'read-diff' command takes at most one argument: --instant.\n{usage}"
-            )
-
-        # This call will handle saving new tree and moving old one
-        read_page(headless_browse_js_path, instant=instant_flag)
-
-        browse_tmp_dir = Path("/tmp/browse")
-        formatted_tree_path = browse_tmp_dir / "formattedTree.txt"
-        formatted_tree_prev_path = browse_tmp_dir / "formattedTree-prev.txt"
-
-        if not formatted_tree_prev_path.exists():
-            # Create empty prev file if it doesn't exist for the diff
-            formatted_tree_prev_path.touch()
-
-        subprocess.run(
-            [
-                "git",
-                "diff",
-                "--no-index",
-                str(formatted_tree_prev_path),
-                str(formatted_tree_path),
-            ]
-        )
-    else:
-        panic(f"Unknown command: '{command}'.\n{usage}")
+        asyncio.run(eval_js(js_code, args.debug))
 
 
 if __name__ == "__main__":
