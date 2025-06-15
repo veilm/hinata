@@ -98,6 +98,7 @@ def connect(port, url_to_find):
 async def eval_js(js_code, debug=False):
     """
     Evaluates JavaScript in the connected tab via CDP.
+    Returns the result of the evaluation.
     """
     if not os.path.exists(CONNECTED_FILE):
         panic("Not connected. Run 'start' or 'connect' command first.")
@@ -139,22 +140,79 @@ async def eval_js(js_code, debug=False):
                         )
 
                     result = result_wrapper.get("result", {})
-
                     result_type = result.get("type")
                     result_subtype = result.get("subtype")
 
                     if result_type == "undefined":
-                        pass
+                        return None
                     elif result_subtype == "null":
-                        print("null")
+                        return "null"
                     elif result_type == "object":
-                        print(result.get("description", "[object Object]"))
+                        return result.get("description", "[object Object]")
                     elif "value" in result:
-                        print(result["value"])
-
-                    break
+                        return result["value"]
+                    return None
     except Exception as e:
         panic(f"An error occurred during WebSocket communication: {e}")
+
+
+def get_headless_browse_js_path():
+    """Checks for headless-browse.js and returns its path."""
+    default_xdg_data_home = os.path.join(os.path.expanduser("~"), ".local", "share")
+    xdg_data_home = os.environ.get("XDG_DATA_HOME", default_xdg_data_home)
+
+    headless_browse_js = os.path.join(
+        xdg_data_home, "hinata/agent/web/headless-browse.js"
+    )
+
+    if not os.path.isfile(headless_browse_js):
+        panic(f"headless-browse.js not found at {headless_browse_js}")
+
+    return headless_browse_js
+
+
+async def read_page(headless_browse_js_path, instant=False, debug=False):
+    """
+    Reads the current page content using headless-browse.js.
+    Saves page content to /tmp/browse/formattedTree.txt, and renames
+    an existing formattedTree.txt to formattedTree-prev.txt.
+    Returns the new page content as a string.
+    """
+    with open(headless_browse_js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    llm_pack_options = "{ instant: true }" if instant else "{}"
+
+    js_to_run = (
+        js_content
+        + "\n"
+        + "(async () => {"
+        + f" await llmPack({llm_pack_options});"
+        + " llmDisplayVisual();"
+        + " return window.formattedTree;"
+        + "})()"
+    )
+
+    formatted_tree = await eval_js(js_to_run, debug)
+
+    if formatted_tree is None:
+        panic(
+            "read_page: formatted_tree is None. JS execution might have failed silently."
+        )
+
+    browse_tmp_dir = "/tmp/browse"
+    os.makedirs(browse_tmp_dir, exist_ok=True)
+
+    formatted_tree_path = os.path.join(browse_tmp_dir, "formattedTree.txt")
+    formatted_tree_prev_path = os.path.join(browse_tmp_dir, "formattedTree-prev.txt")
+
+    if os.path.exists(formatted_tree_path):
+        shutil.move(formatted_tree_path, formatted_tree_prev_path)
+
+    with open(formatted_tree_path, "w", encoding="utf-8") as f:
+        f.write(formatted_tree)
+
+    return formatted_tree
 
 
 def main():
@@ -206,6 +264,50 @@ def main():
         help="Show CDP communication.",
     )
 
+    # open command
+    open_parser = subparsers.add_parser(
+        "open",
+        help="Open a URL. This will change the URL of the currently connected tab.",
+    )
+    open_parser.add_argument("url", help="URL to open.")
+    open_parser.add_argument(
+        "--read", action="store_true", help="Read the page after opening."
+    )
+    open_parser.add_argument(
+        "--instant", action="store_true", help="Use instant mode for reading."
+    )
+    open_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show CDP communication.",
+    )
+
+    # read command
+    read_parser = subparsers.add_parser(
+        "read", help="Read the content of the current page."
+    )
+    read_parser.add_argument(
+        "--instant", action="store_true", help="Use instant mode for reading."
+    )
+    read_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show CDP communication.",
+    )
+
+    # read-diff command
+    read_diff_parser = subparsers.add_parser(
+        "read-diff", help="Read the current page and diffs with the previous read."
+    )
+    read_diff_parser.add_argument(
+        "--instant", action="store_true", help="Use instant mode for reading."
+    )
+    read_diff_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show CDP communication.",
+    )
+
     args = parser.parse_args()
 
     if args.command == "start":
@@ -220,7 +322,53 @@ def main():
         if not js_code.strip():
             return
 
-        asyncio.run(eval_js(js_code, args.debug))
+        result = asyncio.run(eval_js(js_code, args.debug))
+        if result is not None:
+            print(result)
+    elif args.command == "open":
+        # First, navigate
+        asyncio.run(eval_js(f"window.location.href = '{args.url}'", args.debug))
+
+        # This is a bit racey. We hope the navigation has started.
+        time.sleep(2)
+
+        if args.read:
+            headless_browse_js_path = get_headless_browse_js_path()
+            page_content = asyncio.run(
+                read_page(headless_browse_js_path, args.instant, args.debug)
+            )
+            print(page_content, end="")
+    elif args.command == "read":
+        headless_browse_js_path = get_headless_browse_js_path()
+        page_content = asyncio.run(
+            read_page(headless_browse_js_path, args.instant, args.debug)
+        )
+        print(page_content, end="")
+    elif args.command == "read-diff":
+        headless_browse_js_path = get_headless_browse_js_path()
+        # This call will handle saving new tree and moving old one
+        asyncio.run(read_page(headless_browse_js_path, args.instant, args.debug))
+
+        browse_tmp_dir = "/tmp/browse"
+        formatted_tree_path = os.path.join(browse_tmp_dir, "formattedTree.txt")
+        formatted_tree_prev_path = os.path.join(
+            browse_tmp_dir, "formattedTree-prev.txt"
+        )
+
+        if not os.path.exists(formatted_tree_prev_path):
+            # Create empty prev file if it doesn't exist for the diff
+            with open(formatted_tree_prev_path, "w") as f:
+                pass
+
+        subprocess.run(
+            [
+                "git",
+                "diff",
+                "--no-index",
+                str(formatted_tree_prev_path),
+                str(formatted_tree_path),
+            ]
+        )
 
 
 if __name__ == "__main__":
