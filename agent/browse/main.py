@@ -33,7 +33,7 @@ def check_dependencies():
     panic("'chromium' or 'chromium-browser' not found in PATH")
 
 
-def start_session(url, port):
+def start_session(url, port, debug=False):
     """Starts a Chromium session and connects to it."""
     executable = check_dependencies()
     # os.makedirs(USER_DATA_DIR, exist_ok=True)
@@ -44,10 +44,15 @@ def start_session(url, port):
         # f"--user-data-dir={USER_DATA_DIR}",
         url,
     ]
-    print(command)
+    # print(command)
+
+    popen_kwargs = {}
+    if not debug:
+        popen_kwargs["stdout"] = subprocess.DEVNULL
+        popen_kwargs["stderr"] = subprocess.DEVNULL
 
     try:
-        subprocess.Popen(command)
+        subprocess.Popen(command, **popen_kwargs)
         print(f"Chromium started.", file=sys.stderr)
     except FileNotFoundError:
         panic(f"'{executable}' not found. Please install it.")
@@ -306,6 +311,11 @@ def main():
     start_parser.add_argument(
         "--port", type=int, default=CDP_PORT, help=f"CDP port (default: {CDP_PORT})."
     )
+    start_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show chromium stdout/stderr.",
+    )
 
     # connect command
     connect_parser = subparsers.add_parser(
@@ -383,7 +393,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "start":
-        start_session(args.url, args.port)
+        start_session(args.url, args.port, args.debug)
     elif args.command == "connect":
         connect(args.port, args.url)
     elif args.command == "eval":

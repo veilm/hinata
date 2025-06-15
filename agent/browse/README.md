@@ -54,7 +54,7 @@ The tool works by managing a connection to a specific browser tab. You start a s
 
 ### Commands
 
--   `browse start [--url <url>] [--port <port>]`
+-   `browse start [--debug] [--url <url>] [--port <port>]`
     Starts a new Chromium instance and connects to it. The connection information is saved locally for subsequent commands.
 
 -   `browse connect [--url <url>] [--port <port>]`
