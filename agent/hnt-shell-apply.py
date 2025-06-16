@@ -4,6 +4,7 @@ import sys
 import os
 import argparse
 import subprocess
+import re
 
 
 def find_hnt_shell_commands(input_text):
@@ -76,7 +77,9 @@ def main():
     input_buffer = sys.stdin.read()
 
     if args.escape_backticks:
-        input_buffer = input_buffer.replace("`", "\\`")
+        # Use a negative lookbehind to replace backticks that are not already preceded by a backslash.
+        # This fulfills the request to skip escaping if one or more backslashes are already present.
+        input_buffer = re.sub(r"(?<!\\)`", r"\\`", input_buffer)
 
     hnt_shell_blocks = find_hnt_shell_commands(input_buffer)
 
