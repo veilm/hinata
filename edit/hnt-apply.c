@@ -815,6 +815,70 @@ int process_block(const char *shared_root, char **abs_input_paths,
 	char canonical_path_buf[PATH_MAX];  // Buffer for realpath result
 	char *resolved_path_str =
 	    realpath(constructed_path_buf, canonical_path_buf);
+
+	// If realpath failed because the path doesn't exist, try to correct for
+	// CWD/rel_path overlap.
+	if (!resolved_path_str && errno == ENOENT) {
+		size_t shared_len = strlen(shared_root);
+		// Don't try to correct if shared_root is just "/" to avoid weird
+		// overlaps.
+		if (shared_len > 1) {
+			size_t rel_len = strlen(rel_path);
+			size_t max_overlap = 0;
+
+			// Find the longest suffix of shared_root that is also a prefix of
+			// rel_path, on path boundaries.
+			for (size_t i = 1; i <= shared_len && i <= rel_len; ++i) {
+				const char *shared_suffix = shared_root + shared_len - i;
+				if (strncmp(shared_suffix, rel_path, i) == 0) {
+					int shared_boundary_ok =
+					    (shared_len == i) || (*(shared_suffix - 1) == '/');
+					int rel_boundary_ok =
+					    (rel_len == i) || (rel_path[i] == '/');
+
+					if (shared_boundary_ok && rel_boundary_ok) {
+						max_overlap = i;
+					}
+				}
+			}
+
+			if (max_overlap > 0) {
+				const char *new_rel_path_start = rel_path + max_overlap;
+				if (*new_rel_path_start == '/') {
+					new_rel_path_start++;
+				}
+
+				if (verbose_mode) {
+					printf(
+					    "hnt-apply: Original path '%s' not found. "
+					    "Detected overlap of %zu characters. Trying alternate "
+					    "relative path '%s'.\n",
+					    constructed_path_buf, max_overlap, new_rel_path_start);
+				}
+
+				char new_constructed_path[PATH_MAX];
+				int new_written =
+				    snprintf(new_constructed_path, PATH_MAX, "%s/%s",
+				             shared_root, new_rel_path_start);
+
+				if (new_written >= 0 && new_written < PATH_MAX) {
+					// Try resolving the new path. If successful, update
+					// resolved_path_str and constructed_path_buf.
+					char *new_resolved_path =
+					    realpath(new_constructed_path, canonical_path_buf);
+					if (new_resolved_path) {
+						resolved_path_str = new_resolved_path;
+						strcpy(constructed_path_buf, new_constructed_path);
+					} else if (errno == ENOENT) {
+						// if the new path also doesn't exist, update
+						// constructed_path_buf so the file creation logic
+						// uses the corrected path.
+						strcpy(constructed_path_buf, new_constructed_path);
+					}
+				}
+			}
+		}
+	}
 	char *path_to_operate_on;  // This will point to either resolved_path_str or
 	                           // constructed_path_buf
 
