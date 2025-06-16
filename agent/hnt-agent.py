@@ -692,7 +692,11 @@ cat /etc/os-release
             args,
             "Running hnt-shell-apply with fake assistant shell command (initial info) as stdin...",
         )
-        hnt_shell_apply_cmd_fake_initial = ["hnt-shell-apply", session_name]
+        hnt_shell_apply_cmd_fake_initial = [
+            "hnt-shell-apply",
+            session_name,
+            "--escape-backticks",
+        ]
         debug_log(
             args,
             "hnt-shell-apply command (fake initial):",
@@ -898,7 +902,11 @@ cat /etc/os-release
                     debug_log(
                         args, "Running hnt-shell-apply with LLM message as stdin..."
                     )
-                    hnt_shell_apply_cmd = ["hnt-shell-apply", session_name]
+                    hnt_shell_apply_cmd = [
+                        "hnt-shell-apply",
+                        session_name,
+                        "--escape-backticks",
+                    ]
                     debug_log(args, "hnt-shell-apply command:", hnt_shell_apply_cmd)
 
                     shell_apply_process = run_command(

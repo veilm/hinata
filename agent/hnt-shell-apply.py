@@ -45,7 +45,7 @@ def main():
             "hnt-shell-apply: Takes hnt-shell formatted stdin, executes it via headlesh, "
             "and returns structured output.\n\n"
             'Usage: echo "<hnt-shell>\\ncommand\\n</hnt-shell>" | '
-            "hnt-shell-apply <session_id> [--always-streams] [--exclude-executed]"
+            "hnt-shell-apply <session_id> [--always-streams] [--exclude-executed] [--escape-backticks]"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -60,6 +60,11 @@ def main():
         action="store_true",
         help="Do not include the <executed> section in the output.",
     )
+    parser.add_argument(
+        "--escape-backticks",
+        action="store_true",
+        help="Escape backticks in the input (` -> \\`).",
+    )
 
     args = parser.parse_args()
 
@@ -69,6 +74,9 @@ def main():
         sys.exit(1)
 
     input_buffer = sys.stdin.read()
+
+    if args.escape_backticks:
+        input_buffer = input_buffer.replace("`", "\\`")
 
     hnt_shell_blocks = find_hnt_shell_commands(input_buffer)
 
