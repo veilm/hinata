@@ -26,7 +26,19 @@
 	"/tmp/headlesh_err_%d"  // %d for client PID for stderr
 #define STATUS_FIFO_TEMPLATE \
 	"/tmp/headlesh_status_%d"  // %d for client PID for exit status
-#define BUFFER_SIZE 4096       // For general I/O and command construction
+/*
+ * General I/O buffer and in-FIFO message construction size.
+ * NOTE:  The value must be large enough to accommodate the three FIFO paths
+ *        plus a newline each and the script content that follows.  A larger
+ *        value allows users to send longer, multi-line scripts without hitting
+ *        the old 4 KiB ceiling.
+ *
+ *        If you need truly unlimited script sizes you will have to switch to a
+ *        streamed protocol (or send a temp-file path instead of the full
+ *        script).  For now, 64 KiB is a pragmatic compromise that removes the
+ *        most common annoyance while keeping the code-base unchanged.
+ */
+#define BUFFER_SIZE 65536  // 64 KiB
 #define HEADLESH_EXIT_CMD_PAYLOAD "__HEADLESH_INTERNAL_EXIT_CMD__"
 
 // Globals for server cleanup - specific to one daemon instance
