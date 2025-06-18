@@ -1,0 +1,20 @@
+#!/bin/sh
+which msk_pass > /dev/null && export OPENROUTER_API_KEY=$(msk_pass get openrouter_key_rlz_1737128805)
+which alert > /dev/null && alert "TODO shipped creds manager because users are too important to have any"
+
+export HINATA_LLM_MODEL=openrouter/google/gemini-2.5-pro
+hnt-agent --no-confirm -m "please do the following
+1. check the repo status
+2. check if no changes are staged
+	if yes
+		stage ALL the unstaged changes
+	if not
+		don't make any changes to what is staged and what is not
+
+3. view the diff *of the staged changes* only
+2. commit those staged changes with a meaningful message
+	include that the source was \"hnt-agent via util/commit\"
+4. push
+5. report to the user that you're finished
+
+if there are any unstaged changes at this point, leave them as is"
