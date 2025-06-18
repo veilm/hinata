@@ -14,17 +14,17 @@ How it works (in one breath)
 `headlesh create` forks a daemonised server shell, exposes `cmd.fifo`, then waits for envelopes from `headlesh exec`; each envelope contains three temporary FIFO paths and a script. The server sources the script, streams `stdout`/`stderr` back through the FIFOs, writes the numeric exit status, and keeps running until `headlesh exit` tells it to shut down. `headlesh list` reports live sessions.
 
 Key files in this folder  
-• **headlesh.c** – the implementation (see headlesh.md for a quick-reference of all functions/flows)  
+• **headlesh.c** – the implementation (see headlesh.c.md for a quick-reference of all functions/flows)  
 • **build** – POSIX shell script that compiles & installs the binary  
 • **build.md** – human-oriented walkthrough of the build script  
-• **headlesh.md** – in-depth CLI, protocol & control-flow reference (server, client, helpers)
+• **headlesh.c.md** – in-depth CLI, protocol & control-flow reference (server, client, helpers)
 
 Where to read next  
 Need…                      | Read…  
 ---------------------------|------------------------------  
 Build / install details    | **build.md**  
-CLI syntax & examples      | **headlesh.md** → “Four CLI sub-commands”  
-FIFO protocol / invariants | **headlesh.md** → “Control flow” & “Important invariants”  
-Source-level internals     | `headlesh.c` (grep the function names listed in headlesh.md)
+CLI syntax & examples      | **headlesh.c.md** → “Four CLI sub-commands”  
+FIFO protocol / invariants | **headlesh.c.md** → “Control flow” & “Important invariants”  
+Source-level internals     | `headlesh.c` (grep the function names listed in headlesh.c.md)
 
-In most cases **headlesh.md** answers *runtime* questions, while **build.md** answers *compile/install* ones. This file (HINATA.md) is only the map.
+In most cases **headlesh.c.md** answers *runtime* questions, while **build.md** answers *compile/install* ones. This file (HINATA.md) is only the map.

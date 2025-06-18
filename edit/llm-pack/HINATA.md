@@ -33,10 +33,10 @@ Why would I use it?
 
 File tour
 ---------
-main.c          — Implementation of the formatter (see main.md).  
+main.c          — Implementation of the formatter (see main.c.md).  
 build           — 1-liner convenience build / install script (see build.md).  
 build.md        — Explains flags/steps used by the script.  
-main.md         — In-depth walkthrough of `main.c` design and switches.  
+main.c.md       — In-depth walkthrough of `main.c` design and switches.  
 HINATA.md       — (this doc) high-level map.
 
 How the pieces fit
@@ -56,7 +56,7 @@ How the pieces fit
 
 Where to read next
 ------------------
-Need CLI flags / inner workings?           ➜ **main.md**  
+Need CLI flags / inner workings?           ➜ **main.c.md**  
 Wondering about GCC flags / install path?  ➜ **build.md**  
 Just trying to compile/run quickly?        ➜ `build` (shell script itself)
 

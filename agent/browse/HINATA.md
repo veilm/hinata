@@ -7,9 +7,9 @@ of any web page.
 
 Component            | What it is (1-line)                                          | Where to read more
 ---------------------|--------------------------------------------------------------|--------------------
-`headless-browse.js` | In-browser scraper → builds a lightweight DOM tree,          | **headless-browse.md**
+`headless-browse.js` | In-browser scraper → builds a lightweight DOM tree,          | **headless-browse.js.md**
                      | exports helpers `llmPack / llmDisplay / llmDisplayVisual`.   |
-`main.py`            | Command-line wrapper around Chrome DevTools Protocol (CDP)   | **main.md**
+`main.py`            | Command-line wrapper around Chrome DevTools Protocol (CDP)   | **main.py.md**
                      | that starts/attaches to Chromium, injects the JS above,      |
                      | and dumps / diffs the tree.                                  |
 `build` script       | Installs the two artefacts above (`headless-browse.js`       | **build.md**
@@ -27,8 +27,8 @@ Typical developer workflow
 Where to look when…
 --------------------
 Need to…                          → Open…
-• Change which tags are skipped, visibility rules, IDs, etc.     → headless-browse.md  
-• Learn CDP message flow, add a new CLI sub-command, or diagnose | main.md  
+• Change which tags are skipped, visibility rules, IDs, etc.     → headless-browse.js.md  
+• Learn CDP message flow, add a new CLI sub-command, or diagnose | main.py.md  
   a connection issue.                                            |  
 • See installation paths, permission requirements, or package    | build.md  
   your own release.                                              |  

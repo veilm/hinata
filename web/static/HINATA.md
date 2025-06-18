@@ -20,17 +20,17 @@ Quick mental model
 4. External tooling:  
    • Fonts are pulled from Google Fonts.  
    • All data interaction is via the server-side REST API documented inside
-     `js/script.md`.
+     `js/script.js.md`.
 
 Where to dive deeper  
 --------------------
 Need details on… | Open this doc first
 -----------------|---------------------------------
-Overall JS flow / helpers | `js/script.md`
-Conversation list markup | `index.md`
-Conversation detail markup | `conversation.md`
-Design tokens & CSS class names | `css/style.md`
-REST endpoints used | `js/script.md` (API section)
+Overall JS flow / helpers | `js/script.js.md`
+Conversation list markup | `index.html.md`
+Conversation detail markup | `conversation.html.md`
+Design tokens & CSS class names | `css/style.css.md`
+REST endpoints used | `js/script.js.md` (API section)
 
 How the pieces fit together  
 ---------------------------

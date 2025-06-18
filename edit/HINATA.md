@@ -31,8 +31,8 @@ High-level pipeline
 Key files & where to read more
 ------------------------------
 build.md        — What the *build* script does, flags, install paths.  
-hnt-edit.md     — CLI flags, continuation logic, env vars, cleanup.  
-hnt-apply.md    — Exact edit-block grammar, exit codes, internals.  
+hnt-edit.py.md  — CLI flags, continuation logic, env vars, cleanup.  
+hnt-apply.c.md  — Exact edit-block grammar, exit codes, internals.  
 llm-pack/HINATA.md — Deep-dive into the bundler sub-project.
 
 External pieces this dir assumes
@@ -44,8 +44,8 @@ A POSIX shell, gcc/clang for C parts, Python 3.9+ for *hnt-edit*.
 Got stuck?
 ----------
 • “How do I build everything?” → *build.md* (2-min read)  
-• “Why did my edit block fail?” → *hnt-apply.md* (search for *process_block*)  
-• “What args does hnt-edit accept?” → *hnt-edit.md* (top table)  
+• “Why did my edit block fail?” → *hnt-apply.c.md* (search for *process_block*)  
+• “What args does hnt-edit accept?” → *hnt-edit.py.md* (top table)  
 • “Packing algorithm details?” → *llm-pack/HINATA.md*
 
 That’s the big picture—happy hacking!

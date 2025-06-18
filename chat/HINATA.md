@@ -13,7 +13,7 @@ Key deliverables in this folder
 -------------------------------
 | File / doc | Role | Where to look for détails |
 |------------|------|---------------------------|
-| `hnt-chat.py` | Main CLI executable; orchestrates conversation folders, packs messages, and calls the LLM. | `hnt-chat.md` |
+| `hnt-chat.py` | Main CLI executable; orchestrates conversation folders, packs messages, and calls the LLM. | `hnt-chat.py.md` |
 | `build` (shell script) | Installs `hnt-chat` system-wide and compiles its dependency `hnt-llm` if missing. | `build.md` |
 
 External actors this code relies on
@@ -47,7 +47,7 @@ How the pieces fit together
 Cheat-sheet for digging deeper
 ------------------------------
 Need install behaviour?       → open **build.md**  
-Need CLI commands / options?  → open **hnt-chat.md**  
+Need CLI commands / options?  → open **hnt-chat.py.md**  
 Need LLM switches & models?   → see `../llm/` project docs  
 Need Markdown escaping rules? → see `hnt-escape` repo / man-page  
 

@@ -26,10 +26,10 @@ Look at **build.md** for the exact flags & extensibility tips.
 
 Need more detail?
 -----------------
-• Internals of the LLM client → **main.md**  
+• Internals of the LLM client → **main.c.md**  
   (CLI flags, JSON shape, SSE handling, providers table, error paths…)
 
-• The tag filter FSM → **escape.md**  
+• The tag filter FSM → **escape.c.md**  
   (state diagram, corner cases, buffer safety, CLI usage)
 
 External expectations

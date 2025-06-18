@@ -5,9 +5,13 @@ set -euo pipefail
 JXL_INPUT="/home/oboro/media/main/1702582978"
 SNOWFLAKE_IMAGE="./snowflake.png"
 FONT_PATH="/usr/share/fonts/ttf/Tinos-Regular.ttf"
-TEXT_COLOR="#6ec8ff"
-POINT_SIZE=100
-MARGIN=20
+# TEXT_COLOR="#6ec8ff"
+TEXT_COLOR="#fff"
+SNOWFLAKE_COLOR="#6ec8ff" # Color for the snowflake image/emoji
+# POINT_SIZE=100
+POINT_SIZE=200
+# MARGIN=20
+MARGIN=40
 OUTPUT_LOGO="hinata_logo.png"
 
 # --- Mode Selection ---
@@ -47,14 +51,14 @@ if [ "$USE_IMAGE_MODE" = true ]; then
     # Process:
     # a. Load `snowflake.png` and trim whitespace.
     # b. Resize it to match the text height stored in `$TEXT_HEIGHT`.
-    # c. Tint the snowflake to match the text color.
+    # c. Tint the snowflake to its configured color.
     # d. Load the pre-rendered text from the temporary file (`$TMP_TEXT`).
     # e. Append the snowflake and text images horizontally.
     # f. Add the border and composite the JXL overlay as before.
     magick \
         \( "$SNOWFLAKE_IMAGE" -trim \) \
         -resize "x${TEXT_HEIGHT}" \
-        -fill "$TEXT_COLOR" -colorize 100% \
+        -fill "$SNOWFLAKE_COLOR" -colorize 100% \
         "$TMP_TEXT" \
         +append \
         -bordercolor transparent -border "$MARGIN" \
@@ -73,9 +77,8 @@ else
     magick \
         \( \
             -background transparent \
-            -fill "$TEXT_COLOR" \
             -pointsize "$POINT_SIZE" \
-            pango:"<span font_family=\"Noto Color Emoji\">❄️</span><span font_family=\"Tinos\"> hinata</span>" \
+            pango:"<span font_family=\"Noto Color Emoji\" foreground=\"$SNOWFLAKE_COLOR\">❄️</span><span font_family=\"Tinos\" foreground=\"$TEXT_COLOR\"> hinata</span>" \
             -trim +repage \
             -bordercolor transparent -border "$MARGIN" \
         \) \

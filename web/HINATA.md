@@ -27,7 +27,7 @@ FOLDER MAP & WHERE TO READ NEXT
 -------------------------------
 Need to… | Start with
 ---------|-------------------------------
-Understand API routes / server flow | **`hnt-web.md`** → then skim `hnt-web.py`
+Understand API routes / server flow | **`hnt-web.py.md`** → then skim `hnt-web.py`
 Hack on the browser UI              | **`static/HINATA.md`** → then open files in `static/`
 Change install paths / prerequisites | **`build.md`** → and edit the `build` script
 See full CLI capabilities           | *outside scope* → `/src/hinata/chat/` docs & code

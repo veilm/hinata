@@ -15,19 +15,19 @@ plumbing:
 
 | Script             | One-liner purpose                        | Read more in…          |
 |--------------------|------------------------------------------|------------------------|
-| `hnt-agent.py`     | Run an *LLM ⇄ shell* interactive loop    | `hnt-agent.md`         |
-| `hnt-shell-apply.py`| Extract & run the last `<hnt-shell>` block| `hnt-shell-apply.md`   |
+| `hnt-agent.py`     | Run an *LLM ⇄ shell* interactive loop    | `hnt-agent.py.md`      |
+| `hnt-shell-apply.py`| Extract & run the last `<hnt-shell>` block| `hnt-shell-apply.py.md`|
 
 Sub-packages & how they fit
 ---------------------------
 • `headlesh/` — the C binary + docs that keep **long-lived shells** alive.  
   The Python helpers *only* ever call its CLI sub-commands.  
-  → open **headlesh/HINATA.md** first, then **headlesh.md** or `headlesh.c`.
+  → open **headlesh/HINATA.md** first, then **headlesh.c.md** or `headlesh.c`.
 
 • `browse/`   — CDP wrapper + tiny in-browser scraper that turns any web page
   into a clean text/tree for the LLM.  
-  → start with **browse/HINATA.md**, then dive into `headless-browse.md` or
-  `main.md`.
+  → start with **browse/HINATA.md**, then dive into `headless-browse.js.md` or
+  `main.py.md`.
 
 • `prompts/`  — default system- and role-prompts copied into
   `$XDG_CONFIG_HOME/hinata/prompts` by `./build`.
@@ -50,10 +50,10 @@ Where to look when…
 --------------------
 Need to…                             | Open this doc
 -------------------------------------|---------------------------------------------
-Understand the **shell backend**     | `headlesh/HINATA.md` → `headlesh.md`
-Tweak **web scraping** rules         | `browse/HINATA.md` → `headless-browse.md`
-Modify the **agent loop / flags**    | `hnt-agent.md`
-Change tag parsing / CLI of apply-er | `hnt-shell-apply.md`
+Understand the **shell backend**     | `headlesh/HINATA.md` → `headlesh.c.md`
+Tweak **web scraping** rules         | `browse/HINATA.md` → `headless-browse.js.md`
+Modify the **agent loop / flags**    | `hnt-agent.py.md`
+Change tag parsing / CLI of apply-er | `hnt-shell-apply.py.md`
 See **install paths** or build steps | `build.md`
 
 External tools referenced
