@@ -3,43 +3,84 @@ set -euo pipefail
 
 # --- Configuration ---
 JXL_INPUT="/home/oboro/media/main/1702582978"
+SNOWFLAKE_IMAGE="./snowflake.png"
+FONT_PATH="/usr/share/fonts/ttf/Tinos-Regular.ttf"
 TEXT_COLOR="#6ec8ff"
 POINT_SIZE=100
 MARGIN=20
 OUTPUT_LOGO="hinata_logo.png"
 
+# --- Mode Selection ---
+USE_IMAGE_MODE=false
+# A simple check for a command-line flag.
+if [[ "${1:-}" == "--use-image" ]]; then
+    USE_IMAGE_MODE=true
+fi
+
 # --- Script Logic ---
-echo "Generating logo with new composition..."
+if [ "$USE_IMAGE_MODE" = true ]; then
+    echo "Generating logo using snowflake image..."
+    if [ ! -f "$SNOWFLAKE_IMAGE" ]; then
+        echo "Error: Snowflake image not found at $SNOWFLAKE_IMAGE" >&2
+        exit 1
+    fi
 
-# This ImageMagick command uses the Pango text rendering engine to create the logo.
-# Pango is capable of handling complex text layout, including mixed fonts for
-# standard text and emojis, which solves rendering issues.
-#
-# Process:
-# 1. A sub-process `\( ... \)` creates the text layer in memory:
-#    a. `-background transparent` ensures the text has no solid background.
-#    b. `pango:"<markup>"` renders the text. The Pango markup specifies different
-#       fonts for the emoji (Noto Color Emoji) and the text (Tinos) in a single string.
-#    c. Text is filled with `$TEXT_COLOR` and sized with `$POINT_SIZE`.
-#    d. `-trim +repage` crops any extra whitespace around the rendered text.
-#    e. `-bordercolor transparent -border` adds a transparent margin.
-#
-# 2. The main process loads the JXL image (`$JXL_INPUT`).
-#
-# 3. It composites the JXL onto the generated text layer:
-#    a. `-gravity center` aligns the JXL to the center of the text layer.
-#    b. `-compose over -composite` places the JXL on top.
-#    c. The final image dimensions are implicitly those of the text-plus-margin layer.
+    # The previous single-command `magick` process proved unreliable. This has been
+    # rewritten into a more robust, explicit two-step process using a temporary file.
 
-magick \
-    \( \
-        -background transparent \
-        -fill "$TEXT_COLOR" \
-        -pointsize "$POINT_SIZE" \
-        pango:"<span font_family=\"Noto Color Emoji\">❄️</span><span font_family=\"Tinos\"> hinata</span>" \
-        -trim +repage \
+    # Step 1: Render the text to a temporary file to determine its exact height.
+    # A temporary file is created and we ensure it's cleaned up on script exit.
+    TMP_TEXT=$(mktemp --suffix=.png)
+    trap 'rm -f "$TMP_TEXT"' EXIT
+
+    # Create the " hinata" text image and save it to the temporary file.
+    magick \
+        -background transparent -fill "$TEXT_COLOR" -font "$FONT_PATH" \
+        -pointsize "$POINT_SIZE" label:" hinata" -trim +repage \
+        "$TMP_TEXT"
+
+    # Use `identify` to get the height of the rendered text.
+    TEXT_HEIGHT=$(identify -format '%h' "$TMP_TEXT")
+
+    # Step 2: Assemble the final image using the known text height.
+    # This command now works with a concrete height, which is more reliable.
+    # Process:
+    # a. Load `snowflake.png` and trim whitespace.
+    # b. Resize it to match the text height stored in `$TEXT_HEIGHT`.
+    # c. Tint the snowflake to match the text color.
+    # d. Load the pre-rendered text from the temporary file (`$TMP_TEXT`).
+    # e. Append the snowflake and text images horizontally.
+    # f. Add the border and composite the JXL overlay as before.
+    magick \
+        \( "$SNOWFLAKE_IMAGE" -trim \) \
+        -resize "x${TEXT_HEIGHT}" \
+        -fill "$TEXT_COLOR" -colorize 100% \
+        "$TMP_TEXT" \
+        +append \
         -bordercolor transparent -border "$MARGIN" \
-    \) \
-    "$JXL_INPUT" -gravity center -compose over -composite "$OUTPUT_LOGO"
+        "$JXL_INPUT" -gravity center -compose over -composite \
+        "$OUTPUT_LOGO"
+
+else
+    echo "Generating logo using emoji font (Pango)..."
+
+    # This command uses the Pango text rendering engine, which correctly handles
+    # font fallback for rendering both standard text and emojis.
+    # Process:
+    # 1. A sub-process \`\( ... \)\` creates the text layer in memory using pango.
+    #    The markup \`<span font_family="...">\` specifies the exact font for each part of the string.
+    # 2. The rendered graphic is trimmed, a border is added, and it is then composited with the JXL.
+    magick \
+        \( \
+            -background transparent \
+            -fill "$TEXT_COLOR" \
+            -pointsize "$POINT_SIZE" \
+            pango:"<span font_family=\"Noto Color Emoji\">❄️</span><span font_family=\"Tinos\"> hinata</span>" \
+            -trim +repage \
+            -bordercolor transparent -border "$MARGIN" \
+        \) \
+        "$JXL_INPUT" -gravity center -compose over -composite \
+        "$OUTPUT_LOGO"
+fi
 
 echo "Success! Logo created at ./${OUTPUT_LOGO}"
