@@ -1,74 +1,82 @@
-Hinata – Root-Level Developer Quick Reference
-============================================
+# Hinata – Project Root Quick Reference
 
-What is **Hinata**?  
-A self-contained toolbox that glues a large-language model (LLM) to three worlds:
+Welcome to Hinata, a modular, command-line-first suite of tools for interacting with Large Language Models (LLMs). This document provides a high-level map of the entire project.
 
-• Your **POSIX shell & local files** – run code, inspect output, auto-edit.  
-• **Remote model providers** – OpenAI, Gemini, DeepSeek, … via a tiny C client.  
-• **Web browsers / REST UI** – optional FastAPI + static frontend.
+**Start here** to understand the big picture, then dive into the `HINATA.md` files within each subdirectory for component-specific details.
 
-Think “CLI Swiss-army knife for everyday AI-assisted dev work”, not a monolith.
-Every feature lives in a small, build-once, copy-anywhere binary or script.
+## What is Hinata?
 
-Typical runtime paths (bird-eye)
---------------------------------
-1. Terminal assistant  
-   `hnt-agent` (agent/) ─▶ `hnt-chat` (chat/) ─▶ `hnt-llm` (llm/) ─▶ LLM  
-   └─╾  keeps a *headlesh* shell session open and may inject `<hnt-shell>` blocks.
+Hinata is not a single application, but a collection of small, sharp, composable tools designed to bring LLM capabilities into a traditional developer workflow. The philosophy is to create powerful, scriptable utilities that work together, rather than a monolithic GUI.
 
-2. In-place source editing  
-   `hnt-edit` (edit/) → `llm-pack` → **LLM** → `hnt-apply` (edit/) ⇒ patches disk.
+The project is organized into distinct layers, with low-level C binaries providing core functionality and higher-level Python scripts orchestrating them into useful applications.
 
-3. Browser UI  
-   Browser ⇆ `hnt-web` (web/, FastAPI) ⇆ `hnt-chat` ⇒ same data folder as #1.
+## Component Layers & How They Fit
 
-Folder map & when to open each sub-HINATA
------------------------------------------
-Need to… | Jump to
----------|----------------------------------------------
-Run an interactive *LLM ⇄ shell* agent | agent/HINATA.md
-Create / inspect conversations          | chat/HINATA.md
-Call the LLM or tweak provider flags    | llm/HINATA.md
-Apply AI-generated code patches         | edit/HINATA.md
-Serve or hack the web frontend          | web/HINATA.md
+The project follows a clear dependency chain. Higher layers build upon and use the tools provided by the layers below them.
 
-How the pieces fit together
----------------------------
-                         +-------------+
-        +--------------▶ | hnt-llm (C) | ──────▶ Provider HTTP
-        |                +-------------+
-        |                       ▲
-        |                       | (stdin / stdout JSON)
-+--------------+         +-------------+
-| hnt-chat (Py)| ───────▶ | hnt-escape |  (tag filter)
-+--------------+         +-------------+
-      ▲  ▲                    ▲
-      │  └───── used by ──────┘
-      │
- +-----------+     +-----------+
- | hnt-agent |     | hnt-edit  |   (both Python CLIs)
- +-----------+     +-----------+
-      │                 │
-      │                 └──▶ `hnt-apply` / shell / editor
-      └──▶ headlesh (persistent shell) & browse/ (Chromium CDP)
-All binaries/scripts live under `/usr/local/bin` after running each subdir’s
-`build` helper.
+```
++-----------+      +-----------+      +-----------+
+|  web/     |      |  edit/    |      |  agent/   |   (User-Facing Applications)
+| (Web UI)  |      |  (Code   |      | (Shell &   |
+|           |      |   Editor) |      |   Browser) |
++-----+-----+      +-----+-----+      +-----+-----+
+      |                  |                  |
+      |   (uses CLI)     |   (uses CLI)     |   (uses CLI)
+      +------------------+------------------+
+                         |
+                         v
++----------------------------------------------------+
+|               chat/  (hnt-chat)                    |   (Conversation Management)
++----------------------------------------------------+
+                         |
+                         | (uses CLI)
+                         v
++----------------------------------------------------+
+|                 llm/   (hnt-llm)                   |   (Core LLM API Interface)
++----------------------------------------------------+
+                         |
+                         | (HTTPS to external API)
+                         v
+                 +-------------------+
+                 |   3rd-Party LLM   |
+                 +-------------------+
+```
 
-External prerequisites
-----------------------
-• POSIX shell, gcc/clang, Python 3.9+, libcurl, jansson.  
-• Chromium (for agent/browse), FastAPI+uvicorn (for web).  
-• Provider API keys in env (`OPENAI_API_KEY`, etc.).
+### The Layers Explained
 
-One-minute orientation checklist
---------------------------------
-1. Clone → `cd src/hinata/<module>` → `./build` (installs that part).  
-2. Want a REPL with shell access? → `hnt-agent`.  
-3. Need code edits? → `hnt-edit <path>` then follow prompts.  
-4. Prefer a browser? → `python -m hinata.web.hnt_web`.  
+1.  **`llm/` – The Engine**
+    *   **What:** Provides the foundational `hnt-llm` C binary.
+    *   **Job:** Takes text from `stdin`, sends it to a remote LLM API (OpenAI, Claude, etc.), and streams the response to `stdout`. It is the project's only direct link to the outside LLM world.
+    *   **Dive Deeper:** `llm/HINATA.md`
 
-For everything else, open the per-module **HINATA.md** listed above—each is a
-2-3-minute read that links to deeper, per-file docs.
+2.  **`chat/` – The Conversation Hub**
+    *   **What:** The `hnt-chat` Python script.
+    *   **Job:** Wraps `hnt-llm` to add state. It manages conversation history, storing messages as simple files on disk. Nearly all other tools in Hinata use `hnt-chat` instead of calling `hnt-llm` directly.
+    *   **Dive Deeper:** `chat/HINATA.md`
 
-Happy hacking!
+3.  **Application Layers – The User-Facing Tools**
+    These components are distinct applications built on the `chat` layer.
+
+    *   **`edit/` – LLM-Powered Code Editing**
+        *   **Tools:** `hnt-edit`, `llm-pack`, `hnt-apply`.
+        *   **Workflow:** Bundles local source files, asks the LLM (via `hnt-chat`) to generate a patch, and applies it.
+        *   **Dive Deeper:** `edit/HINATA.md`
+
+    *   **`agent/` – Interactive Shell & Web Agent**
+        *   **Tools:** `hnt-agent`, `headlesh` (persistent shell), `browse` (headless web scraper).
+        *   **Workflow:** Creates an interactive loop where an LLM (via `hnt-chat`) can execute shell commands and browse the web to accomplish a goal.
+        *   **Dive Deeper:** `agent/HINATA.md`
+
+    *   **`web/` – Web UI for Chat**
+        *   **Tools:** `hnt-web` (FastAPI server), static HTML/CSS/JS.
+        *   **Workflow:** Provides a simple, local web interface for using the `hnt-chat` functionality from a browser.
+        *   **Dive Deeper:** `web/HINATA.md`
+
+---
+
+## Getting Started: Where to Look First
+
+*   **To build everything:** Each subdirectory has its own `build` script and `build.md` documentation. While they can be built independently, you should generally build in dependency order: `llm`, then `chat`, then the application directories.
+*   **To understand the core model interface:** Start with `llm/HINATA.md`.
+*   **To see how conversations are managed:** Read `chat/HINATA.md`.
+*   **To work on a specific feature (editing, agent, web):** Go directly to the `HINATA.md` in the relevant subdirectory (`edit/`, `agent/`, `web/`). It will serve as your map for that component.
