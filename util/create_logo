@@ -1,0 +1,45 @@
+#!/bin/bash
+set -euo pipefail
+
+# --- Configuration ---
+JXL_INPUT="/home/oboro/media/main/1702582978"
+TEXT_COLOR="#6ec8ff"
+POINT_SIZE=100
+MARGIN=20
+OUTPUT_LOGO="hinata_logo.png"
+
+# --- Script Logic ---
+echo "Generating logo with new composition..."
+
+# This ImageMagick command uses the Pango text rendering engine to create the logo.
+# Pango is capable of handling complex text layout, including mixed fonts for
+# standard text and emojis, which solves rendering issues.
+#
+# Process:
+# 1. A sub-process `\( ... \)` creates the text layer in memory:
+#    a. `-background transparent` ensures the text has no solid background.
+#    b. `pango:"<markup>"` renders the text. The Pango markup specifies different
+#       fonts for the emoji (Noto Color Emoji) and the text (Tinos) in a single string.
+#    c. Text is filled with `$TEXT_COLOR` and sized with `$POINT_SIZE`.
+#    d. `-trim +repage` crops any extra whitespace around the rendered text.
+#    e. `-bordercolor transparent -border` adds a transparent margin.
+#
+# 2. The main process loads the JXL image (`$JXL_INPUT`).
+#
+# 3. It composites the JXL onto the generated text layer:
+#    a. `-gravity center` aligns the JXL to the center of the text layer.
+#    b. `-compose over -composite` places the JXL on top.
+#    c. The final image dimensions are implicitly those of the text-plus-margin layer.
+
+magick \
+    \( \
+        -background transparent \
+        -fill "$TEXT_COLOR" \
+        -pointsize "$POINT_SIZE" \
+        pango:"<span font_family=\"Noto Color Emoji\">❄️</span><span font_family=\"Tinos\"> hinata</span>" \
+        -trim +repage \
+        -bordercolor transparent -border "$MARGIN" \
+    \) \
+    "$JXL_INPUT" -gravity center -compose over -composite "$OUTPUT_LOGO"
+
+echo "Success! Logo created at ./${OUTPUT_LOGO}"
