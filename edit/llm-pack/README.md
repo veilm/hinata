@@ -2,7 +2,7 @@ wow! Unix-abiding code packaging into a prompt
 
 # Basic usage
 ```sh
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/edit/llm-pack
 
 # here's what we currently have in ./test-dir

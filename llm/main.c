@@ -970,7 +970,7 @@ int main(int argc, char* argv[]) {
 		api_key_env_var = "OPENROUTER_API_KEY";
 		// OpenRouter specific headers
 		headers = curl_slist_append(
-		    headers, "HTTP-Referer: https://github.com/michaelskyba/hinata/");
+		    headers, "HTTP-Referer: https://github.com/veilm/hinata/");
 		headers = curl_slist_append(headers, "X-Title: hinata");
 	} else if (strncmp(model_arg, "deepseek/", provider_len + 1) == 0) {
 		api_url_base = DEEPSEEK_API_URL;

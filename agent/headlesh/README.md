@@ -4,7 +4,7 @@ a simple, efficient (no bl*at pty polling) manager of headless shell sessions
 # quickstart
 ```sh
 # compile (no deps)
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/agent/headlesh
 ./build
 

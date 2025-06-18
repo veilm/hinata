@@ -3,7 +3,7 @@ wrapper around `hnt-llm` for managing conversations and message history
 
 ## build
 ```sh
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/chat
 ./build
 ```
@@ -83,7 +83,7 @@ current conversation after it's finished streaming
 - `--output-filename` implies `--write` and will add an additional final line to
 stdout to display the created assistant message's filename
 - `-m|--model MODEL` will pass a model argument to `hnt-llm`. see [available
-model providers](https://github.com/michaelskyba/hinata/tree/main/llm#supported-model-providers)
+model providers](https://github.com/veilm/hinata/tree/main/llm#supported-model-providers)
 - `--merge`: consecutive messages with the same role will be concatenated into a
 single message before being sent to the LLM. useful for organization
 - `--include-reasoning`: Passes `--include-reasoning` to `hnt-llm`. The LLM may

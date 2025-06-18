@@ -1,5 +1,5 @@
 <p align="center">
-<img src="https://raw.githubusercontent.com/michaelskyba/michaelskyba.github.io/refs/heads/master/static/1747511209-hinata-simsun.png" width="217">
+<img src="https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1747511209-hinata-simsun.png" width="217">
 </p>
 
 <p align="center">
@@ -63,13 +63,13 @@ index badefee..5eb3e0d 100644
 ```
 
 in my (inevitably biased) experience, the [included system
-prompt](https://raw.githubusercontent.com/michaelskyba/hinata/refs/heads/main/edit/prompts/main-file_edit.md)'s
+prompt](https://raw.githubusercontent.com/veilm/hinata/refs/heads/main/edit/prompts/main-file_edit.md)'s
 editing performance is higher than Aider's for my usual infra and web use cases,
 as of Apr 2025
 
 # build everything
 ```
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata
 ./build
 ```

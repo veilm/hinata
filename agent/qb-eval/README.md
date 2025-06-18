@@ -3,7 +3,7 @@ simple wrapper of the qutebrowser CLI for JavaScript I/O
 
 ## installation
 ```sh
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/agent/qb-eval
 ./build
 ```

@@ -3,7 +3,7 @@ an initial test for an aider-like system
 
 ## install
 ```sh
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/edit
 ./build
 ```
@@ -20,9 +20,9 @@ $ hnt-edit <file1> [file2 ...] [-m|--message user_message] [--model provider/mod
 
 The LLM will read your user message and use your given files for reference,
 potentially making edits to them using
-[an aider-like TARGET/REPLACE format](https://github.com/michaelskyba/hinata/blob/main/edit/prompts/main-file_edit.md).
+[an aider-like TARGET/REPLACE format](https://github.com/veilm/hinata/blob/main/edit/prompts/main-file_edit.md).
 
-See [the hnt README](https://github.com/michaelskyba/hinata/tree/main/hnt) for
+See [the hnt README](https://github.com/veilm/hinata/tree/main/hnt) for
 the list of supported model providers.
 
 If you don't include a message in the CLI args, `$EDITOR` will be used for
@@ -58,7 +58,7 @@ hnt-edit --continue-dir CHAT_DIR
 ## syntax highlighting
 the LLM markdown output can be automatically piped to a syntax highlighting CLI.
 by default it looks in `$PATH` for
-[`hlmd-st`](https://github.com/michaelskyba/hinata/tree/main/fmt/highlight)
+[`hlmd-st`](https://github.com/veilm/hinata/tree/main/fmt/highlight)
 
 you can choose your own by setting `$HINATA_SYNTAX_HIGHLIGHT_PIPE_CMD`, which
 will override the `hlmd-st` check. e.g. setting it to `cat` will be equivalent
@@ -79,4 +79,4 @@ warning: will likely leak your API key
 
 ## ss (`hlmd-st`)
 
-![with syntax highlighting](https://github.com/michaelskyba/michaelskyba.github.io/blob/master/static/1746146910-hnt-edit.png?raw=true)
+![with syntax highlighting](https://github.com/veilm/veilm.github.io/blob/master/static/1746146910-hnt-edit.png?raw=true)

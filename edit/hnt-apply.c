@@ -239,7 +239,7 @@ int main(int argc, char *argv[]) {
 				fprintf(
 				    stderr,
 				    "Learn more at "
-				    "https://github.com/michaelskyba/hinata/tree/main/edit\n");
+				    "https://github.com/veilm/hinata/tree/main/edit\n");
 				return EXIT_FAILURE;
 			default:
 				// Should not happen
@@ -256,7 +256,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Error: No input files specified.\n");
 		fprintf(stderr,
 		        "Learn more at "
-		        "https://github.com/michaelskyba/hinata/tree/main/edit\n");
+		        "https://github.com/veilm/hinata/tree/main/edit\n");
 		return EXIT_FAILURE;
 	}
 

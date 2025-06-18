@@ -4,7 +4,7 @@ realize the Unix philosophy is poisonous or something
 
 ## build
 ```
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/llm
 ./build
 ```

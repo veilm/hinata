@@ -1,13 +1,13 @@
 # hlmd-st
 a minimal 80/20 syntax highlighting CLI for markdown, supporting streaming
 
-![demo](https://raw.githubusercontent.com/michaelskyba/michaelskyba.github.io/refs/heads/master/static/1746143521-highlight.png)
+![demo](https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1746143521-highlight.png)
 
 ## install
 requires uv
 
 ```sh
-git clone https://github.com/michaelskyba/hinata
+git clone https://github.com/veilm/hinata
 cd hinata/fmt/highlight
 ./build
 # now you have hlmd-st in /usr/local/bin
