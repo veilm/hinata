@@ -36,7 +36,7 @@ h2 {
 }
 
 a {
-	color: #ff615e; /* New theme color */
+	color: #6ec8ff; /* Icy-blue theme color */
 	text-decoration: none;
 }
 a:hover {
@@ -91,10 +91,10 @@ li {
 	border-left: 4px solid #9d81ae; /* Soft purple */
 }
 .message-assistant {
-	border-left: 4px solid #ff615e; /* Orange-red  */
+	border-left: 4px solid #6ec8ff; /* Icy-blue */
 }
 .message-assistant-reasoning {
-	border-left: 4px solid #6d213c; /* Purple */
+	border-left: 4px solid #4b3c6d; /* Cooler purple */
 	background-color: #2c2c2c; /* Slightly different background for reasoning block */
 	font-size: 0.9em;
 	padding: 10px;
@@ -107,7 +107,7 @@ li {
 	margin-bottom: 20px;
 	padding: 6px 12px;
 	border: none; /* Removed border */
-	color: #ff615e;
+	color: #6ec8ff;
 	font-family: inherit; /* Ensure monospace font */
 }
 .back-link:hover {
@@ -216,7 +216,7 @@ li {
 #conversation-title-input:focus,
 #conversation-model-input:focus {
 	outline: none;
-	border-color: #ff615e;
+	border-color: #6ec8ff;
 	background-color: #303030;
 }
 
@@ -246,7 +246,7 @@ li {
 
 #create-conversation-btn {
 	padding: 10px 15px;
-	background-color: #ff615e; /* New theme color */
+	background-color: #6ec8ff; /* Icy-blue theme color */
 	color: #1e1e1e; /* Dark text for contrast on the button */
 	border: none;
 	border-radius: 0; /* Consistent with minimal theme */
@@ -257,7 +257,7 @@ li {
 }
 
 #create-conversation-btn:hover {
-	background-color: #e0504d; /* Slightly darker version of FF615E on hover */
+	background-color: #4da3e0; /* Slightly darker icy-blue on hover */
 }
 
 #create-conversation-btn:disabled {
@@ -327,11 +327,11 @@ li {
 
 /* Default: "Gen Assistant" uses the theme color */
 #btn-gen-assistant {
-	background-color: #ff615e;
+	background-color: #6ec8ff;
 	color: #1e1e1e;
 }
 #btn-gen-assistant:hover {
-	background-color: #e0504d;
+	background-color: #4da3e0;
 }
 
 /* "Add System" and "Add Assistant" buttons: background like textarea (#2c2c2c) */
@@ -394,12 +394,12 @@ li {
 	border-width: 1px;
 	border-style: solid;
 	/* Default icon/border color (matches assistant, acts as fallback for unknown message types) */
-	color: #ff615e;
-	border-color: #ff615e;
+	color: #6ec8ff;
+	border-color: #6ec8ff;
 }
 .message-actions button:hover {
 	/* Default hover background (matches assistant, acts as fallback) */
-	background-color: rgba(255, 97, 94, 0.1);
+	background-color: rgba(110, 200, 255, 0.1);
 }
 
 /* User Message Icons */
@@ -415,16 +415,16 @@ li {
 	border-color: #9d81ae;
 }
 .message-user .message-actions button:hover {
-	background-color: rgba(129, 174, 157, 0.1); /* Greenish tint */
+	background-color: rgba(177, 157, 255, 0.1); /* Purplish tint */
 }
 
 /* Assistant Message Icons (explicitly sets the default, good for clarity) */
 .message-assistant .message-actions button {
-	color: #ff615e; /* Orange-red */
-	border-color: #ff615e;
+	color: #6ec8ff; /* Icy-blue */
+	border-color: #6ec8ff;
 }
 .message-assistant .message-actions button:hover {
-	background-color: rgba(255, 97, 94, 0.1); /* Orange-red tint */
+	background-color: rgba(110, 200, 255, 0.1); /* Icy-blue tint */
 }
 
 /* System Message Icons */
@@ -438,8 +438,8 @@ li {
 
 /* Assistant Reasoning Message Icons */
 .message-assistant-reasoning .message-actions button {
-	color: #bb3967; /* slightly lighter Purple */
-	border-color: #bb3967;
+	color: #b19dff; /* Light purple */
+	border-color: #b19dff;
 }
 .message-assistant-reasoning .message-actions button:hover {
 	background-color: rgba(187, 57, 103, 0.1); /* Purple tint */
@@ -496,7 +496,7 @@ li {
 }
 .message-content-wrapper textarea:focus {
 	outline: none;
-	border-color: #ff615e; /* Theme color for focus */
+	border-color: #6ec8ff; /* Theme color for focus */
 	background-color: #303030; /* Slightly lighter background on focus */
 }
 
@@ -531,20 +531,20 @@ li {
 
 /* Specific style for Fork Conversation Button */
 #fork-conversation-btn {
-	background-color: #ff615e; /* Theme color */
+	background-color: #6ec8ff; /* Theme color */
 	color: #1e1e1e; /* Dark text */
 }
 #fork-conversation-btn:hover {
-	background-color: #e0504d; /* Darker theme color on hover */
+	background-color: #4da3e0; /* Darker icy-blue on hover */
 }
 
 /* Specific style for Pin/Unpin Toggle Button */
 #pin-toggle-btn {
-	background-color: #ff615e; /* Match Fork button: Theme color */
+	background-color: #6ec8ff; /* Match Fork button: Theme color */
 	color: #1e1e1e; /* Match Fork button: Dark text */
 }
 #pin-toggle-btn:hover {
-	background-color: #e0504d; /* Match Fork button: Darker theme color on hover */
+	background-color: #4da3e0; /* Darker icy-blue on hover */
 }
 
 /* Specific style for Jump to Latest Message Button */
