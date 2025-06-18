@@ -11,8 +11,8 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 basic LLM API in/out. significantly faster startup than openai-python
 ```
 $ export OPENROUTER_API_KEY=...
-$ echo "hello 🐙" | hnt-llm --model openrouter/deepseek/deepseek-chat-v3-0324:free
-Hello! 🌊 Looks like you're saying hi to an octopus emoji—how cute! [...]
+$ echo "hello! ❄️" | hnt-llm --model openrouter/anthropic/claude-3.5-sonnet
+Hi there! Nice snowflake emoji! How are you today? ☺️
 ```
 
 ### [`hnt-chat`](./chat/)
@@ -96,8 +96,8 @@ to parse the LLM's desired edits
 own casual usage and mobile/{filesystem storage} requirement
 - [`headlesh`](./agent/headlesh/): CLI headless shell manager. create shell
 sessions and easily read/write to them
-- (wip) [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM
-to use your shell and receive output, in a feedback loop
+- [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM to use
+a shell and receive output, in a feedback loop
 
 # philosophy
 
