@@ -236,10 +236,9 @@ int main(int argc, char *argv[]) {
 				        "Usage: %s [-v|--verbose] [--disallow-creating] "
 				        "[--ignore-reasoning] <file1> [file2] ...\n",
 				        argv[0]);
-				fprintf(
-				    stderr,
-				    "Learn more at "
-				    "https://github.com/veilm/hinata/tree/main/edit\n");
+				fprintf(stderr,
+				        "Learn more at "
+				        "https://github.com/veilm/hinata/tree/main/edit\n");
 				return EXIT_FAILURE;
 			default:
 				// Should not happen
