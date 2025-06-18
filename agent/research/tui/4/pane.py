@@ -12,7 +12,7 @@ import pyte
 class Pane:
     def __init__(self, cols: int, rows: int, row_offset: int):
         self.rows, self.cols = rows, cols
-        self.row_offset = row_offset          # where the pane starts on host term
+        self.row_offset = row_offset  # where the pane starts on host term
         self.screen = pyte.Screen(cols, rows)
         self.parser = pyte.ByteStream(self.screen)
 
@@ -23,19 +23,20 @@ class Pane:
     # repaint everything (brute-force – good enough for PoC)
     def refresh(self):
         buf: List[str] = []
-        buf.append("\x1b7")                   # save cursor
+        buf.append("\x1b7")  # save cursor
         for r in range(self.rows):
             # move cursor to the correct absolute row on the host terminal
             buf.append(f"\x1b[{self.row_offset + r};1H")
             line = self.screen.display[r]
             buf.append(line.ljust(self.cols))
-        buf.append("\x1b8")                   # restore cursor
+        buf.append("\x1b8")  # restore cursor
         sys.stdout.write("".join(buf))
         sys.stdout.flush()
 
     # tell child pty that its window size is rows×cols
     def winsize_ioctl(self, fd):
         import fcntl, struct, termios
+
         fcntl.ioctl(
             fd,
             termios.TIOCSWINSZ,
