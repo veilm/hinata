@@ -13,7 +13,7 @@ hnt-agent --no-confirm -m "please do the following
 
 3. view the diff *of the staged changes* only
 2. commit those staged changes with a meaningful message
-	include that the source was \"hnt-agent via util/commit\"
+	include that it was committed by \"hnt-agent via util/commit\"
 4. push
 5. report to the user that you're finished
 
