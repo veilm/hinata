@@ -156,7 +156,7 @@ static int get_current_cursor_position(int *row, int *col) {
 }
 
 static void log_unhandled(const char *fmt, ...) {
-	FILE *f = fopen("/tmp/8.log", "a");
+	FILE *f = fopen("/tmp/tui-pane.log", "a");
 	if (f == NULL) return;
 
 	va_list ap;
@@ -317,9 +317,10 @@ static void setup_terminal(void) {
 
 static void restore_terminal(void) {
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
-	clear_screen();
+	clear_pane_area();
 	printf("\033[?25h");
-	move_cursor(1, 1);
+	move_cursor(pane_start_row + 1, 1);
+	fflush(stdout);
 }
 
 /* Create PTY pair */
@@ -390,7 +391,7 @@ static void clear_screen(void) {
 static void clear_pane_area(void) {
 	int row;
 
-	for (row = pane_start_row + 1; row < term_rows; row++) {
+	for (row = pane_start_row; row < pane_start_row + PANE_HEIGHT; row++) {
 		move_cursor(row + 1, 1);
 		printf("\033[K"); /* Clear line */
 	}
@@ -1366,27 +1367,29 @@ static void handle_input(void) {
 			break;
 		}
 
-		/* Handle user input */
-		if (FD_ISSET(STDIN_FILENO, &readfds)) {
-			n = read(STDIN_FILENO, buf, sizeof(buf));
-			if (n > 0) {
-				/* Check for exit condition (Ctrl+C) */
-				if (n == 1 && buf[0] == 3) {
-					break;
-				}
-				/* Forward to child process */
-				write(master_fd, buf, n);
-			}
-		}
-
-		/* Handle child output */
+		/* Handle child output first to detect exit promptly */
 		if (FD_ISSET(master_fd, &readfds)) {
 			n = read(master_fd, buf, sizeof(buf));
 			if (n > 0) {
 				parse_control_sequence(buf, n);
 				render_pane();
-			} else if (n == 0) {
-				/* EOF - child exited */
+			} else {
+				/* EOF (n=0) or error (n<0) indicates child exit */
+				break;
+			}
+		}
+
+		/* Handle user input */
+		if (FD_ISSET(STDIN_FILENO, &readfds)) {
+			n = read(STDIN_FILENO, buf, sizeof(buf));
+			if (n > 0) {
+				/* Forward to child process */
+				if (write(master_fd, buf, n) < 0) {
+					/* Error writing to child, it has probably exited. */
+					break;
+				}
+			} else {
+				/* EOF or error on stdin, exit loop */
 				break;
 			}
 		}
