@@ -1,5 +1,7 @@
 # tui-select
 
+![tui-select screenshot](https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1750335491-tui-select.png)
+
 A simple `fzf`-like selector for the terminal.
 
 It reads lines from `stdin`, allows you to select one, and prints the selected line to `stdout`.
