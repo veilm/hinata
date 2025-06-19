@@ -7,7 +7,12 @@ gcc \
 	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
 	tui-select.c -o ./tui-select.out
 
-mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/hinata/tui-select"
-sudo cp ./tui-select.out /usr/local/bin/tui-select
+gcc \
+	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
+	tui-pane.c -o ./tui-pane.out
 
-echo "tui/build: built tui-select"
+sudo cp ./tui-select.out /usr/local/bin/tui-select
+sudo cp ./tui-pane.out /usr/local/bin/tui-pane
+
+echo "tui/build: installed tui-select in /usr/local/bin/tui-select"
+echo "tui/build: installed tui-pane in /usr/local/bin/tui-pane"

@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /*
  * tui-pane.c - A simplified tmux clone that creates a single pane
  * in the next 20 available lines on screen and runs a command inside it.
@@ -14,6 +15,7 @@
 #include <pty.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,9 +96,9 @@ enum input_state {
 struct input_ctx {
 	enum input_state state;
 	char param_buf[64];
-	int param_len;
+	size_t param_len;
 	char intermediate_buf[8];
-	int intermediate_len;
+	size_t intermediate_len;
 	int private_marker; /* Set if sequence starts with ? */
 	struct grid *grid;
 	int cur_fg;
@@ -1398,6 +1400,7 @@ static void handle_input(void) {
 
 /* Signal handler for cleanup */
 static void signal_handler(int sig) {
+	(void)sig;
 	if (child_pid > 0) {
 		kill(child_pid, SIGTERM);
 		waitpid(child_pid, NULL, 0);
@@ -1436,7 +1439,10 @@ static void resize_handler(void) {
 }
 
 /* SIGWINCH handler */
-static void sigwinch_handler(int sig) { resize_handler(); }
+static void sigwinch_handler(int sig) {
+	(void)sig;
+	resize_handler();
+}
 
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
