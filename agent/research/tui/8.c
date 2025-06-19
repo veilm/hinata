@@ -1125,36 +1125,37 @@ static void parse_control_sequence(const char *buf, int len) {
 					}
 				} else if (ctx->private_marker) {
 					switch (ch) {
-					case 'h':
-					case 'l': {
-						int param = atoi(ctx->param_buf);
-						switch (param) {
-						case 25: /* DECTCEM */
-							ctx->grid->cursor_visible = (ch == 'h');
+						case 'h':
+						case 'l': {
+							int param = atoi(ctx->param_buf);
+							switch (param) {
+								case 25: /* DECTCEM */
+									ctx->grid->cursor_visible = (ch == 'h');
+									break;
+								case 1049: /* alternate screen */
+								case 2004: /* bracketed paste */
+								case 1000: /* mouse reporting */
+								case 1002:
+								case 1006:
+								case 1004: /* focus events */
+									/* Silently consume */
+									break;
+								default:
+									log_unhandled(
+									    "Unhandled private CSI sequence: final "
+									    "'%c', "
+									    "params '%s'\n",
+									    ch, ctx->param_buf);
+									break;
+							}
 							break;
-						case 1049: /* alternate screen */
-						case 2004: /* bracketed paste */
-						case 1000: /* mouse reporting */
-						case 1002:
-						case 1006:
-						case 1004: /* focus events */
-							/* Silently consume */
-							break;
+						}
 						default:
 							log_unhandled(
 							    "Unhandled private CSI sequence: final '%c', "
 							    "params '%s'\n",
 							    ch, ctx->param_buf);
 							break;
-						}
-						break;
-					}
-					default:
-						log_unhandled(
-						    "Unhandled private CSI sequence: final '%c', "
-						    "params '%s'\n",
-						    ch, ctx->param_buf);
-						break;
 					}
 				} else {
 					/* All sequences with intermediates are consumed */

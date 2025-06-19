@@ -79,8 +79,22 @@ text editor. Leave the file unchanged or empty to abort."""
             tmpfile.flush()
             tmp_path = tmpfile.name
 
+        # Construct the editor command.
+        # shlex.split() handles editors with arguments like "code -w".
+        editor_parts = shlex.split(editor)
+
+        # Check if tui-pane should be used to spawn the editor.
+        use_tui_pane = os.environ.get("HINATA_USE_TUI_PANE")
+        tui_pane_path = shutil.which("tui-pane")
+
+        if use_tui_pane and tui_pane_path:
+            # Prepend tui-pane to the editor command.
+            command_to_run = [tui_pane_path] + editor_parts + [tmp_path]
+        else:
+            command_to_run = editor_parts + [tmp_path]
+
         # Run the editor - use run instead of Popen to wait for it
-        run_command([editor, tmp_path], capture_output=False, check=True)
+        run_command(command_to_run, capture_output=False, check=True)
 
         # Read the content after editor exits
         with open(tmp_path, "r") as f:

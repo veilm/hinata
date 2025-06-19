@@ -165,8 +165,13 @@ text editor. Leave the file unchanged or empty to abort."""
             tmpfile.flush()
             tmp_path = tmpfile.name
 
+        editor_cmd = [editor, tmp_path]
+        if os.environ.get("HINATA_USE_TUI_PANE"):
+            tui_pane_path = shutil.which("tui-pane")
+            if tui_pane_path:
+                editor_cmd = [tui_pane_path, editor, tmp_path]
         run_command(
-            [editor, tmp_path], capture_output=False, check=True
+            editor_cmd, capture_output=False, check=True
         )  # check=True vital here
 
         with open(tmp_path, "r") as f:
@@ -1043,8 +1048,17 @@ cat /etc/os-release
                                         tmpfile.flush()
                                         tmp_path = tmpfile.name
 
+                                    editor_cmd = [editor, tmp_path]
+                                    if os.environ.get("HINATA_USE_TUI_PANE"):
+                                        tui_pane_path = shutil.which("tui-pane")
+                                        if tui_pane_path:
+                                            editor_cmd = [
+                                                tui_pane_path,
+                                                editor,
+                                                tmp_path,
+                                            ]
                                     run_command(
-                                        [editor, tmp_path],
+                                        editor_cmd,
                                         capture_output=False,
                                         check=True,
                                     )
