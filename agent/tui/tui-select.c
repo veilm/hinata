@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /*
  * tui-select.c - A simple fzf-like selector.
  * Reads lines from stdin and allows selecting one with arrow keys.
@@ -62,6 +63,7 @@ void die(const char *s) {
 }
 
 void handle_sig(int sig) {
+	(void)sig;
 	// Let atexit handler do the cleanup
 	exit(1);
 }
@@ -150,6 +152,9 @@ void handle_input_loop(void) {
 }
 
 int main(int argc, char *argv[]) {
+	(void)argc;
+	(void)argv;
+
 	read_input_lines();
 
 	if (num_lines == 0) {
