@@ -19,7 +19,6 @@
 #include <unistd.h>
 
 #define MAX_LINES 4096
-#define DISPLAY_HEIGHT 10
 
 static struct termios orig_termios;
 static int term_rows, term_cols;
@@ -33,6 +32,7 @@ static int num_lines = 0;
 static int selected_index = 0;
 static int scroll_offset = 0;
 static int display_height;
+static int opt_color = -1;
 
 void cleanup(void) {
 	if (interactive) {
@@ -90,7 +90,12 @@ void draw_menu(void) {
 		int line_idx = scroll_offset + i;
 		if (line_idx < num_lines) {
 			if (line_idx == selected_index) {
-				fprintf(tty_fp, "▌ \033[7m");
+				if (opt_color != -1) {
+					fprintf(tty_fp, "\033[3%dm▌ \033[30;4%dm", opt_color,
+					        opt_color);
+				} else {
+					fprintf(tty_fp, "▌ \033[7m");
+				}
 			} else {
 				fprintf(tty_fp, "  ");
 			}
@@ -152,8 +157,24 @@ void handle_input_loop(void) {
 }
 
 int main(int argc, char *argv[]) {
-	(void)argc;
-	(void)argv;
+	int opt_height = 10;
+
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--height") == 0 && i + 1 < argc) {
+			opt_height = atoi(argv[++i]);
+			if (opt_height <= 0) {
+				fprintf(stderr, "Invalid height: %s\n", argv[i]);
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--color") == 0 && i + 1 < argc) {
+			opt_color = atoi(argv[++i]);
+			if (opt_color < 0 || opt_color > 7) {
+				fprintf(stderr, "Invalid color: %s. Must be between 0 and 7.\n",
+				        argv[i]);
+				return 1;
+			}
+		}
+	}
 
 	read_input_lines();
 
@@ -199,8 +220,15 @@ int main(int argc, char *argv[]) {
 		term_cols = ws.ws_col;
 	}
 
-	display_height = num_lines < DISPLAY_HEIGHT ? num_lines : DISPLAY_HEIGHT;
-	if (term_rows < display_height + 1) {
+	display_height = opt_height;
+	if (display_height > num_lines) {
+		display_height = num_lines;
+	}
+
+	if (term_rows - 1 < display_height) {
+		display_height = term_rows - 1;
+	}
+	if (display_height <= 0) {
 		fprintf(stderr, "Terminal too small.\n");
 		exit(1);
 	}

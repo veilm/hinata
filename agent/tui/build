@@ -8,6 +8,6 @@ gcc \
 	tui-select.c -o ./tui-select.out
 
 mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/hinata/tui-select"
-sudo cp ./tui-select.out /usr/local/bin/
+sudo cp ./tui-select.out /usr/local/bin/tui-select
 
 echo "tui/build: built tui-select"
