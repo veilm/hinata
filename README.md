@@ -1,5 +1,5 @@
 <p align="center">
-<img src="https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1747511209-hinata-simsun.png" width="217">
+<img src="https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/hinata.png" width="250">
 </p>
 
 <p align="center">

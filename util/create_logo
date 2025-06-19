@@ -4,10 +4,59 @@ set -euo pipefail
 # --- Configuration ---
 JXL_INPUT="/home/oboro/media/main/1702582978"
 SNOWFLAKE_IMAGE="./snowflake.png"
+FONT_PATH="/usr/share/fonts/ttf/Cagliostro-Regular.ttf" # <Tinos
+FONT_PATH="/usr/share/fonts/ttf/Caudex-Regular.ttf" # <Tinos a bit too fantasy
 FONT_PATH="/usr/share/fonts/ttf/Tinos-Regular.ttf"
+FONT_PATH="/usr/share/fonts/ttf/CaveatBrush-Regular.ttf" # hmm not elegant enough?
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-LightItalic.ttf" # no
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-SemiBoldItalic.ttf" # >LightItalic, <Regular
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Black.ttf" # <Regular
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-BoldItalic.ttf" # <Regular
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Medium.ttf" # hmm also pretty good, maybe >Regular but slightly <Light
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Regular.ttf" # >Tinos, best so far
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Italic.ttf" # <Regular, has some style but a bit too much
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Bold.ttf" # <Regular
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-ExtraBold.ttf" # <Regular
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-ExtraLight.ttf" # <Light, maybe a bit too light now
+
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Light.ttf" # slightly lighter, >Regular, best so far
+FONT_PATH="/usr/share/fonts/ttf/Gaegu-Regular.ttf" # eh not sure, probably too wimpy. people will think that's my handwriting
+FONT_PATH="/usr/share/fonts/ttf/Kurale-Regular.ttf" # decent
+FONT_PATH="/usr/share/fonts/ttf/Lora-Regular.ttf" # <Chiron, too wobbly
+FONT_PATH="/usr/share/fonts/ttf/Merriweather_48pt-Light.ttf" # <Chiron, weird
+FONT_PATH="/usr/share/fonts/ttf/NotoSansJP-Regular.ttf" # <Chiron, uninspiring
+FONT_PATH="/usr/share/fonts/ttf/NotoSansJP-ExtraLight.ttf" # better but still not great maybe
+FONT_PATH="/usr/share/fonts/ttf/NotoSansJP-Thin.ttf"
+FONT_PATH="/usr/share/fonts/ttf/NotoSansJP-ExtraBold.ttf" # no
+FONT_PATH="/usr/share/fonts/ttf/NotoSerifJP-Light.ttf" # quite good
+FONT_PATH="/usr/share/fonts/ttf/NotoSerifJP-Regular.ttf" # quite good
+FONT_PATH="/usr/share/fonts/ttf/NotoSerifJP-Bold.ttf" # also not bad to be honest
+FONT_PATH="/usr/share/fonts/ttf/NotoSerifJP-ExtraBold.ttf" # also not bad to be honest
+FONT_PATH="/usr/share/fonts/ttf/NotoSerifJP-ExtraLight.ttf" # might lean towards this over the ExtraBold
+
+FONT_PATH="/usr/share/fonts/ttf/PatrickHand-Regular.ttf" # too unserious
+FONT_PATH="/usr/share/fonts/ttf/PlayfairDisplay-Medium.ttf" # not bad
+FONT_PATH="/usr/share/fonts/ttf/PlayfairDisplay-Regular.ttf" # not bad
+FONT_PATH="/usr/share/fonts/ttf/PlayfairDisplay-Italic.ttf" # bad
+FONT_PATH="/usr/share/fonts/ttf/PlayfairDisplay-ExtraBold.ttf" # too much
+FONT_PATH="/usr/share/fonts/ttf/PlayfairDisplay-SemiBold.ttf" # not bad
+FONT_PATH="/usr/share/fonts/ttf/PlayfairDisplay-Bold.ttf" # slightly too much
+
+FONT_PATH="/usr/share/fonts/ttf/WinkyRough-Regular.ttf" # eh
+FONT_PATH="/usr/share/fonts/ttf/WinkyRough-Light.ttf" # eh
+FONT_PATH="/usr/share/fonts/ttf/WinkyRough-Bold.ttf" # yeah too fluffy
+
+# options
+# Kurale
+# Chiron (Light)
+# NotoSerifJP
+# PlayfairDisplay
+
 # TEXT_COLOR="#6ec8ff"
 TEXT_COLOR="#fff"
+# TEXT_COLOR="#6ec8ff"
 SNOWFLAKE_COLOR="#6ec8ff" # Color for the snowflake image/emoji
+# SNOWFLAKE_COLOR="#fff" # Color for the snowflake image/emoji
 # POINT_SIZE=100
 POINT_SIZE=200
 # MARGIN=20
