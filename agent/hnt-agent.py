@@ -862,41 +862,41 @@ cat /etc/os-release
                 else:
                     # Confirmation before running hnt-shell-apply (using current llm_message_raw)
                     if not args.no_confirm:
-                        while True:
-                            try:
-                                print("")  # Ensure prompt is on a new line
-                                user_choice_apply_raw = input(
-                                    "proceed to hnt-shell-apply (y/n)? "
-                                )
-                                user_choice_apply = (
-                                    user_choice_apply_raw.strip().lower()
-                                )
-                                if user_choice_apply == "y":
-                                    break  # Proceed with hnt-shell-apply
-                                elif user_choice_apply == "n":
-                                    print(
-                                        "Aborted by user before hnt-shell-apply.",
-                                        file=sys.stderr,
-                                    )
-                                    sys.exit(0)
-                                else:
-                                    print(
-                                        "Invalid input. Please enter 'y' or 'n'.",
-                                        file=sys.stderr,
-                                    )
-                            except EOFError:
+                        tui_select_path = shutil.which("tui-select")
+                        if not tui_select_path:
+                            print(
+                                "Error: 'tui-select' not found in PATH. It is required for interactive confirmation.",
+                                file=sys.stderr,
+                            )
+                            sys.exit(1)
+
+                        sys.stderr.write("\nProceed to hnt-shell-apply?\n")
+                        sys.stderr.flush()
+                        try:
+                            process = subprocess.run(
+                                [tui_select_path, "--color", "4"],
+                                input="yes\nno",
+                                capture_output=True,
+                                check=False,
+                                text=True,
+                            )
+                            # tui-select exits 1 on cancel (esc/ctrl-c)
+                            if (
+                                process.returncode != 0
+                                or process.stdout.strip() != "yes"
+                            ):
                                 print(
-                                    "\nEOFError: No input for hnt-shell-apply confirmation. Aborting.",
+                                    "Aborted by user before hnt-shell-apply.",
                                     file=sys.stderr,
                                 )
-                                sys.exit(1)  # Exit only on EOF
-                            except KeyboardInterrupt:
-                                print(
-                                    "\nUser interrupted confirmation. Aborting program.",
-                                    file=sys.stderr,
-                                )
-                                # Exit with code 130 for SIGINT (Ctrl+C)
-                                sys.exit(130)
+                                sys.exit(0)
+                            # if "yes", continue
+                        except Exception as e:
+                            print(
+                                f"Error during selection: {e}. Aborting.",
+                                file=sys.stderr,
+                            )
+                            sys.exit(1)
 
                     # Run hnt-shell-apply (adapting original 7)
                     debug_log(
@@ -978,115 +978,122 @@ cat /etc/os-release
                         debug_log(args, "hnt-shell-apply returned 2. Prompting user.")
 
                         while True:  # Loop for user choice (edit/quit)
-                            try:
-                                print("")  # Newline for cleaner prompt
-                                user_choice_raw = input(
-                                    "LLM provided no action. Provide user message? (edit/quit): "
-                                )
-                                user_choice = user_choice_raw.strip().lower()
-
-                                if user_choice in ("quit", "q"):
-                                    print("Aborted by user.", file=sys.stderr)
-                                    sys.exit(0)
-
-                                elif user_choice in ("edit", "e"):
-                                    # Open editor for user message
-                                    editor = os.environ.get("EDITOR", "vi")
-                                    initial_text = "# Provide your message to the LLM. Save and exit to send. Leave this empty or unchanged to return to the prompt."
-                                    tmp_path = None
-                                    new_message_content = None
-                                    try:
-                                        with tempfile.NamedTemporaryFile(
-                                            mode="w+",
-                                            prefix="hnt-agent-usermsg-",
-                                            suffix=".md",
-                                            delete=False,
-                                        ) as tmpfile:
-                                            tmpfile.write(initial_text)
-                                            tmpfile.flush()
-                                            tmp_path = tmpfile.name
-
-                                        run_command(
-                                            [editor, tmp_path],
-                                            capture_output=False,
-                                            check=True,
-                                        )
-
-                                        with open(tmp_path, "r") as f:
-                                            new_message_content = f.read().strip()
-                                    finally:
-                                        if tmp_path and os.path.exists(tmp_path):
-                                            os.unlink(tmp_path)
-
-                                    if (
-                                        new_message_content
-                                        and new_message_content != initial_text.strip()
-                                    ):
-                                        # Valid message provided.
-                                        print()  # Add a newline for separation.
-                                        print_user_instruction(
-                                            new_message_content, user_instruction_idx
-                                        )
-                                        user_instruction_idx += 1
-
-                                        wrapped_message = f"<user_request>\n{new_message_content}\n</user_request>"
-                                        debug_log(
-                                            args,
-                                            "Adding user-provided message to chat...",
-                                        )
-                                        run_command(
-                                            hnt_chat_add_user_cmd,
-                                            stdin_content=wrapped_message,
-                                            check=True,
-                                            text=True,
-                                        )
-
-                                        debug_log(
-                                            args,
-                                            "Generating new LLM response after user message...",
-                                        )
-                                        llm_message_raw = stream_and_capture_llm_output(
-                                            args,
-                                            hnt_chat_gen_cmd,
-                                            syntax_highlight_enabled,
-                                            effective_syntax_cmd,
-                                            description=f"LLM Navigator <{llm_navigator_idx}>",
-                                        )
-                                        llm_navigator_idx += 1
-
-                                        if not llm_message_raw.strip():
-                                            print(
-                                                "Warning: LLM produced no output after user message. Ending interaction.",
-                                                file=sys.stderr,
-                                            )
-                                            sys.exit(0)  # clean exit
-
-                                        # Break the user choice loop, will then continue the main loop
-                                        break
-                                    else:
-                                        print(
-                                            "No message provided or message unchanged. Please try again.",
-                                            file=sys.stderr,
-                                        )
-                                        # Loop again for edit/quit
-
-                                else:
-                                    print(
-                                        "Invalid choice. Please enter 'edit' or 'quit'.",
-                                        file=sys.stderr,
-                                    )
-
-                            except EOFError:
+                            # --- Get user choice ---
+                            user_choice = None
+                            tui_select_path = shutil.which("tui-select")
+                            if not tui_select_path:
                                 print(
-                                    "\nEOFError: No input. Aborting.", file=sys.stderr
-                                )
-                                sys.exit(1)
-                            except KeyboardInterrupt:
-                                print(
-                                    "\nUser interrupted. Aborting program.",
+                                    "Error: 'tui-select' not found in PATH. It is required for interactive confirmation.",
                                     file=sys.stderr,
                                 )
-                                sys.exit(130)
+                                sys.exit(1)
+
+                            sys.stderr.write("\nLLM provided no action. What next?\n")
+                            sys.stderr.flush()
+                            try:
+                                process = subprocess.run(
+                                    [tui_select_path, "--color", "4"],
+                                    input="edit\nquit",
+                                    capture_output=True,
+                                    check=False,
+                                    text=True,
+                                )
+                                if process.returncode == 0:
+                                    user_choice = process.stdout.strip()
+                                else:  # Canceled, treat as quit
+                                    user_choice = "quit"
+                            except Exception as e:
+                                print(
+                                    f"Error during selection: {e}. Aborting.",
+                                    file=sys.stderr,
+                                )
+                                sys.exit(1)
+
+                            # --- Act on user choice ---
+                            if user_choice == "quit":
+                                print("Aborted by user.", file=sys.stderr)
+                                sys.exit(0)
+
+                            elif user_choice == "edit":
+                                # Open editor for user message
+                                editor = os.environ.get("EDITOR", "vi")
+                                initial_text = "# Provide your message to the LLM. Save and exit to send. Leave this empty or unchanged to return to the prompt."
+                                tmp_path = None
+                                new_message_content = None
+                                try:
+                                    with tempfile.NamedTemporaryFile(
+                                        mode="w+",
+                                        prefix="hnt-agent-usermsg-",
+                                        suffix=".md",
+                                        delete=False,
+                                    ) as tmpfile:
+                                        tmpfile.write(initial_text)
+                                        tmpfile.flush()
+                                        tmp_path = tmpfile.name
+
+                                    run_command(
+                                        [editor, tmp_path],
+                                        capture_output=False,
+                                        check=True,
+                                    )
+
+                                    with open(tmp_path, "r") as f:
+                                        new_message_content = f.read().strip()
+                                finally:
+                                    if tmp_path and os.path.exists(tmp_path):
+                                        os.unlink(tmp_path)
+
+                                if (
+                                    new_message_content
+                                    and new_message_content != initial_text.strip()
+                                ):
+                                    # Valid message provided.
+                                    print()  # Add a newline for separation.
+                                    print_user_instruction(
+                                        new_message_content, user_instruction_idx
+                                    )
+                                    user_instruction_idx += 1
+
+                                    wrapped_message = f"<user_request>\n{new_message_content}\n</user_request>"
+                                    debug_log(
+                                        args,
+                                        "Adding user-provided message to chat...",
+                                    )
+                                    run_command(
+                                        hnt_chat_add_user_cmd,
+                                        stdin_content=wrapped_message,
+                                        check=True,
+                                        text=True,
+                                    )
+
+                                    debug_log(
+                                        args,
+                                        "Generating new LLM response after user message...",
+                                    )
+                                    llm_message_raw = stream_and_capture_llm_output(
+                                        args,
+                                        hnt_chat_gen_cmd,
+                                        syntax_highlight_enabled,
+                                        effective_syntax_cmd,
+                                        description=f"LLM Navigator <{llm_navigator_idx}>",
+                                    )
+                                    llm_navigator_idx += 1
+
+                                    if not llm_message_raw.strip():
+                                        print(
+                                            "Warning: LLM produced no output after user message. Ending interaction.",
+                                            file=sys.stderr,
+                                        )
+                                        sys.exit(0)  # clean exit
+
+                                    # Break the user choice loop, will then continue the main loop
+                                    break
+                                else:
+                                    print(
+                                        "No message provided or message unchanged. Please try again.",
+                                        file=sys.stderr,
+                                    )
+                                    # Loop again for edit/quit
 
                         # If we break from the inner while-loop, we continue the outer loop
                         continue
@@ -1113,47 +1120,39 @@ cat /etc/os-release
 
                 user_wants_to_add_to_chat = True  # Assume yes if --no-confirm
                 if not args.no_confirm:
-                    while True:
-                        try:
-                            print("")  # Ensure prompt is on a new line
-                            user_choice_add_msg_raw = input(
-                                "add hnt-shell-apply output to user msg (y/n)? "
-                            )
-                            user_choice_add_msg = (
-                                user_choice_add_msg_raw.strip().lower()
-                            )
+                    tui_select_path = shutil.which("tui-select")
+                    if not tui_select_path:
+                        print(
+                            "Error: 'tui-select' not found in PATH. It is required for interactive confirmation.",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
 
-                            if user_choice_add_msg == "y":
-                                user_wants_to_add_to_chat = True
-                                break
-                            elif user_choice_add_msg == "n":
-                                user_wants_to_add_to_chat = False
-                                print(
-                                    "User chose not to add hnt-shell-apply output. Ending interaction loop.",
-                                    file=sys.stderr,
-                                )
-                                # This break exits the confirmation loop.
-                                # The outer loop break will be handled by the `if not user_wants_to_add_to_chat:` condition below.
-                                break
-                            else:
-                                print(
-                                    "Invalid input. Please enter 'y' or 'n'.",
-                                    file=sys.stderr,
-                                )
-                                # Loop will continue to re-prompt
-                        except EOFError:
+                    sys.stderr.write(
+                        "\nAdd hnt-shell-apply output to chat and continue?\n"
+                    )
+                    sys.stderr.flush()
+                    try:
+                        process = subprocess.run(
+                            [tui_select_path, "--color", "4"],
+                            input="yes\nno",
+                            capture_output=True,
+                            check=False,
+                            text=True,
+                        )
+                        if process.returncode != 0 or process.stdout.strip() != "yes":
+                            user_wants_to_add_to_chat = False
                             print(
-                                "\nEOFError: No input for adding hnt-shell-apply output. Aborting.",
+                                "User chose not to add hnt-shell-apply output. Ending interaction loop.",
                                 file=sys.stderr,
                             )
-                            sys.exit(1)  # Exit only on EOF
-                        except KeyboardInterrupt:
-                            print(
-                                "\nUser interrupted confirmation. Aborting program.",
-                                file=sys.stderr,
-                            )
-                            # Exit with code 130 for SIGINT (Ctrl+C)
-                            sys.exit(130)
+                        # if yes, user_wants_to_add_to_chat remains True
+                    except Exception as e:
+                        print(
+                            f"Error during selection: {e}. Aborting.",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
 
                 if (
                     not user_wants_to_add_to_chat and not args.no_confirm

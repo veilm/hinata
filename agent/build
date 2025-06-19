@@ -9,6 +9,12 @@ then
 	./headlesh/build
 fi
 
+if ! which tui-select > /dev/null 2>&1
+then
+	echo "agent/build: tui-select not found. compiling..."
+	./tui/build
+fi
+
 prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
 bin=/usr/local/bin
 
