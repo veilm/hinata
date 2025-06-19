@@ -27,6 +27,30 @@
 #define MAX_COLS 512
 #define MAX_ROWS 512
 
+/* Cell attributes */
+#define ATTR_BOLD (1 << 0)
+#define ATTR_UNDERLINE (1 << 1)
+#define ATTR_REVERSE (1 << 2)
+
+/* Colour flags */
+#define COLOUR_FLAG_256 (1 << 8)
+#define COLOUR_FLAG_RGB (1 << 9)
+
+static inline int colour_is_rgb(int c) { return (c & COLOUR_FLAG_RGB); }
+static inline int colour_is_256(int c) { return (c & COLOUR_FLAG_256); }
+
+static inline int colour_join_rgb(unsigned char r, unsigned char g,
+                                  unsigned char b) {
+	return COLOUR_FLAG_RGB | (r << 16) | (g << 8) | b;
+}
+
+static inline void colour_split_rgb(int c, unsigned char *r, unsigned char *g,
+                                    unsigned char *b) {
+	*r = (c >> 16) & 0xff;
+	*g = (c >> 8) & 0xff;
+	*b = c & 0xff;
+}
+
 /* Virtual grid cell structure */
 struct grid_cell {
 	char ch;
@@ -63,6 +87,9 @@ struct input_ctx {
 	int intermediate_len;
 	int private_marker; /* Set if sequence starts with ? */
 	struct grid *grid;
+	int cur_fg;
+	int cur_bg;
+	int cur_attr;
 };
 
 /* Global state */
@@ -272,7 +299,12 @@ static void parse_control_sequence(const char *buf, int len) {
 					/* Printable character */
 					if (ctx->grid->cx < ctx->grid->sx &&
 					    ctx->grid->cy < ctx->grid->sy) {
-						ctx->grid->cells[ctx->grid->cy][ctx->grid->cx].ch = ch;
+						struct grid_cell *cell =
+						    &ctx->grid->cells[ctx->grid->cy][ctx->grid->cx];
+						cell->ch = ch;
+						cell->fg = ctx->cur_fg;
+						cell->bg = ctx->cur_bg;
+						cell->attr = ctx->cur_attr;
 						ctx->grid->cx++;
 						if (ctx->grid->cx >= ctx->grid->sx) {
 							ctx->grid->cx = 0;
@@ -510,9 +542,149 @@ static void parse_control_sequence(const char *buf, int len) {
 						case 'j':
 						case 'k':
 						case 'l':
-						case 'm':
 						case 'n':
 						case 'o':
+						case 'm': { /* SGR - Select Graphic Rendition */
+							if (ctx->param_len ==
+							    0) {  // ESC[m is same as ESC[0m
+								ctx->cur_attr = 0;
+								ctx->cur_fg = 7;
+								ctx->cur_bg = 0;
+								break;
+							}
+
+							char params[sizeof(ctx->param_buf) + 1];
+							memcpy(params, ctx->param_buf, ctx->param_len);
+							params[ctx->param_len] = '\0';
+
+							char *p = params;
+							char *token;
+
+							while ((token = strsep(&p, ";")) != NULL) {
+								int n = 0;
+								if (*token != '\0') {
+									n = atoi(token);
+								}
+
+								switch (n) {
+									case 0:
+										ctx->cur_attr = 0;
+										ctx->cur_fg = 7;
+										ctx->cur_bg = 0;
+										break;
+									case 1:
+										ctx->cur_attr |= ATTR_BOLD;
+										break;
+									case 4:
+										ctx->cur_attr |= ATTR_UNDERLINE;
+										break;
+									case 7:
+										ctx->cur_attr |= ATTR_REVERSE;
+										break;
+									case 22:
+										ctx->cur_attr &= ~ATTR_BOLD;
+										break;
+									case 24:
+										ctx->cur_attr &= ~ATTR_UNDERLINE;
+										break;
+									case 27:
+										ctx->cur_attr &= ~ATTR_REVERSE;
+										break;
+									case 30:
+									case 31:
+									case 32:
+									case 33:
+									case 34:
+									case 35:
+									case 36:
+									case 37:
+										ctx->cur_fg = n - 30;
+										break;
+									case 39:
+										ctx->cur_fg = 7;
+										break;
+									case 40:
+									case 41:
+									case 42:
+									case 43:
+									case 44:
+									case 45:
+									case 46:
+									case 47:
+										ctx->cur_bg = n - 40;
+										break;
+									case 49:
+										ctx->cur_bg = 0;
+										break;
+									case 90:
+									case 91:
+									case 92:
+									case 93:
+									case 94:
+									case 95:
+									case 96:
+									case 97:
+										ctx->cur_fg = n - 90 + 8;
+										break;
+									case 100:
+									case 101:
+									case 102:
+									case 103:
+									case 104:
+									case 105:
+									case 106:
+									case 107:
+										ctx->cur_bg = n - 100 + 8;
+										break;
+									case 38:
+									case 48: {
+										int fgbg = n;
+										int type, color, r, g, b;
+
+										token = strsep(&p, ";");
+										if (token == NULL) goto sgr_out;
+										type =
+										    (*token != '\0') ? atoi(token) : -1;
+
+										if (type == 5) {
+											token = strsep(&p, ";");
+											if (token == NULL) goto sgr_out;
+											color = (*token != '\0')
+											            ? atoi(token)
+											            : 0;
+											if (fgbg == 38)
+												ctx->cur_fg =
+												    color | COLOUR_FLAG_256;
+											else
+												ctx->cur_bg =
+												    color | COLOUR_FLAG_256;
+										} else if (type == 2) {
+											token = strsep(&p, ";");
+											if (token == NULL) goto sgr_out;
+											r = (*token != '\0') ? atoi(token)
+											                     : 0;
+											token = strsep(&p, ";");
+											if (token == NULL) goto sgr_out;
+											g = (*token != '\0') ? atoi(token)
+											                     : 0;
+											token = strsep(&p, ";");
+											if (token == NULL) goto sgr_out;
+											b = (*token != '\0') ? atoi(token)
+											                     : 0;
+											if (fgbg == 38)
+												ctx->cur_fg =
+												    colour_join_rgb(r, g, b);
+											else
+												ctx->cur_bg =
+												    colour_join_rgb(r, g, b);
+										}
+										break;
+									}
+								}
+							}
+						sgr_out:
+							break;
+						}
 						case 'p':
 						case 'q':
 						case 'r':
@@ -568,14 +740,80 @@ static void parse_control_sequence(const char *buf, int len) {
 /* Render the pane content to the terminal */
 static void render_pane(void) {
 	int row, col;
-	char current_ch;
+	int last_fg = -1, last_bg = -1, last_attr = -1;
+	char sgr_buf[128];
 
 	for (row = 0; row < pane_grid.sy; row++) {
 		move_cursor(pane_start_row + 1 + row + 1, 1);
+		last_fg = -1;
+		last_bg = -1;
+		last_attr = -1;
+
 		for (col = 0; col < pane_grid.sx; col++) {
-			current_ch = pane_grid.cells[row][col].ch;
+			struct grid_cell *cell = &pane_grid.cells[row][col];
+
+			if (cell->fg != last_fg || cell->bg != last_bg ||
+			    cell->attr != last_attr) {
+				int len;
+				if (cell->attr == 0 && cell->fg == 7 && cell->bg == 0) {
+					len = sprintf(sgr_buf, "\033[0m");
+				} else {
+					len = sprintf(sgr_buf, "\033[0");
+
+					if (cell->attr & ATTR_BOLD)
+						len += sprintf(sgr_buf + len, ";1");
+					if (cell->attr & ATTR_UNDERLINE)
+						len += sprintf(sgr_buf + len, ";4");
+					if (cell->attr & ATTR_REVERSE)
+						len += sprintf(sgr_buf + len, ";7");
+
+					int fg = cell->fg;
+					int bg = cell->bg;
+
+					if (colour_is_rgb(fg)) {
+						unsigned char r, g, b;
+						colour_split_rgb(fg, &r, &g, &b);
+						len +=
+						    sprintf(sgr_buf + len, ";38;2;%u;%u;%u", r, g, b);
+					} else if (colour_is_256(fg)) {
+						len += sprintf(sgr_buf + len, ";38;5;%d", fg & 0xFF);
+					} else if (fg != 7) {
+						if (fg < 8)
+							len += sprintf(sgr_buf + len, ";%d", 30 + fg);
+						else
+							len += sprintf(sgr_buf + len, ";%d", 90 + (fg - 8));
+					}
+
+					if (colour_is_rgb(bg)) {
+						unsigned char r, g, b;
+						colour_split_rgb(bg, &r, &g, &b);
+						len +=
+						    sprintf(sgr_buf + len, ";48;2;%u;%u;%u", r, g, b);
+					} else if (colour_is_256(bg)) {
+						len += sprintf(sgr_buf + len, ";48;5;%d", bg & 0xFF);
+					} else if (bg != 0) {
+						if (bg < 8)
+							len += sprintf(sgr_buf + len, ";%d", 40 + bg);
+						else
+							len +=
+							    sprintf(sgr_buf + len, ";%d", 100 + (bg - 8));
+					}
+					len += sprintf(sgr_buf + len, "m");
+				}
+				fputs(sgr_buf, stdout);
+			}
+
+			char current_ch = cell->ch;
 			if (current_ch == 0) current_ch = ' ';
 			putchar(current_ch);
+
+			last_fg = cell->fg;
+			last_bg = cell->bg;
+			last_attr = cell->attr;
+		}
+
+		if (last_fg != 7 || last_bg != 0 || last_attr != 0) {
+			printf("\033[0m");
 		}
 	}
 
@@ -682,6 +920,9 @@ int main(int argc, char *argv[]) {
 	input_parser.intermediate_len = 0;
 	input_parser.private_marker = 0;
 	input_parser.grid = &pane_grid;
+	input_parser.cur_fg = 7;
+	input_parser.cur_bg = 0;
+	input_parser.cur_attr = 0;
 
 	/* Set up terminal */
 	setup_terminal();
