@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <pty.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,6 +129,19 @@ static void clear_screen(void);
 static void clear_pane_area(void);
 static void signal_handler(int sig);
 static void resize_handler(void);
+
+static void log_unhandled(const char *fmt, ...) {
+	FILE *f = fopen("/tmp/8.log", "a");
+	if (f == NULL) return;
+
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(f, fmt, ap);
+	va_end(ap);
+
+	fflush(f);
+	fclose(f);
+}
 
 /* Initialize the virtual grid */
 static void init_grid(struct grid *g, int sx, int sy) {
@@ -451,6 +465,9 @@ static void parse_control_sequence(const char *buf, int len) {
 				} else if (ch >= 0x30 && ch <= 0x7E) {
 					/* Two-character escape sequence - consume and return to
 					 * ground */
+					log_unhandled(
+					    "Unhandled two-char escape sequence: ESC %c (0x%02x)\n",
+					    ch, ch);
 					ctx->state = INPUT_GROUND;
 				} else if (ch >= 0x20 && ch <= 0x2F) {
 					/* Intermediate character - stay in escape mode for one more
@@ -458,6 +475,9 @@ static void parse_control_sequence(const char *buf, int len) {
 					/* Next character will be final */
 				} else {
 					/* Invalid or incomplete - return to ground */
+					log_unhandled(
+					    "Invalid escape sequence: char %c (0x%02x) after ESC\n",
+					    ch, ch);
 					ctx->state = INPUT_GROUND;
 				}
 				break;
@@ -490,6 +510,8 @@ static void parse_control_sequence(const char *buf, int len) {
 					goto handle_csi_final;
 				} else {
 					/* Invalid - return to ground */
+					log_unhandled("Invalid CSI entry char: %c (0x%02x)\n", ch,
+					              ch);
 					ctx->state = INPUT_GROUND;
 				}
 				break;
@@ -516,6 +538,11 @@ static void parse_control_sequence(const char *buf, int len) {
 					goto handle_csi_final;
 				} else {
 					/* Invalid - return to ground */
+					ctx->param_buf[ctx->param_len] = '\0';
+					log_unhandled(
+					    "Invalid char during CSI param: %c "
+					    "(0x%02x) with params '%s'\n",
+					    ch, ch, ctx->param_buf);
 					ctx->state = INPUT_GROUND;
 				}
 				break;
@@ -533,6 +560,12 @@ static void parse_control_sequence(const char *buf, int len) {
 					goto handle_csi_final;
 				} else {
 					/* Invalid - return to ground */
+					ctx->param_buf[ctx->param_len] = '\0';
+					ctx->intermediate_buf[ctx->intermediate_len] = '\0';
+					log_unhandled(
+					    "Invalid char after CSI intermediate: %c "
+					    "(0x%02x) with params '%s', intermediates '%s'\n",
+					    ch, ch, ctx->param_buf, ctx->intermediate_buf);
 					ctx->state = INPUT_GROUND;
 				}
 				break;
@@ -887,6 +920,12 @@ static void parse_control_sequence(const char *buf, int len) {
 						case 'l':
 						case 'n':
 						case 'o':
+							log_unhandled(
+							    "Unhandled standard CSI sequence "
+							    "(consumed): final '%c' (0x%02x), params "
+							    "'%s'\n",
+							    ch, ch, ctx->param_buf);
+							break;
 						case 'm': { /* SGR - Select Graphic Rendition */
 							if (ctx->param_len ==
 							    0) {  // ESC[m is same as ESC[0m
@@ -1066,12 +1105,30 @@ static void parse_control_sequence(const char *buf, int len) {
 						case 'y':
 						case 'z':
 							/* All standard CSI final characters - consume */
+							log_unhandled(
+							    "Unhandled standard CSI sequence "
+							    "(consumed): final '%c' (0x%02x), params "
+							    "'%s'\n",
+							    ch, ch, ctx->param_buf);
 							break;
 
 						default:
 							/* Any other final character - consume */
+							log_unhandled(
+							    "Unknown standard CSI sequence: "
+							    "final '%c' (0x%02x), params '%s'\n",
+							    ch, ch, ctx->param_buf);
 							break;
 					}
+				} else {
+					/* All private mode sequences and sequences with
+					 * intermediates are consumed */
+					log_unhandled(
+					    "Unhandled private/intermediate CSI sequence: final "
+					    "'%c' (0x%02x), params '%s', intermediates '%s', "
+					    "private '%d'\n",
+					    ch, ch, ctx->param_buf, ctx->intermediate_buf,
+					    ctx->private_marker);
 				}
 				/* All private mode sequences and sequences with intermediates
 				 * are consumed */
@@ -1083,11 +1140,13 @@ static void parse_control_sequence(const char *buf, int len) {
 				/* OSC sequences end with BEL (0x07) or ST (ESC \) */
 				if (ch == 0x07) {
 					/* BEL terminator */
+					log_unhandled("Skipped OSC sequence\n");
 					ctx->state = INPUT_GROUND;
 				} else if (ch == 0x1B) {
 					/* Potential ST - next char should be \ */
 					/* For simplicity, just go to ground - real tmux would check
 					 * next char */
+					log_unhandled("Skipped OSC sequence (ended with ST)\n");
 					ctx->state = INPUT_GROUND;
 				}
 				/* Otherwise stay in OSC_STRING and consume everything */
@@ -1098,6 +1157,7 @@ static void parse_control_sequence(const char *buf, int len) {
 				if (ch == 0x1B) {
 					/* Potential ST - next char should be \ */
 					/* For simplicity, just go to ground */
+					log_unhandled("Skipped DCS sequence\n");
 					ctx->state = INPUT_GROUND;
 				}
 				/* Otherwise stay in DCS_STRING and consume everything */
