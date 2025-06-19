@@ -47,19 +47,19 @@ hnt-llm delete-key OPENAI_API_KEY
 ```
 
 if you have a given key saved, it will be used in cases where you request that
-provider but do not have the appropriate env variable set
+provider but do not have the respective env variable set
 
 your direct API keys are encrypted with XOR against a generated private key, but
 the private key is stored in plaintext, with some appropriate filesystem perms.
-it's secure enough that someone casually browsing your filesystem will not find
-key keys
+it's secure enough that someone casually browsing your filesystem will be
+unlikely to find your keys
 
 ## supported model providers
 ### [OpenRouter](https://openrouter.ai/settings/keys)
 ```sh
 export OPENROUTER_API_KEY="my api key"
 echo hello | hnt-llm -m openrouter/qwen/qwen2.5-coder-7b-instruct
-```sh
+```
 
 ### [DeepSeek](https://platform.deepseek.com/api_keys)
 ```sh

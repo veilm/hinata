@@ -78,24 +78,25 @@ cd hinata
 - optional dependencies: uv (pygments syntax highlighting)
 
 # full architecture
-- [`hnt-llm`](./llm/): simple, performant text backend. pipe text input in,
-receive LLM text response out
-- [`hnt-chat`](./chat/): wrapper around `hnt-llm` for managing conversations and
-message history, using simple conv directories and message markdown files
-- [`llm-pack`](./edit/llm-pack/): take source code filenames as CLI args. write
-LLM packed prompt to stdout
-- [`hnt-apply`](./edit/): take LLM output including TARGET/REPLACE blocks as
-stdin. make edits to those files on the LLM's behalf
-- [`hlmd-st`](./fmt/highlight/): take LLM markdown output, including code blocks
-as stdin. write syntax highlighted ver to stdout
-- [`hnt-edit`](./edit/): (very low-budget) aider clone. wrapper that uses
-`llm-pack` to format source code. sends it along with user instructions to
+- [`hnt-llm`](./llm/README.md): simple, performant text backend. pipe text input
+in, receive LLM text response out
+- [`hnt-chat`](./chat/README.md): wrapper around `hnt-llm` for managing
+conversations and message history, using simple conv directories and message
+markdown files
+- [`llm-pack`](./edit/llm-pack/README.md): take source code filenames as CLI
+args. write LLM packed prompt to stdout
+- [`hnt-apply`](./edit/README.md): take LLM output including TARGET/REPLACE
+blocks as stdin. make edits to those files on the LLM's behalf
+- [`hlmd-st`](./fmt/highlight/README.md): take LLM markdown output, including
+code blocks as stdin. write syntax highlighted ver to stdout
+- [`hnt-edit`](./edit/README.md): (very low-budget) aider clone. wrapper that
+uses `llm-pack` to format source code. sends it along with user instructions to
 `hnt-chat`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
 to parse the LLM's desired edits
-- [`hnt-web`](./web/): simple 80/20 web app wrapping hnt-chat. sufficient for my
-own casual usage and mobile/{filesystem storage} requirement
-- [`headlesh`](./agent/headlesh/): CLI headless shell manager. create shell
-sessions and easily read/write to them
+- [`hnt-web`](./web/README.md): simple 80/20 web app wrapping hnt-chat.
+sufficient for my own casual usage and mobile/{filesystem storage} requirement
+- [`headlesh`](./agent/headlesh/README.md): CLI headless shell manager. create
+shell sessions and easily read/write to them
 - [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM to use
 a shell and receive output, in a feedback loop
 
