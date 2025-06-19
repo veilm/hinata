@@ -33,6 +33,7 @@ static int selected_index = 0;
 static int scroll_offset = 0;
 static int display_height;
 static int opt_color = -1;
+static char *line_to_print = NULL;
 
 void cleanup(void) {
 	if (interactive) {
@@ -45,6 +46,10 @@ void cleanup(void) {
 		fprintf(tty_fp, "\033[?25h");  // Show cursor
 		fflush(tty_fp);
 		tcsetattr(tty_fd, TCSAFLUSH, &orig_termios);
+	}
+
+	if (line_to_print) {
+		printf("%s\n", line_to_print);
 	}
 
 	if (tty_fp != NULL) {
@@ -246,8 +251,8 @@ int main(int argc, char *argv[]) {
 
 	// cleanup will be called by atexit
 
-	// Print selected line to original stdout.
-	printf("%s\n", lines[selected_index]);
+	// Set selected line to be printed on exit.
+	line_to_print = lines[selected_index];
 
 	return 0;
 }
