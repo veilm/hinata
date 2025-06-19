@@ -51,9 +51,17 @@ static inline void colour_split_rgb(int c, unsigned char *r, unsigned char *g,
 	*b = c & 0xff;
 }
 
+#define UTF8_MAX_SIZE 4
+
+/* UTF-8 character data */
+struct utf8_char {
+	char data[UTF8_MAX_SIZE];
+	unsigned char size;
+};
+
 /* Virtual grid cell structure */
 struct grid_cell {
-	char ch;
+	struct utf8_char uc;
 	int fg;
 	int bg;
 	int attr;
@@ -92,6 +100,10 @@ struct input_ctx {
 	int cur_fg;
 	int cur_bg;
 	int cur_attr;
+
+	/* For UTF-8 decoding */
+	struct utf8_char utf8c;
+	int utf8_started; /* 0 if not in a sequence, otherwise total length */
 };
 
 /* Global state */
@@ -130,7 +142,8 @@ static void init_grid(struct grid *g, int sx, int sy) {
 
 	for (y = 0; y < sy; y++) {
 		for (x = 0; x < sx; x++) {
-			g->cells[y][x].ch = ' ';
+			g->cells[y][x].uc.data[0] = ' ';
+			g->cells[y][x].uc.size = 1;
 			g->cells[y][x].fg = 7;
 			g->cells[y][x].bg = 0;
 			g->cells[y][x].attr = 0;
@@ -153,7 +166,8 @@ static void grid_scroll_up(struct grid *g, int n, int fg, int bg, int attr) {
 
 	for (int y = g->scroll_bottom - n + 1; y <= g->scroll_bottom; y++) {
 		for (int x = 0; x < g->sx; x++) {
-			g->cells[y][x].ch = ' ';
+			g->cells[y][x].uc.data[0] = ' ';
+			g->cells[y][x].uc.size = 1;
 			g->cells[y][x].fg = fg;
 			g->cells[y][x].bg = bg;
 			g->cells[y][x].attr = attr;
@@ -176,7 +190,8 @@ static void grid_scroll_down(struct grid *g, int n, int fg, int bg, int attr) {
 
 	for (int y = g->scroll_top; y < g->scroll_top + n; y++) {
 		for (int x = 0; x < g->sx; x++) {
-			g->cells[y][x].ch = ' ';
+			g->cells[y][x].uc.data[0] = ' ';
+			g->cells[y][x].uc.size = 1;
 			g->cells[y][x].fg = fg;
 			g->cells[y][x].bg = bg;
 			g->cells[y][x].attr = attr;
@@ -319,6 +334,43 @@ static void parse_control_sequence(const char *buf, int len) {
 	for (i = 0; i < len; i++) {
 		unsigned char ch = buf[i];
 
+		if (ctx->utf8_started) {
+			if ((ch & 0xC0) == 0x80) { /* continuation byte */
+				if (ctx->utf8c.size < UTF8_MAX_SIZE) {
+					ctx->utf8c.data[ctx->utf8c.size++] = ch;
+				}
+				if (ctx->utf8c.size >= ctx->utf8_started) {
+					/* Character complete */
+					if (ctx->grid->cx < ctx->grid->sx &&
+					    ctx->grid->cy < ctx->grid->sy) {
+						struct grid_cell *cell =
+						    &ctx->grid->cells[ctx->grid->cy][ctx->grid->cx];
+						memcpy(&cell->uc, &ctx->utf8c,
+						       sizeof(struct utf8_char));
+						cell->fg = ctx->cur_fg;
+						cell->bg = ctx->cur_bg;
+						cell->attr = ctx->cur_attr;
+						ctx->grid->cx++;
+						if (ctx->grid->cx >= ctx->grid->sx) {
+							ctx->grid->cx = 0;
+							ctx->grid->cy++;
+							if (ctx->grid->cy >= ctx->grid->sy) {
+								ctx->grid->cy = ctx->grid->sy - 1;
+							}
+						}
+					}
+					ctx->utf8_started = 0;
+				}
+				continue; /* byte consumed */
+			} else {
+				/* invalid sequence */
+				ctx->utf8_started = 0;
+			}
+		}
+
+		/* any non-ground state resets utf8 */
+		if (ctx->state != INPUT_GROUND) ctx->utf8_started = 0;
+
 		switch (ctx->state) {
 			case INPUT_GROUND:
 				if (ch == '\033') {
@@ -349,13 +401,14 @@ static void parse_control_sequence(const char *buf, int len) {
 							ctx->grid->cy = ctx->grid->sy - 1;
 						}
 					}
-				} else if (ch >= 32 && ch < 127) {
-					/* Printable character */
+				} else if (ch >= ' ' && ch <= '~') {
+					/* Printable ASCII character */
 					if (ctx->grid->cx < ctx->grid->sx &&
 					    ctx->grid->cy < ctx->grid->sy) {
 						struct grid_cell *cell =
 						    &ctx->grid->cells[ctx->grid->cy][ctx->grid->cx];
-						cell->ch = ch;
+						cell->uc.data[0] = ch;
+						cell->uc.size = 1;
 						cell->fg = ctx->cur_fg;
 						cell->bg = ctx->cur_bg;
 						cell->attr = ctx->cur_attr;
@@ -368,6 +421,17 @@ static void parse_control_sequence(const char *buf, int len) {
 							}
 						}
 					}
+				} else if (ch >= 0xc2 && ch <= 0xf4) {
+					/* Start of a UTF-8 sequence */
+					memset(&ctx->utf8c, 0, sizeof(ctx->utf8c));
+					ctx->utf8c.data[0] = ch;
+					ctx->utf8c.size = 1;
+					if (ch <= 0xdf)
+						ctx->utf8_started = 2;
+					else if (ch <= 0xef)
+						ctx->utf8_started = 3;
+					else
+						ctx->utf8_started = 4;
 				}
 				break;
 
@@ -511,8 +575,10 @@ static void parse_control_sequence(const char *buf, int len) {
 								case 0: /* from cursor to end of screen */
 									for (x = ctx->grid->cx; x < ctx->grid->sx;
 									     x++) {
-										ctx->grid->cells[ctx->grid->cy][x].ch =
-										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.data[0] = ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.size = 1;
 										ctx->grid->cells[ctx->grid->cy][x].fg =
 										    fg;
 										ctx->grid->cells[ctx->grid->cy][x].bg =
@@ -523,7 +589,9 @@ static void parse_control_sequence(const char *buf, int len) {
 									for (y = ctx->grid->cy + 1;
 									     y < ctx->grid->sy; y++) {
 										for (x = 0; x < ctx->grid->sx; x++) {
-											ctx->grid->cells[y][x].ch = ' ';
+											ctx->grid->cells[y][x].uc.data[0] =
+											    ' ';
+											ctx->grid->cells[y][x].uc.size = 1;
 											ctx->grid->cells[y][x].fg = fg;
 											ctx->grid->cells[y][x].bg = bg;
 											ctx->grid->cells[y][x].attr = attr;
@@ -533,15 +601,19 @@ static void parse_control_sequence(const char *buf, int len) {
 								case 1: /* from cursor to beginning of screen */
 									for (y = 0; y < ctx->grid->cy; y++) {
 										for (x = 0; x < ctx->grid->sx; x++) {
-											ctx->grid->cells[y][x].ch = ' ';
+											ctx->grid->cells[y][x].uc.data[0] =
+											    ' ';
+											ctx->grid->cells[y][x].uc.size = 1;
 											ctx->grid->cells[y][x].fg = fg;
 											ctx->grid->cells[y][x].bg = bg;
 											ctx->grid->cells[y][x].attr = attr;
 										}
 									}
 									for (x = 0; x <= ctx->grid->cx; x++) {
-										ctx->grid->cells[ctx->grid->cy][x].ch =
-										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.data[0] = ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.size = 1;
 										ctx->grid->cells[ctx->grid->cy][x].fg =
 										    fg;
 										ctx->grid->cells[ctx->grid->cy][x].bg =
@@ -569,8 +641,10 @@ static void parse_control_sequence(const char *buf, int len) {
 								case 0: /* from cursor to end of line */
 									for (x = ctx->grid->cx; x < ctx->grid->sx;
 									     x++) {
-										ctx->grid->cells[ctx->grid->cy][x].ch =
-										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.data[0] = ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.size = 1;
 										ctx->grid->cells[ctx->grid->cy][x].fg =
 										    fg;
 										ctx->grid->cells[ctx->grid->cy][x].bg =
@@ -581,8 +655,10 @@ static void parse_control_sequence(const char *buf, int len) {
 									break;
 								case 1: /* from cursor to beginning of line */
 									for (x = 0; x <= ctx->grid->cx; x++) {
-										ctx->grid->cells[ctx->grid->cy][x].ch =
-										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.data[0] = ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.size = 1;
 										ctx->grid->cells[ctx->grid->cy][x].fg =
 										    fg;
 										ctx->grid->cells[ctx->grid->cy][x].bg =
@@ -593,8 +669,10 @@ static void parse_control_sequence(const char *buf, int len) {
 									break;
 								case 2: /* entire line */
 									for (x = 0; x < ctx->grid->sx; x++) {
-										ctx->grid->cells[ctx->grid->cy][x].ch =
-										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.data[0] = ' ';
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .uc.size = 1;
 										ctx->grid->cells[ctx->grid->cy][x].fg =
 										    fg;
 										ctx->grid->cells[ctx->grid->cy][x].bg =
@@ -676,7 +754,8 @@ static void parse_control_sequence(const char *buf, int len) {
 							        (g->sx - g->cx - count) *
 							            sizeof(struct grid_cell));
 							for (int x = g->cx; x < g->cx + count; x++) {
-								g->cells[y][x].ch = ' ';
+								g->cells[y][x].uc.data[0] = ' ';
+								g->cells[y][x].uc.size = 1;
 								g->cells[y][x].fg = 7;
 								g->cells[y][x].bg = ctx->cur_bg;
 								g->cells[y][x].attr = 0;
@@ -703,7 +782,8 @@ static void parse_control_sequence(const char *buf, int len) {
 
 							for (int y = g->cy; y < g->cy + count; y++) {
 								for (int x = 0; x < g->sx; x++) {
-									g->cells[y][x].ch = ' ';
+									g->cells[y][x].uc.data[0] = ' ';
+									g->cells[y][x].uc.size = 1;
 									g->cells[y][x].fg = 7;
 									g->cells[y][x].bg = ctx->cur_bg;
 									g->cells[y][x].attr = 0;
@@ -733,7 +813,8 @@ static void parse_control_sequence(const char *buf, int len) {
 							for (int y = g->scroll_bottom - count + 1;
 							     y <= g->scroll_bottom; y++) {
 								for (int x = 0; x < g->sx; x++) {
-									g->cells[y][x].ch = ' ';
+									g->cells[y][x].uc.data[0] = ' ';
+									g->cells[y][x].uc.size = 1;
 									g->cells[y][x].fg = 7;
 									g->cells[y][x].bg = ctx->cur_bg;
 									g->cells[y][x].attr = 0;
@@ -758,7 +839,8 @@ static void parse_control_sequence(const char *buf, int len) {
 							        (g->sx - g->cx - count) *
 							            sizeof(struct grid_cell));
 							for (int x = g->sx - count; x < g->sx; x++) {
-								g->cells[y][x].ch = ' ';
+								g->cells[y][x].uc.data[0] = ' ';
+								g->cells[y][x].uc.size = 1;
 								g->cells[y][x].fg = 7;
 								g->cells[y][x].bg = ctx->cur_bg;
 								g->cells[y][x].attr = 0;
@@ -1090,9 +1172,15 @@ static void render_pane(void) {
 				fputs(sgr_buf, stdout);
 			}
 
-			char current_ch = cell->ch;
-			if (current_ch == 0) current_ch = ' ';
-			putchar(current_ch);
+			if (cell->uc.size > 0) {
+				if (cell->uc.size == 1 && cell->uc.data[0] == '\0') {
+					putchar(' ');
+				} else {
+					fwrite(cell->uc.data, 1, cell->uc.size, stdout);
+				}
+			} else {
+				putchar(' ');
+			}
 
 			last_fg = cell->fg;
 			last_bg = cell->bg;
@@ -1215,6 +1303,7 @@ int main(int argc, char *argv[]) {
 	input_parser.cur_fg = 7;
 	input_parser.cur_bg = 0;
 	input_parser.cur_attr = 0;
+	input_parser.utf8_started = 0;
 
 	/* Set up terminal */
 	setup_terminal();

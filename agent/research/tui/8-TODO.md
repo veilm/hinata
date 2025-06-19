@@ -4,12 +4,6 @@ This document lists the features from `tmux`'s terminal input parser that are mi
 
 ## Priority 1: Critical for Basic Neovim Functionality
 
-2.  **UTF-8 Character Support**
-    - **What:** `8.c` only handles printable ASCII characters (`0x20`-`0x7E`).
-    - **Why:** Neovim and other modern applications use UTF-8 extensively for UI elements (e.g., icons, box drawing) and content.
-    - **Implementation:** Need a UTF-8 decoder to handle multi-byte characters correctly.
-    - **Ref:** `tmux/input.c:input_top_bit_set`
-
 3.  **Alternate Screen Buffer (CSI ?1049h / ?1049l)**
     - **What:** `8.c` doesn't handle the private mode sequences for switching to and from the alternate screen buffer.
     - **Why:** Full-screen applications use this to get a clean screen to draw on, and restore the original screen content on exit. Without it, the application's UI will be drawn over the shell prompt and remain there after exit.
