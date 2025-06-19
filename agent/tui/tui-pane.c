@@ -1,6 +1,6 @@
 /*
  * tui-pane.c - A simplified tmux clone that creates a single pane
- * in the bottom 20 lines of the screen and runs a command inside it.
+ * in the next 20 available lines on screen and runs a command inside it.
  *
  * Based on tmux architecture:
  * - Creates a PTY pair for the nvim process
@@ -131,6 +131,30 @@ static void clear_pane_area(void);
 static void signal_handler(int sig);
 static void resize_handler(void);
 
+/* Get cursor position by sending DSR query */
+static int get_current_cursor_position(int *row, int *col) {
+	char buf[32];
+	unsigned int i = 0;
+
+	/* The terminal should be in raw mode with a timeout */
+	if (write(STDOUT_FILENO, "\033[6n", 4) != 4) return -1;
+
+	while (i < sizeof(buf) - 1) {
+		if (read(STDIN_FILENO, &buf[i], 1) != 1) break; /* timeout or error */
+		if (buf[i] == 'R') {
+			i++;
+			break;
+		}
+		i++;
+	}
+	buf[i] = '\0';
+
+	if (i == 0 || buf[i - 1] != 'R') return -1;
+	if (buf[0] != '\033' || buf[1] != '[') return -1;
+	if (sscanf(&buf[2], "%d;%d", row, col) != 2) return -1;
+	return 0;
+}
+
 static void log_unhandled(const char *fmt, ...) {
 	FILE *f = fopen("/tmp/8.log", "a");
 	if (f == NULL) return;
@@ -230,6 +254,46 @@ static void setup_terminal(void) {
 	raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
 	raw.c_cflag |= CS8;
 	raw.c_oflag &= ~OPOST;
+
+	/* Temporarily set VMIN and VTIME for cursor position query */
+	raw.c_cc[VMIN] = 1;
+	raw.c_cc[VTIME] = 5; /* 0.5s timeout */
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+		perror("tcsetattr");
+		/* Not fatal, we can fall back */
+	}
+
+	/* Get terminal size */
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1) {
+		perror("ioctl TIOCGWINSZ");
+		exit(1);
+	}
+	term_rows = ws.ws_row;
+	term_cols = ws.ws_col;
+
+	/* Get cursor position and decide where to start the pane */
+	int cursor_row, cursor_col;
+	if (get_current_cursor_position(&cursor_row, &cursor_col) == 0 &&
+	    cursor_row > 0) {
+		if (cursor_row + PANE_HEIGHT - 1 > term_rows) {
+			/* Not enough space, scroll up */
+			int scroll_count = cursor_row + PANE_HEIGHT - 1 - term_rows;
+			/* Move cursor to last line to scroll */
+			printf("\033[%d;1H", term_rows);
+			for (int i = 0; i < scroll_count; i++) {
+				printf("\n");
+			}
+			/* Terminal content has scrolled up. Pane will be at the bottom. */
+			pane_start_row = term_rows - PANE_HEIGHT;
+		} else {
+			pane_start_row = cursor_row - 1;
+		}
+	} else {
+		/* Fallback to bottom of the screen */
+		pane_start_row = term_rows - PANE_HEIGHT;
+	}
+
+	/* Set termios for main event loop (non-blocking) */
 	raw.c_cc[VMIN] = 0;
 	raw.c_cc[VTIME] = 1;
 
@@ -238,21 +302,10 @@ static void setup_terminal(void) {
 		exit(1);
 	}
 
-	/* Get terminal size */
-	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1) {
-		perror("ioctl TIOCGWINSZ");
-		exit(1);
-	}
-
-	term_rows = ws.ws_row;
-	term_cols = ws.ws_col;
-	pane_start_row = term_rows - PANE_HEIGHT;
-
 	/* Initialize the pane grid */
 	init_grid(&pane_grid, term_cols, PANE_HEIGHT - 1);
 
-	/* Clear screen and position pane */
-	clear_screen();
+	/* Position pane and draw border */
 	printf("\033[%d;1H", pane_start_row + 1); /* Move to pane start */
 	printf("\033[7m"); /* Reverse video for pane border */
 	for (int i = 0; i < term_cols; i++) {
