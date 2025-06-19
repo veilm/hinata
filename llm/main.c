@@ -4,13 +4,25 @@
 #include <errno.h>      // For errno
 #include <getopt.h>     // For getopt_long
 #include <jansson.h>    // Requires jansson development library
+#include <libgen.h>     // For dirname
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>  // For mkdir
 #include <sys/wait.h>  // For pclose status checking (WIFEXITED, etc.)
-#include <unistd.h>    // For isatty() and STDIN_FILENO
+#include <termios.h>   // For tcgetattr, tcsetattr
+#include <unistd.h>    // For isatty(), STDIN_FILENO, read(), write()
+#include <wordexp.h>   // For wordexp
 
 #define VERSION_STRING "hnt-llm 0.05"
+
+#define HINATA_CONFIG_DIR_SUBPATH "/hinata"
+#define HINATA_DATA_DIR_SUBPATH "/hinata"
+#define KEYS_FILENAME "/keys"
+#define LOCAL_KEY_FILENAME "/.local_key"
+#define DIR_PERMS 0700
+#define KEY_FILE_PERMS 0600
+#define LOCAL_KEY_LENGTH 32
 
 // Structure for a single message in the conversation
 typedef struct Message {
@@ -623,6 +635,486 @@ static int add_message_to_list(Message** head, Message** tail, const char* role,
 	return 1;  // Success
 }
 
+/******************************************************************************
+ * API Key Management
+ ******************************************************************************/
+
+// A simple XOR encryption/decryption function.
+void xor_crypt(const char* key, size_t key_len, char* data, size_t data_len) {
+	for (size_t i = 0; i < data_len; ++i) {
+		data[i] ^= key[i % key_len];
+	}
+}
+
+// Ensures that a directory exists at the given path, creating it recursively
+// if necessary. Does not support tilde expansion.
+static int ensure_dir_exists_recursive(char* path) {
+	struct stat st = {0};
+
+	// Check if the directory already exists.
+	if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+		return 0;
+	}
+
+	// dirname() can modify its argument, so we must pass it a copy.
+	char* path_copy = strdup(path);
+	if (!path_copy) {
+		perror("ensure_dir_exists_recursive strdup");
+		return -1;
+	}
+
+	// Recursively create the parent directory.
+	char* parent_dir = dirname(path_copy);
+	if (strcmp(parent_dir, ".") != 0 && strcmp(parent_dir, "/") != 0) {
+		ensure_dir_exists_recursive(parent_dir);
+	}
+	free(path_copy);
+
+	// Create the target directory.
+	if (mkdir(path, DIR_PERMS) != 0 && errno != EEXIST) {
+		fprintf(stderr, "Error: Cannot create directory '%s': %s\n", path,
+		        strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
+// Resolves an XDG directory path (e.g., for config or data).
+// It gets the base path from an environment variable like `xdg_env_var`. If the
+// env var is not set, it uses `fallback_home_subdir`. Then, it appends the
+// hinata-specific subpath. The function ensures the full path exists, creating
+// it recursively if needed. Returns a malloc'd string that the caller must
+// free.
+char* get_hinata_dir(const char* xdg_env_var,
+                     const char* fallback_home_subdir) {
+	const char* base_path = getenv(xdg_env_var);
+	wordexp_t p;
+
+	const char* path_to_expand =
+	    (base_path && *base_path) ? base_path : fallback_home_subdir;
+
+	if (wordexp(path_to_expand, &p, 0) != 0) {
+		fprintf(stderr, "Error expanding path: %s\n", path_to_expand);
+		return NULL;
+	}
+
+	if (p.we_wordc == 0) {
+		fprintf(stderr, "Error: wordexp resulted in zero words for path: %s\n",
+		        path_to_expand);
+		wordfree(&p);
+		return NULL;
+	}
+
+	// Using HINATA_CONFIG_DIR_SUBPATH, as both config and data are the same.
+	size_t len = strlen(p.we_wordv[0]) + strlen(HINATA_CONFIG_DIR_SUBPATH) + 1;
+	char* full_path = malloc(len);
+	if (!full_path) {
+		perror("malloc for hinata dir path");
+		wordfree(&p);
+		return NULL;
+	}
+	snprintf(full_path, len, "%s%s", p.we_wordv[0], HINATA_CONFIG_DIR_SUBPATH);
+	wordfree(&p);
+
+	if (ensure_dir_exists_recursive(full_path) != 0) {
+		free(full_path);
+		return NULL;
+	}
+
+	return full_path;
+}
+
+// Checks if the local encryption key exists. If not, generates a new one.
+void ensure_local_key(const char* key_path) {
+	struct stat st;
+	if (stat(key_path, &st) == 0) {
+		return;  // Key already exists
+	}
+
+	FILE* urandom = fopen("/dev/urandom", "r");
+	if (!urandom) {
+		perror("Failed to open /dev/urandom");
+		exit(1);
+	}
+
+	char key[LOCAL_KEY_LENGTH];
+	if (fread(key, 1, LOCAL_KEY_LENGTH, urandom) != LOCAL_KEY_LENGTH) {
+		fprintf(stderr, "Failed to read from /dev/urandom\n");
+		fclose(urandom);
+		exit(1);
+	}
+	fclose(urandom);
+
+	FILE* key_file = fopen(key_path, "w");
+	if (!key_file) {
+		perror("Failed to create local key file");
+		exit(1);
+	}
+
+	if (fwrite(key, 1, LOCAL_KEY_LENGTH, key_file) != LOCAL_KEY_LENGTH) {
+		fprintf(stderr, "Failed to write to local key file\n");
+		fclose(key_file);
+		exit(1);
+	}
+	fclose(key_file);
+
+	if (chmod(key_path, KEY_FILE_PERMS) != 0) {
+		perror("Failed to set permissions on local key file");
+		exit(1);
+	}
+}
+
+// Reads the local encryption key from a file.
+char* read_local_key(const char* key_path, size_t* key_len) {
+	FILE* f = fopen(key_path, "r");
+	if (!f) return NULL;
+
+	fseek(f, 0, SEEK_END);
+	long size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	if (size <= 0) {
+		fclose(f);
+		return NULL;
+	}
+
+	char* key = malloc(size);
+	if (!key) {
+		perror("malloc for local key");
+		fclose(f);
+		return NULL;
+	}
+
+	if (fread(key, 1, size, f) != (size_t)size) {
+		fprintf(stderr, "Failed to read local key\n");
+		free(key);
+		fclose(f);
+		return NULL;
+	}
+
+	fclose(f);
+	*key_len = size;
+	return key;
+}
+
+// Command handler for `save-key`.
+void handle_save_key(int argc, char* argv[]) {
+	if (argc < 3) {
+		fprintf(stderr, "Usage: %s save-key <KEY_NAME>\n", argv[0]);
+		exit(1);
+	}
+	const char* key_name = argv[2];
+
+	char* config_dir = get_hinata_dir("XDG_CONFIG_HOME", "~/.config");
+	char* data_dir = get_hinata_dir("XDG_DATA_HOME", "~/.local/share");
+	if (!config_dir || !data_dir) exit(1);
+
+	// Ensure .gitignore exists and contains `.*` to hide the local key
+	char gitignore_path[1024];
+	snprintf(gitignore_path, sizeof(gitignore_path), "%s/.gitignore", data_dir);
+	FILE* gitignore_file = fopen(gitignore_path, "w");
+	if (gitignore_file) {
+		fprintf(gitignore_file, ".*\n");
+		fclose(gitignore_file);
+	}
+
+	char local_key_path[1024];
+	snprintf(local_key_path, sizeof(local_key_path), "%s%s", data_dir,
+	         LOCAL_KEY_FILENAME);
+	ensure_local_key(local_key_path);
+
+	printf("Enter API key value for %s: ", key_name);
+	fflush(stdout);
+
+	struct termios oldt, newt;
+	tcgetattr(STDIN_FILENO, &oldt);
+	newt = oldt;
+	newt.c_lflag &= ~ECHO;
+	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+	char api_key_value[1024];
+	if (!fgets(api_key_value, sizeof(api_key_value), stdin)) {
+		api_key_value[0] = '\0';
+	}
+	// remove trailing newline
+	api_key_value[strcspn(api_key_value, "\n")] = 0;
+
+	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+	printf("\n");
+
+	if (strlen(api_key_value) == 0) {
+		fprintf(stderr, "API key cannot be empty.\n");
+		exit(1);
+	}
+
+	size_t local_key_len;
+	char* local_key = read_local_key(local_key_path, &local_key_len);
+	if (!local_key) {
+		fprintf(stderr, "Error reading local key.\n");
+		exit(1);
+	}
+
+	// Read existing keys
+	char keys_path[1024];
+	snprintf(keys_path, sizeof(keys_path), "%s%s", config_dir, KEYS_FILENAME);
+	FILE* keys_file = fopen(keys_path, "r");
+
+	char temp_keys_path[1024];
+	int snprintf_len =
+	    snprintf(temp_keys_path, sizeof(temp_keys_path), "%s.tmp", keys_path);
+	if (snprintf_len < 0 || (size_t)snprintf_len >= sizeof(temp_keys_path)) {
+		fprintf(stderr, "Error creating temp path.\n");
+		exit(1);
+	}
+	FILE* temp_file = fopen(temp_keys_path, "w");
+	if (!temp_file) {
+		perror("Could not open temp file for writing keys");
+		exit(1);
+	}
+	int key_found = 0;
+
+	if (keys_file) {
+		char* line = NULL;
+		size_t len = 0;
+		ssize_t read;
+		while ((read = getline(&line, &len, keys_file)) != -1) {
+			char* eq = strchr(line, '=');
+			if (eq) {
+				*eq = '\0';
+				if (strcmp(line, key_name) == 0) {
+					// This is the key we're updating, skip it
+					key_found = 1;
+				} else {
+					// Write other keys back
+					*eq = '=';
+					fputs(line, temp_file);
+				}
+			}
+		}
+		free(line);
+		fclose(keys_file);
+	}
+
+	// Encrypt new key and add it
+	char* new_key_val_encrypted = strdup(api_key_value);
+	size_t new_key_len = strlen(new_key_val_encrypted);
+	xor_crypt(local_key, local_key_len, new_key_val_encrypted, new_key_len);
+	fprintf(temp_file, "%s=", key_name);
+	fwrite(new_key_val_encrypted, 1, new_key_len, temp_file);
+	fprintf(temp_file, "\n");
+	free(new_key_val_encrypted);
+
+	fclose(temp_file);
+	rename(temp_keys_path, keys_path);
+	chmod(keys_path, KEY_FILE_PERMS);
+	free(local_key);
+	free(config_dir);
+	free(data_dir);
+
+	printf("Successfully %s key '%s'.\n", key_found ? "updated" : "saved",
+	       key_name);
+}
+
+// Command handler for `list-keys`
+void handle_list_keys(int argc, char* argv[]) {
+	(void)argc;
+	(void)argv;
+	char* config_dir = get_hinata_dir("XDG_CONFIG_HOME", "~/.config");
+	if (!config_dir) exit(1);
+	char keys_path[1024];
+	snprintf(keys_path, sizeof(keys_path), "%s%s", config_dir, KEYS_FILENAME);
+	free(config_dir);
+
+	FILE* f = fopen(keys_path, "r");
+	if (!f) {
+		// It's not an error if the file doesn't exist, just means no keys are
+		// stored.
+		if (errno != ENOENT) {
+			perror("Error opening keys file");
+		}
+		return;
+	}
+
+	char* line = NULL;
+	size_t len = 0;
+	while (getline(&line, &len, f) != -1) {
+		char* eq = strchr(line, '=');
+		if (eq) {
+			*eq = '\0';
+			printf("%s\n", line);
+		}
+	}
+	free(line);
+	fclose(f);
+}
+
+// Command handler for `delete-key`.
+void handle_delete_key(int argc, char* argv[]) {
+	if (argc < 3) {
+		fprintf(stderr, "Usage: %s delete-key <KEY_NAME>\n", argv[0]);
+		exit(1);
+	}
+	const char* key_name_to_delete = argv[2];
+
+	char* config_dir = get_hinata_dir("XDG_CONFIG_HOME", "~/.config");
+	if (!config_dir) exit(1);
+
+	char keys_path[1024];
+	snprintf(keys_path, sizeof(keys_path), "%s%s", config_dir, KEYS_FILENAME);
+	FILE* keys_file = fopen(keys_path, "r");
+	if (!keys_file) {
+		fprintf(stderr, "No keys file found, nothing to delete.\n");
+		free(config_dir);
+		exit(0);
+	}
+
+	char temp_keys_path[1024];
+	int snprintf_len =
+	    snprintf(temp_keys_path, sizeof(temp_keys_path), "%s.tmp", keys_path);
+	if (snprintf_len < 0 || (size_t)snprintf_len >= sizeof(temp_keys_path)) {
+		fprintf(stderr, "Error creating temp path.\n");
+		exit(1);
+	}
+	FILE* temp_file = fopen(temp_keys_path, "w");
+	if (!temp_file) {
+		perror("Could not open temp file for writing keys");
+		fclose(keys_file);
+		free(config_dir);
+		exit(1);
+	}
+
+	int key_found = 0;
+	char* line = NULL;
+	size_t len = 0;
+	while (getline(&line, &len, keys_file) != -1) {
+		char* line_copy = strdup(line);
+		char* eq = strchr(line_copy, '=');
+		if (eq) {
+			*eq = '\0';
+			if (strcmp(line_copy, key_name_to_delete) == 0) {
+				key_found = 1;
+				// Skip writing this line
+			} else {
+				fputs(line, temp_file);
+			}
+		}
+		free(line_copy);
+	}
+	free(line);
+	fclose(keys_file);
+	fclose(temp_file);
+
+	if (key_found) {
+		rename(temp_keys_path, keys_path);
+		printf("Deleted key '%s'.\n", key_name_to_delete);
+	} else {
+		remove(temp_keys_path);
+		printf("Key '%s' not found.\n", key_name_to_delete);
+	}
+	free(config_dir);
+}
+
+// Retrieves an API key from the local store, decrypting it.
+char* get_api_key_from_store(const char* key_name) {
+	char* config_dir = get_hinata_dir("XDG_CONFIG_HOME", "~/.config");
+	char* data_dir = get_hinata_dir("XDG_DATA_HOME", "~/.local/share");
+	if (!config_dir || !data_dir) return NULL;
+
+	char local_key_path[1024];
+	snprintf(local_key_path, sizeof(local_key_path), "%s%s", data_dir,
+	         LOCAL_KEY_FILENAME);
+	size_t local_key_len;
+	char* local_key = read_local_key(local_key_path, &local_key_len);
+	if (!local_key) {
+		// No local key means no encrypted keys can exist.
+		free(config_dir);
+		free(data_dir);
+		return NULL;
+	}
+
+	char keys_path[1024];
+	snprintf(keys_path, sizeof(keys_path), "%s%s", config_dir, KEYS_FILENAME);
+	FILE* f = fopen(keys_path, "r");
+	if (!f) {
+		free(config_dir);
+		free(data_dir);
+		free(local_key);
+		return NULL;
+	}
+
+	char* found_api_key = NULL;
+	char* line = NULL;
+	size_t len = 0;
+	ssize_t read;
+	while ((read = getline(&line, &len, f)) != -1) {
+		char* eq = strchr(line, '=');
+		if (eq) {
+			*eq = '\0';
+			if (strcmp(line, key_name) == 0) {
+				char* value = eq + 1;
+				// remove trailing newline
+				value[strcspn(value, "\n")] = 0;
+				size_t value_len = strlen(value);
+				found_api_key = strdup(value);
+				xor_crypt(local_key, local_key_len, found_api_key, value_len);
+				break;  // Found it
+			}
+		}
+	}
+	free(line);
+	fclose(f);
+	free(local_key);
+	free(config_dir);
+	free(data_dir);
+
+	return found_api_key;
+}
+
+/******************************************************************************
+ * Provider Configuration
+ ******************************************************************************/
+
+typedef struct {
+	const char* name;
+	const char* api_url;
+	const char* env_var;
+	const char** extra_headers;
+} Provider;
+
+static const char* openrouter_extra_headers[] = {
+    "HTTP-Referer: https://github.com/veilm/hinata/", "X-Title: hinata", NULL};
+
+static Provider providers[] = {
+    {"openai", OPENAI_API_URL, "OPENAI_API_KEY", NULL},
+    {"openrouter", OPENROUTER_API_URL, "OPENROUTER_API_KEY",
+     openrouter_extra_headers},
+    {"deepseek", DEEPSEEK_API_URL, "DEEPSEEK_API_KEY", NULL},
+    {"google", GOOGLE_COMPAT_API_URL, "GEMINI_API_KEY", NULL},
+};
+static const int num_providers = sizeof(providers) / sizeof(providers[0]);
+
+// Gets an API key for a provider, checking environment variables first,
+// then falling back to the local key store. Returns a malloc'd string.
+char* get_provider_api_key(const Provider* p) {
+	const char* key = getenv(p->env_var);
+	if (key && *key) {
+		if (debug_mode)
+			fprintf(stderr, "DEBUG: Found API key in environment variable %s\n",
+			        p->env_var);
+		return strdup(key);
+	}
+	if (debug_mode)
+		fprintf(stderr, "DEBUG: API key not in env, checking store for %s\n",
+		        p->env_var);
+	char* stored_key = get_api_key_from_store(p->env_var);
+	if (stored_key) {
+		if (debug_mode)
+			fprintf(stderr, "DEBUG: Found API key for %s in local store\n",
+			        p->name);
+	}
+	return stored_key;
+}
+
 // Helper function to run hnt-escape -u on content via a temporary file
 // Returns a new dynamically allocated string with the unescaped content,
 // or NULL on error. Caller must free the returned string.
@@ -791,13 +1283,27 @@ static char* unescape_message_content(const char* original_content) {
 }
 
 int main(int argc, char* argv[]) {
+	if (argc > 1) {
+		if (strcmp(argv[1], "save-key") == 0 ||
+		    strcmp(argv[1], "set-key") == 0) {
+			handle_save_key(argc, argv);
+			exit(0);
+		} else if (strcmp(argv[1], "list-keys") == 0) {
+			handle_list_keys(argc, argv);
+			exit(0);
+		} else if (strcmp(argv[1], "delete-key") == 0) {
+			handle_delete_key(argc, argv);
+			exit(0);
+		}
+	}
+
 	CURL* curl_handle = NULL;  // Initialize curl_handle to NULL
 	CURLcode res = CURLE_OK;   // Initialize res
 	struct StreamData stream_data = {
 	    NULL, 0, 0, 0, PHASE_INIT, 0};  // Initialize stream data struct
 	struct curl_slist* headers = NULL;
 	char* api_key = NULL;
-	char auth_header[1024];  // Buffer for the Authorization header
+	char auth_header[1097];  // Buffer for the Authorization header
 	char* stdin_content = NULL;
 	size_t stdin_len = 0;
 	Message* message_list_head = NULL;  // Head of the conversation message list
@@ -820,7 +1326,7 @@ int main(int argc, char* argv[]) {
 	                             // if --model or HINATA_LLM_MODEL is used.
 	const char* api_url_base = NULL;  // Base URL or format string
 	char final_api_url[1024];         // Buffer for the final formatted URL
-	const char* api_key_env_var = NULL;
+	const Provider* provider = NULL;
 	const char* model_name_to_send = NULL;
 	const char* system_prompt = NULL;  // Variable to store the system prompt
 
@@ -948,7 +1454,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	// --- 2. Parse Model Argument and Select API/Key ---
+	// --- 2. Parse Model Argument and Select Provider ---
 	const char* separator = strchr(model_arg, '/');
 	if (separator == NULL) {
 		fprintf(
@@ -960,37 +1466,20 @@ int main(int argc, char* argv[]) {
 	}
 
 	size_t provider_len = separator - model_arg;
-	model_name_to_send = separator + 1;  // Point to the character after '/'
+	for (int i = 0; i < num_providers; i++) {
+		if (strlen(providers[i].name) == provider_len &&
+		    strncmp(model_arg, providers[i].name, provider_len) == 0) {
+			provider = &providers[i];
+			break;
+		}
+	}
 
-	if (strncmp(model_arg, "openai/", provider_len + 1) == 0) {
-		api_url_base = OPENAI_API_URL;
-		api_key_env_var = "OPENAI_API_KEY";
-	} else if (strncmp(model_arg, "openrouter/", provider_len + 1) == 0) {
-		api_url_base = OPENROUTER_API_URL;
-		api_key_env_var = "OPENROUTER_API_KEY";
-		// OpenRouter specific headers
-		headers = curl_slist_append(
-		    headers, "HTTP-Referer: https://github.com/veilm/hinata/");
-		headers = curl_slist_append(headers, "X-Title: hinata");
-	} else if (strncmp(model_arg, "deepseek/", provider_len + 1) == 0) {
-		api_url_base = DEEPSEEK_API_URL;
-		api_key_env_var = "DEEPSEEK_API_KEY";
-	} else if (strncmp(model_arg, "google/", provider_len + 1) == 0) {
-		api_url_base =
-		    GOOGLE_COMPAT_API_URL;  // Use the compatible endpoint URL
-		api_key_env_var = "GEMINI_API_KEY";
-	} else {
-		// Allocate buffer for provider string for error message
+	if (!provider) {
 		char* provider_str = malloc(provider_len + 1);
 		if (!provider_str) {
 			fprintf(stderr,
 			        "Error: Memory allocation failed for provider string.\n");
-			return 1;  // Allocation error
-		}
-		if (!provider_str) {
-			fprintf(stderr,
-			        "Error: Memory allocation failed for provider string.\n");
-			return 1;  // Allocation error
+			return 1;
 		}
 		strncpy(provider_str, model_arg, provider_len);
 		provider_str[provider_len] = '\0';
@@ -1002,21 +1491,30 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	if (*model_name_to_send == '\0') {  // Check if model name part is empty
+	model_name_to_send = separator + 1;
+	if (*model_name_to_send == '\0') {
 		fprintf(stderr, "Error: Missing model name after '/' in '%s'.\n",
 		        model_arg);
 		return 1;
 	}
 
+	api_url_base = provider->api_url;
+	if (provider->extra_headers) {
+		for (int i = 0; provider->extra_headers[i]; i++) {
+			headers = curl_slist_append(headers, provider->extra_headers[i]);
+		}
+	}
+
 	// --- 3. Initialize stream data buffer ---
-	// --- 4. Get API Key from environment variable ---
-	api_key = getenv(api_key_env_var);  // Use the selected environment variable
+	// --- 4. Get API Key ---
+	api_key = get_provider_api_key(provider);
 	if (api_key == NULL) {
-		fprintf(stderr, "Error: %s environment variable not set.\n",
-		        api_key_env_var);
-		// No stdin_content to free yet
+		fprintf(stderr,
+		        "Error: API key for %s not found.\nSet the %s environment "
+		        "variable or save it using:\nhnt-llm save-key %s\n",
+		        provider->name, provider->env_var, provider->env_var);
 		free(stream_data.buffer);
-		return 1;  // Keep exit code 1 for consistency
+		return 1;
 	}
 
 	// Prepare Authorization header (used by all providers now)
@@ -1455,6 +1953,7 @@ int main(int argc, char* argv[]) {
 
 	// --- 12. Cleanup ---
 cleanup:  // Label for centralized cleanup
+	if (api_key) free(api_key);
 	if (post_data_dynamic)
 		free(post_data_dynamic);  // Free dynamically generated JSON string
 	if (root_payload)
