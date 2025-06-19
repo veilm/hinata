@@ -1,4 +1,7 @@
 #!/bin/sh
+
+[ "$1" ] && comment="here is a brief comment regarding the commit by the developer: $@"
+
 which msk_pass > /dev/null && export OPENROUTER_API_KEY=$(msk_pass get openrouter_key_rlz_1737128805)
 which alert > /dev/null && alert "TODO shipped creds manager because users are too important to have any"
 
@@ -16,5 +19,7 @@ hnt-agent --no-confirm -m "please do the following
 	include that it was committed by \"hnt-agent via util/commit\"
 4. push
 5. report to the user that you're finished
+
+$comment
 
 if there are any unstaged changes at this point, leave them as is"
