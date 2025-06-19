@@ -1,6 +1,6 @@
 /*
  * mini_tmux.c - A simplified tmux clone that creates a single pane
- * in the bottom 20 lines of the screen and runs nvim inside it.
+ * in the bottom 20 lines of the screen and runs a command inside it.
  *
  * Based on tmux architecture:
  * - Creates a PTY pair for the nvim process
@@ -107,7 +107,7 @@ static int pane_start_row;
 static void setup_terminal(void);
 static void restore_terminal(void);
 static int create_pty(void);
-static void spawn_nvim(void);
+static void spawn_child(char *argv[]);
 static void handle_input(void);
 static void parse_control_sequence(const char *buf, int len);
 static void render_pane(void);
@@ -254,8 +254,8 @@ static int create_pty(void) {
 	return 0;
 }
 
-/* Spawn nvim process */
-static void spawn_nvim(void) {
+/* Spawn child process */
+static void spawn_child(char *argv[]) {
 	child_pid = fork();
 	if (child_pid == -1) {
 		perror("fork");
@@ -282,9 +282,9 @@ static void spawn_nvim(void) {
 		/* Set TERM environment */
 		setenv("TERM", "xterm-256color", 1);
 
-		/* Execute nvim */
-		execl("/usr/bin/nvim", "nvim", NULL);
-		perror("execl nvim");
+		/* Execute command */
+		execvp(argv[0], argv);
+		perror("execvp");
 		exit(1);
 	}
 
@@ -311,7 +311,7 @@ static void clear_pane_area(void) {
 	}
 }
 
-/* Parse control sequences from nvim */
+/* Parse control sequences from child process */
 static void parse_control_sequence(const char *buf, int len) {
 	struct input_ctx *ctx = &input_parser;
 	int i;
@@ -1109,7 +1109,7 @@ static void render_pane(void) {
 	fflush(stdout);
 }
 
-/* Handle input from user and nvim */
+/* Handle input from user and child process */
 static void handle_input(void) {
 	fd_set readfds;
 	char buf[1024];
@@ -1134,12 +1134,12 @@ static void handle_input(void) {
 				if (n == 1 && buf[0] == 3) {
 					break;
 				}
-				/* Forward to nvim */
+				/* Forward to child process */
 				write(master_fd, buf, n);
 			}
 		}
 
-		/* Handle nvim output */
+		/* Handle child output */
 		if (FD_ISSET(master_fd, &readfds)) {
 			n = read(master_fd, buf, sizeof(buf));
 			if (n > 0) {
@@ -1175,7 +1175,7 @@ static void resize_handler(void) {
 		/* Resize the pane grid */
 		init_grid(&pane_grid, term_cols, PANE_HEIGHT);
 
-		/* Notify nvim of size change */
+		/* Notify child of size change */
 		ws.ws_row = PANE_HEIGHT - 1;
 		ws.ws_col = term_cols;
 		ioctl(master_fd, TIOCSWINSZ, &ws);
@@ -1196,6 +1196,11 @@ static void resize_handler(void) {
 static void sigwinch_handler(int sig) { resize_handler(); }
 
 int main(int argc, char *argv[]) {
+	if (argc < 2) {
+		fprintf(stderr, "Usage: %s <command> [args...]\n", argv[0]);
+		return 1;
+	}
+
 	/* Set up signal handlers */
 	signal(SIGINT, signal_handler);
 	signal(SIGTERM, signal_handler);
@@ -1214,13 +1219,13 @@ int main(int argc, char *argv[]) {
 	/* Set up terminal */
 	setup_terminal();
 
-	/* Create PTY and spawn nvim */
+	/* Create PTY and spawn child process */
 	if (create_pty() == -1) {
 		restore_terminal();
 		exit(1);
 	}
 
-	spawn_nvim();
+	spawn_child(&argv[1]);
 
 	/* Main input loop */
 	handle_input();

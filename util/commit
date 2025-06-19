@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ "$1" ] && comment="here is a brief comment regarding the commit by the developer: $@"
+[ "$1" ] && comment="here is a brief comment by the developer (only relevant to deciding on the commit message): $@"
 
 which msk_pass > /dev/null && export OPENROUTER_API_KEY=$(msk_pass get openrouter_key_rlz_1737128805)
 which alert > /dev/null && alert "TODO shipped creds manager because users are too important to have any"
