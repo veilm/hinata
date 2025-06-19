@@ -873,9 +873,15 @@ cat /etc/os-release
                         sys.stderr.write("\nProceed to hnt-shell-apply?\n")
                         sys.stderr.flush()
                         try:
+                            yes_option = (
+                                "Accept. Proceed to execute Hinata's shell commands"
+                            )
+                            no_option = "Decline. Abort execution."
+                            options = f"{yes_option}\n{no_option}"
+
                             process = subprocess.run(
                                 [tui_select_path, "--color", "4"],
-                                input="yes\nno",
+                                input=options,
                                 capture_output=True,
                                 check=False,
                                 text=True,
@@ -883,14 +889,14 @@ cat /etc/os-release
                             # tui-select exits 1 on cancel (esc/ctrl-c)
                             if (
                                 process.returncode != 0
-                                or process.stdout.strip() != "yes"
+                                or process.stdout.strip() != yes_option
                             ):
                                 print(
                                     "Aborted by user before hnt-shell-apply.",
                                     file=sys.stderr,
                                 )
                                 sys.exit(0)
-                            # if "yes", continue
+                            # if "yes_option" was selected, continue
                         except Exception as e:
                             print(
                                 f"Error during selection: {e}. Aborting.",
@@ -991,9 +997,15 @@ cat /etc/os-release
                             sys.stderr.write("\nLLM provided no action. What next?\n")
                             sys.stderr.flush()
                             try:
+                                edit_option = (
+                                    "Edit. Provide new instructions for the LLM."
+                                )
+                                quit_option = "Quit. Terminate the agent."
+                                options = f"{edit_option}\n{quit_option}"
+
                                 process = subprocess.run(
                                     [tui_select_path, "--color", "4"],
-                                    input="edit\nquit",
+                                    input=options,
                                     capture_output=True,
                                     check=False,
                                     text=True,
@@ -1001,7 +1013,7 @@ cat /etc/os-release
                                 if process.returncode == 0:
                                     user_choice = process.stdout.strip()
                                 else:  # Canceled, treat as quit
-                                    user_choice = "quit"
+                                    user_choice = quit_option
                             except Exception as e:
                                 print(
                                     f"Error during selection: {e}. Aborting.",
@@ -1010,11 +1022,11 @@ cat /etc/os-release
                                 sys.exit(1)
 
                             # --- Act on user choice ---
-                            if user_choice == "quit":
+                            if user_choice == quit_option:
                                 print("Aborted by user.", file=sys.stderr)
                                 sys.exit(0)
 
-                            elif user_choice == "edit":
+                            elif user_choice == edit_option:
                                 # Open editor for user message
                                 editor = os.environ.get("EDITOR", "vi")
                                 initial_text = "# Provide your message to the LLM. Save and exit to send. Leave this empty or unchanged to return to the prompt."
@@ -1133,20 +1145,31 @@ cat /etc/os-release
                     )
                     sys.stderr.flush()
                     try:
+                        yes_option = (
+                            "Continue. Add command output to chat history for context."
+                        )
+                        no_option = (
+                            "Halt. Do not add output to chat, and end interaction."
+                        )
+                        options = f"{yes_option}\n{no_option}"
+
                         process = subprocess.run(
                             [tui_select_path, "--color", "4"],
-                            input="yes\nno",
+                            input=options,
                             capture_output=True,
                             check=False,
                             text=True,
                         )
-                        if process.returncode != 0 or process.stdout.strip() != "yes":
+                        if (
+                            process.returncode != 0
+                            or process.stdout.strip() != yes_option
+                        ):
                             user_wants_to_add_to_chat = False
                             print(
                                 "User chose not to add hnt-shell-apply output. Ending interaction loop.",
                                 file=sys.stderr,
                             )
-                        # if yes, user_wants_to_add_to_chat remains True
+                        # if yes_option selected, user_wants_to_add_to_chat remains True
                     except Exception as e:
                         print(
                             f"Error during selection: {e}. Aborting.",
