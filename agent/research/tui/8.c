@@ -64,6 +64,8 @@ struct grid {
 	struct grid_cell cells[MAX_ROWS][MAX_COLS];
 	int sx, sy; /* screen dimensions */
 	int cx, cy; /* cursor position */
+	int scroll_top;
+	int scroll_bottom;
 };
 
 /* Input parser states */
@@ -123,6 +125,8 @@ static void init_grid(struct grid *g, int sx, int sy) {
 	g->sy = sy;
 	g->cx = 0;
 	g->cy = 0;
+	g->scroll_top = 0;
+	g->scroll_bottom = sy - 1;
 
 	for (y = 0; y < sy; y++) {
 		for (x = 0; x < sx; x++) {
@@ -130,6 +134,52 @@ static void init_grid(struct grid *g, int sx, int sy) {
 			g->cells[y][x].fg = 7;
 			g->cells[y][x].bg = 0;
 			g->cells[y][x].attr = 0;
+		}
+	}
+}
+
+static void grid_scroll_up(struct grid *g, int n, int fg, int bg, int attr) {
+	if (n <= 0) return;
+	if (g->scroll_top >= g->scroll_bottom) return;
+	if (n > g->scroll_bottom - g->scroll_top + 1) {
+		n = g->scroll_bottom - g->scroll_top + 1;
+	}
+
+	if (g->scroll_top + n <= g->scroll_bottom) {
+		memmove(
+		    &g->cells[g->scroll_top], &g->cells[g->scroll_top + n],
+		    (g->scroll_bottom - g->scroll_top - n + 1) * sizeof(g->cells[0]));
+	}
+
+	for (int y = g->scroll_bottom - n + 1; y <= g->scroll_bottom; y++) {
+		for (int x = 0; x < g->sx; x++) {
+			g->cells[y][x].ch = ' ';
+			g->cells[y][x].fg = fg;
+			g->cells[y][x].bg = bg;
+			g->cells[y][x].attr = attr;
+		}
+	}
+}
+
+static void grid_scroll_down(struct grid *g, int n, int fg, int bg, int attr) {
+	if (n <= 0) return;
+	if (g->scroll_top >= g->scroll_bottom) return;
+	if (n > g->scroll_bottom - g->scroll_top + 1) {
+		n = g->scroll_bottom - g->scroll_top + 1;
+	}
+
+	if (g->scroll_top + n <= g->scroll_bottom) {
+		memmove(
+		    &g->cells[g->scroll_top + n], &g->cells[g->scroll_top],
+		    (g->scroll_bottom - g->scroll_top - n + 1) * sizeof(g->cells[0]));
+	}
+
+	for (int y = g->scroll_top; y < g->scroll_top + n; y++) {
+		for (int x = 0; x < g->sx; x++) {
+			g->cells[y][x].ch = ' ';
+			g->cells[y][x].fg = fg;
+			g->cells[y][x].bg = bg;
+			g->cells[y][x].attr = attr;
 		}
 	}
 }
@@ -274,9 +324,13 @@ static void parse_control_sequence(const char *buf, int len) {
 				if (ch == '\033') {
 					ctx->state = INPUT_ESCAPE;
 				} else if (ch == '\n') {
-					ctx->grid->cy++;
-					if (ctx->grid->cy >= ctx->grid->sy) {
-						ctx->grid->cy = ctx->grid->sy - 1;
+					if (ctx->grid->cy == ctx->grid->scroll_bottom) {
+						grid_scroll_up(ctx->grid, 1, 7, ctx->cur_bg, 0);
+					} else {
+						ctx->grid->cy++;
+						if (ctx->grid->cy >= ctx->grid->sy) {
+							ctx->grid->cy = ctx->grid->sy - 1;
+						}
 					}
 				} else if (ch == '\r') {
 					ctx->grid->cx = 0;
@@ -448,22 +502,110 @@ static void parse_control_sequence(const char *buf, int len) {
 							}
 							break;
 
-						case 'J':
-							/* Clear screen */
-							if (ctx->param_len == 0 ||
-							    strcmp(ctx->param_buf, "2") == 0) {
-								init_grid(ctx->grid, ctx->grid->sx,
-								          ctx->grid->sy);
+						case 'J': { /* ED - Erase in Display */
+							int n = 0;
+							if (ctx->param_len > 0) n = atoi(ctx->param_buf);
+							int y, x;
+							int fg = 7, bg = ctx->cur_bg, attr = 0;
+							switch (n) {
+								case 0: /* from cursor to end of screen */
+									for (x = ctx->grid->cx; x < ctx->grid->sx;
+									     x++) {
+										ctx->grid->cells[ctx->grid->cy][x].ch =
+										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x].fg =
+										    fg;
+										ctx->grid->cells[ctx->grid->cy][x].bg =
+										    bg;
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .attr = attr;
+									}
+									for (y = ctx->grid->cy + 1;
+									     y < ctx->grid->sy; y++) {
+										for (x = 0; x < ctx->grid->sx; x++) {
+											ctx->grid->cells[y][x].ch = ' ';
+											ctx->grid->cells[y][x].fg = fg;
+											ctx->grid->cells[y][x].bg = bg;
+											ctx->grid->cells[y][x].attr = attr;
+										}
+									}
+									break;
+								case 1: /* from cursor to beginning of screen */
+									for (y = 0; y < ctx->grid->cy; y++) {
+										for (x = 0; x < ctx->grid->sx; x++) {
+											ctx->grid->cells[y][x].ch = ' ';
+											ctx->grid->cells[y][x].fg = fg;
+											ctx->grid->cells[y][x].bg = bg;
+											ctx->grid->cells[y][x].attr = attr;
+										}
+									}
+									for (x = 0; x <= ctx->grid->cx; x++) {
+										ctx->grid->cells[ctx->grid->cy][x].ch =
+										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x].fg =
+										    fg;
+										ctx->grid->cells[ctx->grid->cy][x].bg =
+										    bg;
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .attr = attr;
+									}
+									break;
+								case 2: /* entire screen */
+								case 3: /* entire screen + scrollback. we don't
+								           have scrollback */
+									init_grid(ctx->grid, ctx->grid->sx,
+									          ctx->grid->sy);
+									break;
 							}
 							break;
+						}
 
-						case 'K':
-							/* Clear line */
-							for (int x = ctx->grid->cx; x < ctx->grid->sx;
-							     x++) {
-								ctx->grid->cells[ctx->grid->cy][x].ch = ' ';
+						case 'K': { /* EL - Erase in Line */
+							int n = 0;
+							if (ctx->param_len > 0) n = atoi(ctx->param_buf);
+							int x;
+							int fg = 7, bg = ctx->cur_bg, attr = 0;
+							switch (n) {
+								case 0: /* from cursor to end of line */
+									for (x = ctx->grid->cx; x < ctx->grid->sx;
+									     x++) {
+										ctx->grid->cells[ctx->grid->cy][x].ch =
+										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x].fg =
+										    fg;
+										ctx->grid->cells[ctx->grid->cy][x].bg =
+										    bg;
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .attr = attr;
+									}
+									break;
+								case 1: /* from cursor to beginning of line */
+									for (x = 0; x <= ctx->grid->cx; x++) {
+										ctx->grid->cells[ctx->grid->cy][x].ch =
+										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x].fg =
+										    fg;
+										ctx->grid->cells[ctx->grid->cy][x].bg =
+										    bg;
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .attr = attr;
+									}
+									break;
+								case 2: /* entire line */
+									for (x = 0; x < ctx->grid->sx; x++) {
+										ctx->grid->cells[ctx->grid->cy][x].ch =
+										    ' ';
+										ctx->grid->cells[ctx->grid->cy][x].fg =
+										    fg;
+										ctx->grid->cells[ctx->grid->cy][x].bg =
+										    bg;
+										ctx->grid->cells[ctx->grid->cy][x]
+										    .attr = attr;
+									}
+									break;
 							}
 							break;
+						}
 
 						case 'A':
 							/* Cursor up */
@@ -517,17 +659,136 @@ static void parse_control_sequence(const char *buf, int len) {
 							}
 							break;
 
+						case '@': { /* ICH - Insert Characters */
+							int count = 1;
+							if (ctx->param_len > 0) {
+								count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+							}
+							struct grid *g = ctx->grid;
+							int y = g->cy;
+							if (count > g->sx - g->cx) {
+								count = g->sx - g->cx;
+							}
+							if (count <= 0) break;
+							memmove(&g->cells[y][g->cx + count],
+							        &g->cells[y][g->cx],
+							        (g->sx - g->cx - count) *
+							            sizeof(struct grid_cell));
+							for (int x = g->cx; x < g->cx + count; x++) {
+								g->cells[y][x].ch = ' ';
+								g->cells[y][x].fg = 7;
+								g->cells[y][x].bg = ctx->cur_bg;
+								g->cells[y][x].attr = 0;
+							}
+							break;
+						}
+						case 'L': { /* IL - Insert Lines */
+							int count = 1;
+							if (ctx->param_len > 0) {
+								count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+							}
+							struct grid *g = ctx->grid;
+							if (g->cy < g->scroll_top ||
+							    g->cy > g->scroll_bottom)
+								break;
+							if (count > g->scroll_bottom - g->cy + 1)
+								count = g->scroll_bottom - g->cy + 1;
+
+							for (int y = g->scroll_bottom - count; y >= g->cy;
+							     y--)
+								memcpy(&g->cells[y + count], &g->cells[y],
+								       sizeof(g->cells[0]));
+
+							for (int y = g->cy; y < g->cy + count; y++) {
+								for (int x = 0; x < g->sx; x++) {
+									g->cells[y][x].ch = ' ';
+									g->cells[y][x].fg = 7;
+									g->cells[y][x].bg = ctx->cur_bg;
+									g->cells[y][x].attr = 0;
+								}
+							}
+							break;
+						}
+						case 'M': { /* DL - Delete Lines */
+							int count = 1;
+							if (ctx->param_len > 0) {
+								count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+							}
+							struct grid *g = ctx->grid;
+							if (g->cy < g->scroll_top ||
+							    g->cy > g->scroll_bottom)
+								break;
+
+							if (count > g->scroll_bottom - g->cy + 1)
+								count = g->scroll_bottom - g->cy + 1;
+
+							for (int y = g->cy; y <= g->scroll_bottom - count;
+							     y++)
+								memcpy(&g->cells[y], &g->cells[y + count],
+								       sizeof(g->cells[0]));
+
+							for (int y = g->scroll_bottom - count + 1;
+							     y <= g->scroll_bottom; y++) {
+								for (int x = 0; x < g->sx; x++) {
+									g->cells[y][x].ch = ' ';
+									g->cells[y][x].fg = 7;
+									g->cells[y][x].bg = ctx->cur_bg;
+									g->cells[y][x].attr = 0;
+								}
+							}
+							break;
+						}
+						case 'P': { /* DCH - Delete Characters */
+							int count = 1;
+							if (ctx->param_len > 0) {
+								count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+							}
+							struct grid *g = ctx->grid;
+							int y = g->cy;
+							if (count > g->sx - g->cx) {
+								count = g->sx - g->cx;
+							}
+							if (count <= 0) break;
+							memmove(&g->cells[y][g->cx],
+							        &g->cells[y][g->cx + count],
+							        (g->sx - g->cx - count) *
+							            sizeof(struct grid_cell));
+							for (int x = g->sx - count; x < g->sx; x++) {
+								g->cells[y][x].ch = ' ';
+								g->cells[y][x].fg = 7;
+								g->cells[y][x].bg = ctx->cur_bg;
+								g->cells[y][x].attr = 0;
+							}
+							break;
+						}
+						case 'S': { /* SU - Scroll Up */
+							int count = 1;
+							if (ctx->param_len > 0) {
+								count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+							}
+							grid_scroll_up(ctx->grid, count, 7, ctx->cur_bg, 0);
+							break;
+						}
+						case 'T': { /* SD - Scroll Down */
+							int count = 1;
+							if (ctx->param_len > 0) {
+								count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+							}
+							grid_scroll_down(ctx->grid, count, 7, ctx->cur_bg,
+							                 0);
+							break;
+						}
 						/* ALL other CSI sequences - just consume them */
-						case '@':
 						case 'E':
 						case 'F':
 						case 'G':
 						case 'I':
-						case 'L':
-						case 'M':
-						case 'P':
-						case 'S':
-						case 'T':
 						case 'X':
 						case 'Z':
 						case '`':
@@ -687,7 +948,33 @@ static void parse_control_sequence(const char *buf, int len) {
 						}
 						case 'p':
 						case 'q':
-						case 'r':
+						case 'r': { /* DECSTBM - Set top and bottom margins */
+							int top = 1, bot = ctx->grid->sy;
+							if (ctx->param_len > 0) {
+								char params[sizeof(ctx->param_buf) + 1];
+								memcpy(params, ctx->param_buf, ctx->param_len);
+								params[ctx->param_len] = '\0';
+								char *p = params;
+								char *token = strsep(&p, ";");
+								if (token != NULL && *token != '\0')
+									top = atoi(token);
+								token = strsep(&p, ";");
+								if (token != NULL && *token != '\0')
+									bot = atoi(token);
+							}
+							if (top < 1) top = 1;
+							if (bot > ctx->grid->sy) bot = ctx->grid->sy;
+							if (top >= bot) {
+								ctx->grid->scroll_top = 0;
+								ctx->grid->scroll_bottom = ctx->grid->sy - 1;
+							} else {
+								ctx->grid->scroll_top = top - 1;
+								ctx->grid->scroll_bottom = bot - 1;
+							}
+							ctx->grid->cx = 0;
+							ctx->grid->cy = 0;
+							break;
+						}
 						case 's':
 						case 't':
 						case 'u':

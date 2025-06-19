@@ -4,16 +4,6 @@ This document lists the features from `tmux`'s terminal input parser that are mi
 
 ## Priority 1: Critical for Basic Neovim Functionality
 
-1.  **SGR (Select Graphic Rendition - CSI m)**
-    - **What:** `8.c` currently consumes `m` sequences but does not parse them or apply any attributes.
-    - **Why:** This is the most critical missing feature. It handles all text styling: colors (foreground/background), bold, italics, underline, etc. Neovim is unusable without it.
-    - **Implementation:**
-        - Parse semicolon-separated numeric parameters.
-        - Handle basic attributes: 1 (bold), 4 (underline), 7 (reverse).
-        - Handle standard 8/16 colors (30-37, 40-47, 90-97, 100-107).
-        - Handle 256-color and RGB color extensions (`38;5;...`, `48;5;...`, `38;2;...`, `48;2;...`).
-    - **Ref:** `tmux/input.c:input_csi_dispatch_sgr`
-
 2.  **UTF-8 Character Support**
     - **What:** `8.c` only handles printable ASCII characters (`0x20`-`0x7E`).
     - **Why:** Neovim and other modern applications use UTF-8 extensively for UI elements (e.g., icons, box drawing) and content.
@@ -33,33 +23,6 @@ This document lists the features from `tmux`'s terminal input parser that are mi
     - **Why:** `CSI 6 n` (Report Cursor Position) is frequently used by applications to query the cursor's location. Failing to respond can cause applications to hang or mis-render.
     - **Implementation:** When `CSI 6 n` is received, write `ESC[<row>;<col>R` back to the master PTY.
     - **Ref:** `tmux/input.c:input_csi_dispatch` (case `INPUT_CSI_DSR`)
-
-5.  **Scrolling (SU, SD, DECSTBM)**
-    - **What:** `8.c` does not implement scroll up (`SU`), scroll down (`SD`), or setting top/bottom margins (`DECSTBM`).
-    - **Why:** This is the primary mechanism for moving content within a region of the screen. Lack of support will cause rendering errors in any scrolling view.
-    - **Implementation:**
-        - `DECSTBM` (`CSI <t>;<r> r`): Define a scroll region in the grid.
-        - `SU` (`CSI <n> S`): Scroll up `n` lines within the region.
-        - `SD` (`CSI <n> T`): Scroll down `n` lines within the region.
-    - **Ref:** `tmux/input.c:input_csi_dispatch`
-
-6.  **Full Erase Functionality (ED, EL)**
-    - **What:** `8.c` only handles `CSI J` (as `2J`) and `CSI K` (as `0K`).
-    - **Why:** Applications use different parameters for more efficient clearing (e.g., clear from cursor to start of line).
-    - **Implementation:**
-        - `ED`: `0` (to end of screen), `1` (to start of screen), `2` (entire screen), `3` (entire screen + scrollback).
-        - `EL`: `0` (to end of line), `1` (to start of line), `2` (entire line).
-    - **Ref:** `tmux/input.c:input_csi_dispatch`
-
-7.  **Line and Character Insertion/Deletion**
-    - **What:** No support for `IL`, `DL`, `ICH`, `DCH`.
-    - **Why:** These are used for efficient updates, avoiding a full redraw of lines when text is inserted or deleted.
-    - **Implementation:**
-        - `IL` (`CSI <n> L`): Insert `n` blank lines.
-        - `DL` (`CSI <n> M`): Delete `n` lines.
-        - `ICH` (`CSI <n> @`): Insert `n` blank characters.
-        - `DCH` (`CSI <n> P`): Delete `n` characters.
-    - **Ref:** `tmux/input.c:input_csi_dispatch`
 
 ## Priority 3: Nice-to-have and Compatibility Features
 
