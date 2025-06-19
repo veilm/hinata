@@ -1,0 +1,708 @@
+/*
+ * mini_tmux.c - A simplified tmux clone that creates a single pane
+ * in the bottom 20 lines of the screen and runs nvim inside it.
+ *
+ * Based on tmux architecture:
+ * - Creates a PTY pair for the nvim process
+ * - Implements a simplified control sequence parser
+ * - Maintains a virtual screen (grid) for the pane
+ * - Handles terminal I/O and rendering
+ */
+
+#include <errno.h>
+#include <fcntl.h>
+#include <pty.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <termios.h>
+#include <unistd.h>
+
+#define PANE_HEIGHT 20
+#define MAX_COLS 512
+#define MAX_ROWS 512
+
+/* Virtual grid cell structure */
+struct grid_cell {
+	char ch;
+	int fg;
+	int bg;
+	int attr;
+};
+
+/* Virtual screen grid */
+struct grid {
+	struct grid_cell cells[MAX_ROWS][MAX_COLS];
+	int sx, sy; /* screen dimensions */
+	int cx, cy; /* cursor position */
+};
+
+/* Input parser states */
+enum input_state {
+	INPUT_GROUND,
+	INPUT_ESCAPE,
+	INPUT_CSI_ENTRY,
+	INPUT_CSI_PARAM,
+	INPUT_CSI_INTERMEDIATE,
+	INPUT_CSI_FINAL,
+	INPUT_OSC_STRING,
+	INPUT_DCS_STRING
+};
+
+/* Input parser context */
+struct input_ctx {
+	enum input_state state;
+	char param_buf[64];
+	int param_len;
+	char intermediate_buf[8];
+	int intermediate_len;
+	int private_marker; /* Set if sequence starts with ? */
+	struct grid *grid;
+};
+
+/* Global state */
+static struct grid pane_grid;
+static struct input_ctx input_parser;
+static struct termios orig_termios;
+static int master_fd, slave_fd;
+static pid_t child_pid;
+static int term_rows, term_cols;
+static int pane_start_row;
+
+/* Function prototypes */
+static void setup_terminal(void);
+static void restore_terminal(void);
+static int create_pty(void);
+static void spawn_nvim(void);
+static void handle_input(void);
+static void parse_control_sequence(const char *buf, int len);
+static void render_pane(void);
+static void move_cursor(int row, int col);
+static void clear_screen(void);
+static void clear_pane_area(void);
+static void signal_handler(int sig);
+static void resize_handler(void);
+
+/* Initialize the virtual grid */
+static void init_grid(struct grid *g, int sx, int sy) {
+	int x, y;
+
+	g->sx = sx;
+	g->sy = sy;
+	g->cx = 0;
+	g->cy = 0;
+
+	for (y = 0; y < sy; y++) {
+		for (x = 0; x < sx; x++) {
+			g->cells[y][x].ch = ' ';
+			g->cells[y][x].fg = 7;
+			g->cells[y][x].bg = 0;
+			g->cells[y][x].attr = 0;
+		}
+	}
+}
+
+/* Set up terminal for raw mode */
+static void setup_terminal(void) {
+	struct termios raw;
+	struct winsize ws;
+
+	if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
+		perror("tcgetattr");
+		exit(1);
+	}
+
+	raw = orig_termios;
+	raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+	raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+	raw.c_cflag |= CS8;
+	raw.c_oflag &= ~OPOST;
+	raw.c_cc[VMIN] = 0;
+	raw.c_cc[VTIME] = 1;
+
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+		perror("tcsetattr");
+		exit(1);
+	}
+
+	/* Get terminal size */
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1) {
+		perror("ioctl TIOCGWINSZ");
+		exit(1);
+	}
+
+	term_rows = ws.ws_row;
+	term_cols = ws.ws_col;
+	pane_start_row = term_rows - PANE_HEIGHT;
+
+	/* Initialize the pane grid */
+	init_grid(&pane_grid, term_cols, PANE_HEIGHT);
+
+	/* Clear screen and position pane */
+	clear_screen();
+	printf("\033[%d;1H", pane_start_row + 1); /* Move to pane start */
+	printf("\033[7m"); /* Reverse video for pane border */
+	for (int i = 0; i < term_cols; i++) {
+		printf("-");
+	}
+	printf("\033[0m"); /* Reset attributes */
+	fflush(stdout);
+}
+
+static void restore_terminal(void) {
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+	clear_screen();
+	move_cursor(1, 1);
+}
+
+/* Create PTY pair */
+static int create_pty(void) {
+	struct winsize ws;
+
+	ws.ws_row = PANE_HEIGHT - 1; /* Leave room for border */
+	ws.ws_col = term_cols;
+	ws.ws_xpixel = 0;
+	ws.ws_ypixel = 0;
+
+	if (openpty(&master_fd, &slave_fd, NULL, NULL, &ws) == -1) {
+		perror("openpty");
+		return -1;
+	}
+
+	return 0;
+}
+
+/* Spawn nvim process */
+static void spawn_nvim(void) {
+	child_pid = fork();
+	if (child_pid == -1) {
+		perror("fork");
+		exit(1);
+	}
+
+	if (child_pid == 0) {
+		/* Child process */
+		close(master_fd);
+
+		/* Set up controlling terminal */
+		setsid();
+		if (ioctl(slave_fd, TIOCSCTTY, NULL) == -1) {
+			perror("ioctl TIOCSCTTY");
+			exit(1);
+		}
+
+		/* Redirect stdio */
+		dup2(slave_fd, STDIN_FILENO);
+		dup2(slave_fd, STDOUT_FILENO);
+		dup2(slave_fd, STDERR_FILENO);
+		close(slave_fd);
+
+		/* Set TERM environment */
+		setenv("TERM", "xterm-256color", 1);
+
+		/* Execute nvim */
+		execl("/usr/bin/nvim", "nvim", NULL);
+		perror("execl nvim");
+		exit(1);
+	}
+
+	/* Parent process */
+	close(slave_fd);
+}
+
+/* Move cursor to specific position */
+static void move_cursor(int row, int col) { printf("\033[%d;%dH", row, col); }
+
+/* Clear entire screen */
+static void clear_screen(void) {
+	printf("\033[2J");
+	printf("\033[H");
+}
+
+/* Clear only the pane area */
+static void clear_pane_area(void) {
+	int row;
+
+	for (row = pane_start_row + 1; row < term_rows; row++) {
+		move_cursor(row + 1, 1);
+		printf("\033[K"); /* Clear line */
+	}
+}
+
+/* Parse control sequences from nvim */
+static void parse_control_sequence(const char *buf, int len) {
+	struct input_ctx *ctx = &input_parser;
+	int i;
+
+	for (i = 0; i < len; i++) {
+		unsigned char ch = buf[i];
+
+		switch (ctx->state) {
+			case INPUT_GROUND:
+				if (ch == '\033') {
+					ctx->state = INPUT_ESCAPE;
+				} else if (ch == '\n') {
+					ctx->grid->cy++;
+					if (ctx->grid->cy >= ctx->grid->sy) {
+						ctx->grid->cy = ctx->grid->sy - 1;
+					}
+				} else if (ch == '\r') {
+					ctx->grid->cx = 0;
+				} else if (ch == '\b') {
+					/* Backspace */
+					if (ctx->grid->cx > 0) {
+						ctx->grid->cx--;
+					}
+				} else if (ch == '\t') {
+					/* Tab - simple 8-space implementation */
+					ctx->grid->cx = (ctx->grid->cx + 8) & ~7;
+					if (ctx->grid->cx >= ctx->grid->sx) {
+						ctx->grid->cx = 0;
+						ctx->grid->cy++;
+						if (ctx->grid->cy >= ctx->grid->sy) {
+							ctx->grid->cy = ctx->grid->sy - 1;
+						}
+					}
+				} else if (ch >= 32 && ch < 127) {
+					/* Printable character */
+					if (ctx->grid->cx < ctx->grid->sx &&
+					    ctx->grid->cy < ctx->grid->sy) {
+						ctx->grid->cells[ctx->grid->cy][ctx->grid->cx].ch = ch;
+						ctx->grid->cx++;
+						if (ctx->grid->cx >= ctx->grid->sx) {
+							ctx->grid->cx = 0;
+							ctx->grid->cy++;
+							if (ctx->grid->cy >= ctx->grid->sy) {
+								ctx->grid->cy = ctx->grid->sy - 1;
+							}
+						}
+					}
+				}
+				break;
+
+			case INPUT_ESCAPE:
+				if (ch == '[') {
+					/* CSI sequence */
+					ctx->state = INPUT_CSI_ENTRY;
+					ctx->param_len = 0;
+					ctx->intermediate_len = 0;
+					ctx->private_marker = 0;
+				} else if (ch == ']') {
+					/* OSC sequence */
+					ctx->state = INPUT_OSC_STRING;
+				} else if (ch == 'P') {
+					/* DCS sequence */
+					ctx->state = INPUT_DCS_STRING;
+				} else if (ch >= 0x30 && ch <= 0x7E) {
+					/* Two-character escape sequence - consume and return to
+					 * ground */
+					ctx->state = INPUT_GROUND;
+				} else if (ch >= 0x20 && ch <= 0x2F) {
+					/* Intermediate character - stay in escape mode for one more
+					 * char */
+					/* Next character will be final */
+				} else {
+					/* Invalid or incomplete - return to ground */
+					ctx->state = INPUT_GROUND;
+				}
+				break;
+
+			case INPUT_CSI_ENTRY:
+				if (ch == '?') {
+					/* Private mode marker */
+					ctx->private_marker = 1;
+					ctx->state = INPUT_CSI_PARAM;
+				} else if (ch >= '0' && ch <= '9') {
+					if (ctx->param_len < sizeof(ctx->param_buf) - 1) {
+						ctx->param_buf[ctx->param_len++] = ch;
+					}
+					ctx->state = INPUT_CSI_PARAM;
+				} else if (ch == ';') {
+					if (ctx->param_len < sizeof(ctx->param_buf) - 1) {
+						ctx->param_buf[ctx->param_len++] = ch;
+					}
+					ctx->state = INPUT_CSI_PARAM;
+				} else if (ch >= 0x20 && ch <= 0x2F) {
+					/* Intermediate characters */
+					if (ctx->intermediate_len <
+					    sizeof(ctx->intermediate_buf) - 1) {
+						ctx->intermediate_buf[ctx->intermediate_len++] = ch;
+					}
+					ctx->state = INPUT_CSI_INTERMEDIATE;
+				} else if (ch >= 0x40 && ch <= 0x7E) {
+					/* Final character */
+					ctx->state = INPUT_CSI_FINAL;
+					goto handle_csi_final;
+				} else {
+					/* Invalid - return to ground */
+					ctx->state = INPUT_GROUND;
+				}
+				break;
+
+			case INPUT_CSI_PARAM:
+				if (ch >= '0' && ch <= '9') {
+					if (ctx->param_len < sizeof(ctx->param_buf) - 1) {
+						ctx->param_buf[ctx->param_len++] = ch;
+					}
+				} else if (ch == ';') {
+					if (ctx->param_len < sizeof(ctx->param_buf) - 1) {
+						ctx->param_buf[ctx->param_len++] = ch;
+					}
+				} else if (ch >= 0x20 && ch <= 0x2F) {
+					/* Intermediate characters */
+					if (ctx->intermediate_len <
+					    sizeof(ctx->intermediate_buf) - 1) {
+						ctx->intermediate_buf[ctx->intermediate_len++] = ch;
+					}
+					ctx->state = INPUT_CSI_INTERMEDIATE;
+				} else if (ch >= 0x40 && ch <= 0x7E) {
+					/* Final character */
+					ctx->state = INPUT_CSI_FINAL;
+					goto handle_csi_final;
+				} else {
+					/* Invalid - return to ground */
+					ctx->state = INPUT_GROUND;
+				}
+				break;
+
+			case INPUT_CSI_INTERMEDIATE:
+				if (ch >= 0x20 && ch <= 0x2F) {
+					/* More intermediate characters */
+					if (ctx->intermediate_len <
+					    sizeof(ctx->intermediate_buf) - 1) {
+						ctx->intermediate_buf[ctx->intermediate_len++] = ch;
+					}
+				} else if (ch >= 0x40 && ch <= 0x7E) {
+					/* Final character */
+					ctx->state = INPUT_CSI_FINAL;
+					goto handle_csi_final;
+				} else {
+					/* Invalid - return to ground */
+					ctx->state = INPUT_GROUND;
+				}
+				break;
+
+			case INPUT_CSI_FINAL:
+			handle_csi_final:
+				/* Null terminate parameters and intermediates */
+				ctx->param_buf[ctx->param_len] = '\0';
+				ctx->intermediate_buf[ctx->intermediate_len] = '\0';
+
+				/* Handle the specific sequences we care about for display */
+				if (!ctx->private_marker && ctx->intermediate_len == 0) {
+					switch (ch) {
+						case 'H':
+						case 'f':
+							/* Cursor position */
+							if (ctx->param_len > 0) {
+								int row = 1, col = 1;
+								sscanf(ctx->param_buf, "%d;%d", &row, &col);
+								ctx->grid->cy = row - 1;
+								ctx->grid->cx = col - 1;
+								if (ctx->grid->cy < 0) ctx->grid->cy = 0;
+								if (ctx->grid->cx < 0) ctx->grid->cx = 0;
+								if (ctx->grid->cy >= ctx->grid->sy)
+									ctx->grid->cy = ctx->grid->sy - 1;
+								if (ctx->grid->cx >= ctx->grid->sx)
+									ctx->grid->cx = ctx->grid->sx - 1;
+							} else {
+								ctx->grid->cy = 0;
+								ctx->grid->cx = 0;
+							}
+							break;
+
+						case 'J':
+							/* Clear screen */
+							if (ctx->param_len == 0 ||
+							    strcmp(ctx->param_buf, "2") == 0) {
+								init_grid(ctx->grid, ctx->grid->sx,
+								          ctx->grid->sy);
+							}
+							break;
+
+						case 'K':
+							/* Clear line */
+							for (int x = ctx->grid->cx; x < ctx->grid->sx;
+							     x++) {
+								ctx->grid->cells[ctx->grid->cy][x].ch = ' ';
+							}
+							break;
+
+						case 'A':
+							/* Cursor up */
+							if (ctx->param_len > 0) {
+								int count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+								ctx->grid->cy -= count;
+								if (ctx->grid->cy < 0) ctx->grid->cy = 0;
+							} else {
+								if (ctx->grid->cy > 0) ctx->grid->cy--;
+							}
+							break;
+
+						case 'B':
+							/* Cursor down */
+							if (ctx->param_len > 0) {
+								int count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+								ctx->grid->cy += count;
+								if (ctx->grid->cy >= ctx->grid->sy)
+									ctx->grid->cy = ctx->grid->sy - 1;
+							} else {
+								if (ctx->grid->cy < ctx->grid->sy - 1)
+									ctx->grid->cy++;
+							}
+							break;
+
+						case 'C':
+							/* Cursor right */
+							if (ctx->param_len > 0) {
+								int count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+								ctx->grid->cx += count;
+								if (ctx->grid->cx >= ctx->grid->sx)
+									ctx->grid->cx = ctx->grid->sx - 1;
+							} else {
+								if (ctx->grid->cx < ctx->grid->sx - 1)
+									ctx->grid->cx++;
+							}
+							break;
+
+						case 'D':
+							/* Cursor left */
+							if (ctx->param_len > 0) {
+								int count = atoi(ctx->param_buf);
+								if (count == 0) count = 1;
+								ctx->grid->cx -= count;
+								if (ctx->grid->cx < 0) ctx->grid->cx = 0;
+							} else {
+								if (ctx->grid->cx > 0) ctx->grid->cx--;
+							}
+							break;
+
+						/* ALL other CSI sequences - just consume them */
+						case '@':
+						case 'E':
+						case 'F':
+						case 'G':
+						case 'I':
+						case 'L':
+						case 'M':
+						case 'P':
+						case 'S':
+						case 'T':
+						case 'X':
+						case 'Z':
+						case '`':
+						case 'a':
+						case 'b':
+						case 'c':
+						case 'd':
+						case 'e':
+						case 'g':
+						case 'h':
+						case 'i':
+						case 'j':
+						case 'k':
+						case 'l':
+						case 'm':
+						case 'n':
+						case 'o':
+						case 'p':
+						case 'q':
+						case 'r':
+						case 's':
+						case 't':
+						case 'u':
+						case 'v':
+						case 'w':
+						case 'x':
+						case 'y':
+						case 'z':
+							/* All standard CSI final characters - consume */
+							break;
+
+						default:
+							/* Any other final character - consume */
+							break;
+					}
+				}
+				/* All private mode sequences and sequences with intermediates
+				 * are consumed */
+
+				ctx->state = INPUT_GROUND;
+				break;
+
+			case INPUT_OSC_STRING:
+				/* OSC sequences end with BEL (0x07) or ST (ESC \) */
+				if (ch == 0x07) {
+					/* BEL terminator */
+					ctx->state = INPUT_GROUND;
+				} else if (ch == 0x1B) {
+					/* Potential ST - next char should be \ */
+					/* For simplicity, just go to ground - real tmux would check
+					 * next char */
+					ctx->state = INPUT_GROUND;
+				}
+				/* Otherwise stay in OSC_STRING and consume everything */
+				break;
+
+			case INPUT_DCS_STRING:
+				/* DCS sequences end with ST (ESC \) */
+				if (ch == 0x1B) {
+					/* Potential ST - next char should be \ */
+					/* For simplicity, just go to ground */
+					ctx->state = INPUT_GROUND;
+				}
+				/* Otherwise stay in DCS_STRING and consume everything */
+				break;
+		}
+	}
+}
+
+/* Render the pane content to the terminal */
+static void render_pane(void) {
+	int row, col;
+	char current_ch;
+
+	for (row = 0; row < pane_grid.sy; row++) {
+		move_cursor(pane_start_row + 1 + row + 1, 1);
+		for (col = 0; col < pane_grid.sx; col++) {
+			current_ch = pane_grid.cells[row][col].ch;
+			if (current_ch == 0) current_ch = ' ';
+			putchar(current_ch);
+		}
+	}
+
+	/* Position cursor */
+	move_cursor(pane_start_row + 1 + pane_grid.cy + 1, pane_grid.cx + 1);
+	fflush(stdout);
+}
+
+/* Handle input from user and nvim */
+static void handle_input(void) {
+	fd_set readfds;
+	char buf[1024];
+	int n;
+
+	while (1) {
+		FD_ZERO(&readfds);
+		FD_SET(STDIN_FILENO, &readfds);
+		FD_SET(master_fd, &readfds);
+
+		if (select(master_fd + 1, &readfds, NULL, NULL, NULL) == -1) {
+			if (errno == EINTR) continue;
+			perror("select");
+			break;
+		}
+
+		/* Handle user input */
+		if (FD_ISSET(STDIN_FILENO, &readfds)) {
+			n = read(STDIN_FILENO, buf, sizeof(buf));
+			if (n > 0) {
+				/* Check for exit condition (Ctrl+C) */
+				if (n == 1 && buf[0] == 3) {
+					break;
+				}
+				/* Forward to nvim */
+				write(master_fd, buf, n);
+			}
+		}
+
+		/* Handle nvim output */
+		if (FD_ISSET(master_fd, &readfds)) {
+			n = read(master_fd, buf, sizeof(buf));
+			if (n > 0) {
+				parse_control_sequence(buf, n);
+				render_pane();
+			} else if (n == 0) {
+				/* EOF - child exited */
+				break;
+			}
+		}
+	}
+}
+
+/* Signal handler for cleanup */
+static void signal_handler(int sig) {
+	if (child_pid > 0) {
+		kill(child_pid, SIGTERM);
+		waitpid(child_pid, NULL, 0);
+	}
+	restore_terminal();
+	exit(0);
+}
+
+/* Handle terminal resize */
+static void resize_handler(void) {
+	struct winsize ws;
+
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != -1) {
+		term_rows = ws.ws_row;
+		term_cols = ws.ws_col;
+		pane_start_row = term_rows - PANE_HEIGHT;
+
+		/* Resize the pane grid */
+		init_grid(&pane_grid, term_cols, PANE_HEIGHT);
+
+		/* Notify nvim of size change */
+		ws.ws_row = PANE_HEIGHT - 1;
+		ws.ws_col = term_cols;
+		ioctl(master_fd, TIOCSWINSZ, &ws);
+
+		/* Redraw */
+		clear_screen();
+		printf("\033[%d;1H", pane_start_row + 1);
+		printf("\033[7m");
+		for (int i = 0; i < term_cols; i++) {
+			printf("-");
+		}
+		printf("\033[0m");
+		render_pane();
+	}
+}
+
+/* SIGWINCH handler */
+static void sigwinch_handler(int sig) { resize_handler(); }
+
+int main(int argc, char *argv[]) {
+	/* Set up signal handlers */
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
+	signal(SIGWINCH, sigwinch_handler);
+
+	/* Initialize input parser */
+	input_parser.state = INPUT_GROUND;
+	input_parser.param_len = 0;
+	input_parser.intermediate_len = 0;
+	input_parser.private_marker = 0;
+	input_parser.grid = &pane_grid;
+
+	/* Set up terminal */
+	setup_terminal();
+
+	/* Create PTY and spawn nvim */
+	if (create_pty() == -1) {
+		restore_terminal();
+		exit(1);
+	}
+
+	spawn_nvim();
+
+	/* Main input loop */
+	handle_input();
+
+	/* Cleanup */
+	if (child_pid > 0) {
+		kill(child_pid, SIGTERM);
+		waitpid(child_pid, NULL, 0);
+	}
+
+	restore_terminal();
+	return 0;
+}
