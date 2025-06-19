@@ -16,8 +16,6 @@ import os, pty, fcntl, termios, struct, tty, select, signal, sys
 from collections import namedtuple
 
 # ------------------------------------------------------------------- config
-HEIGHT = 20
-CMD = os.environ.get("CMD", "nvim").split()
 QUIT_KEY = b"\x11"  # Ctrl-q
 # Timeout for select() to batch writes for smoother rendering
 WRITE_BATCH_TIMEOUT = 0.005
@@ -213,6 +211,10 @@ class Translator:
 
 # ---------------------------------------------------------------- main logic
 class App:
+    def __init__(self, height: int, cmd: list):
+        self.height = height
+        self.cmd = cmd
+
     def run(self):
         if not sys.stdin.isatty():
             sys.exit("Run inside an interactive terminal.")
@@ -221,8 +223,8 @@ class App:
 
         if self.pid == 0:  # --- Child Process ---
             _, host_cols = term_size(sys.stdout.fileno())
-            set_winsz(sys.stdin.fileno(), HEIGHT, host_cols)
-            os.execvp(CMD[0], CMD)
+            set_winsz(sys.stdin.fileno(), self.height, host_cols)
+            os.execvp(self.cmd[0], self.cmd)
             return
 
         # --- Parent Process ---
@@ -269,14 +271,14 @@ class App:
 
     def _handle_resize(self):
         self.host_rows, self.host_cols = term_size(sys.stdout.fileno())
-        row_off = self.host_rows - HEIGHT + 1
+        row_off = self.host_rows - self.height + 1
 
         if not hasattr(self, "trans"):
-            self.trans = Translator(row_off, HEIGHT, self.master)
+            self.trans = Translator(row_off, self.height, self.master)
         else:
-            self.trans.update_geometry(row_off, HEIGHT)
+            self.trans.update_geometry(row_off, self.height)
 
-        set_winsz(self.master, HEIGHT, self.host_cols)
+        set_winsz(self.master, self.height, self.host_cols)
 
         # Prepare host terminal
         sys.stdout.write(f"\x1b[?25l")  # Hide cursor
@@ -317,4 +319,23 @@ def set_winsz(fd, rows, cols):
 
 
 if __name__ == "__main__":
-    App().run()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="A robust, dependency-free terminal multiplexer that confines a "
+        "full-screen TUI to a pane without losing host terminal scroll-back."
+    )
+    parser.add_argument(
+        "--height", type=int, default=20, help="The height of the pane in lines."
+    )
+    parser.add_argument(
+        "cmd",
+        nargs=argparse.REMAINDER,
+        help="The command to run in the pane.",
+    )
+    args = parser.parse_args()
+
+    if not args.cmd:
+        parser.error("a command must be provided")
+
+    App(height=args.height, cmd=args.cmd).run()
