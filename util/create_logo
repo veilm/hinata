@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # --- Configuration ---
+# USE_JXL_OVERLAY=true # if true, use the margin and jxl image; if false, just the snowflake and text without any overlay
+USE_JXL_OVERLAY=false # if true, use the margin and jxl image; if false, just the snowflake and text without any overlay
 JXL_INPUT="/home/oboro/media/main/1702582978"
 SNOWFLAKE_IMAGE="./snowflake.png"
 FONT_PATH="/usr/share/fonts/ttf/Cagliostro-Regular.ttf" # <Tinos
@@ -46,14 +48,30 @@ FONT_PATH="/usr/share/fonts/ttf/WinkyRough-Regular.ttf" # eh
 FONT_PATH="/usr/share/fonts/ttf/WinkyRough-Light.ttf" # eh
 FONT_PATH="/usr/share/fonts/ttf/WinkyRough-Bold.ttf" # yeah too fluffy
 
+FONT_PATH="/usr/share/fonts/ttf/ChironSungHK-Light.ttf" # slightly lighter, >Regular, best so far
+
 # options
 # Kurale
 # Chiron (Light)
 # NotoSerifJP
 # PlayfairDisplay
 
+# SNOWFLAKE_SIZE_ADJUST=1.0 # Multiplier for snowflake size relative to text height. 1.0 is same height.
+# SNOWFLAKE_TEXT_SPACING=25 # Horizontal distance in pixels between snowflake and text.
+
+# 1.5 has more personality
+SNOWFLAKE_SIZE_ADJUST=1.5 # Multiplier for snowflake size relative to text height. 1.0 is same height.
+SNOWFLAKE_TEXT_SPACING=20 # Horizontal distance in pixels between snowflake and text.
+# SNOWFLAKE_TEXT_SPACING=25 # Horizontal distance in pixels between snowflake and text.
+# SNOWFLAKE_TEXT_SPACING=35 # Horizontal distance in pixels between snowflake and text.
+# SNOWFLAKE_TEXT_SPACING=43 # Horizontal distance in pixels between snowflake and text.
+# 50 is too much
+
+# 1750319817 I'm going with 1.5, 20 for now
+
 # TEXT_COLOR="#6ec8ff"
-TEXT_COLOR="#fff"
+# TEXT_COLOR="#fff"
+TEXT_COLOR="#e0f1ff"
 # TEXT_COLOR="#6ec8ff"
 SNOWFLAKE_COLOR="#6ec8ff" # Color for the snowflake image/emoji
 # SNOWFLAKE_COLOR="#fff" # Color for the snowflake image/emoji
@@ -86,14 +104,18 @@ if [ "$USE_IMAGE_MODE" = true ]; then
     TMP_TEXT=$(mktemp --suffix=.png)
     trap 'rm -f "$TMP_TEXT"' EXIT
 
-    # Create the " hinata" text image and save it to the temporary file.
+    # Create the "hinata" text image (without leading space) and save it to the temporary file.
     magick \
         -background transparent -fill "$TEXT_COLOR" -font "$FONT_PATH" \
-        -pointsize "$POINT_SIZE" label:" hinata" -trim +repage \
+        -pointsize "$POINT_SIZE" label:"hinata" -trim +repage \
         "$TMP_TEXT"
 
     # Use `identify` to get the height of the rendered text.
     TEXT_HEIGHT=$(identify -format '%h' "$TMP_TEXT")
+
+    # Calculate snowflake height based on text height and adjustment factor.
+    # Using bc for floating point math and printf to round to nearest integer.
+    SNOWFLAKE_HEIGHT=$(printf "%.0f\n" "$(echo "$TEXT_HEIGHT * $SNOWFLAKE_SIZE_ADJUST" | bc)")
 
     # Step 2: Assemble the final image using the known text height.
     # This command now works with a concrete height, which is more reliable.
@@ -104,15 +126,29 @@ if [ "$USE_IMAGE_MODE" = true ]; then
     # d. Load the pre-rendered text from the temporary file (`$TMP_TEXT`).
     # e. Append the snowflake and text images horizontally.
     # f. Add the border and composite the JXL overlay as before.
-    magick \
-        \( "$SNOWFLAKE_IMAGE" -trim \) \
-        -resize "x${TEXT_HEIGHT}" \
-        -fill "$SNOWFLAKE_COLOR" -colorize 100% \
-        "$TMP_TEXT" \
-        +append \
-        -bordercolor transparent -border "$MARGIN" \
-        "$JXL_INPUT" -gravity center -compose over -composite \
-        "$OUTPUT_LOGO"
+    if [ "$USE_JXL_OVERLAY" = true ]; then
+        magick \
+            \( "$SNOWFLAKE_IMAGE" -trim \) \
+            -resize "x${SNOWFLAKE_HEIGHT}" \
+            -fill "$SNOWFLAKE_COLOR" -colorize 100% \
+            -background transparent -gravity East -splice "${SNOWFLAKE_TEXT_SPACING}x0" \
+            "$TMP_TEXT" \
+            -gravity center \
+            +append \
+            -bordercolor transparent -border "$MARGIN" \
+            "$JXL_INPUT" -gravity center -compose over -composite \
+            "$OUTPUT_LOGO"
+    else
+        magick \
+            \( "$SNOWFLAKE_IMAGE" -trim \) \
+            -resize "x${SNOWFLAKE_HEIGHT}" \
+            -fill "$SNOWFLAKE_COLOR" -colorize 100% \
+            -background transparent -gravity East -splice "${SNOWFLAKE_TEXT_SPACING}x0" \
+            "$TMP_TEXT" \
+            -gravity center \
+            +append \
+            "$OUTPUT_LOGO"
+    fi
 
 else
     echo "Generating logo using emoji font (Pango)..."
@@ -123,16 +159,25 @@ else
     # 1. A sub-process \`\( ... \)\` creates the text layer in memory using pango.
     #    The markup \`<span font_family="...">\` specifies the exact font for each part of the string.
     # 2. The rendered graphic is trimmed, a border is added, and it is then composited with the JXL.
-    magick \
-        \( \
+    if [ "$USE_JXL_OVERLAY" = true ]; then
+        magick \
+            \( \
+                -background transparent \
+                -pointsize "$POINT_SIZE" \
+                pango:"<span font_family=\"Noto Color Emoji\" foreground=\"$SNOWFLAKE_COLOR\">❄️</span><span font_family=\"Tinos\" foreground=\"$TEXT_COLOR\"> hinata</span>" \
+                -trim +repage \
+                -bordercolor transparent -border "$MARGIN" \
+            \) \
+            "$JXL_INPUT" -gravity center -compose over -composite \
+            "$OUTPUT_LOGO"
+    else
+        magick \
             -background transparent \
             -pointsize "$POINT_SIZE" \
             pango:"<span font_family=\"Noto Color Emoji\" foreground=\"$SNOWFLAKE_COLOR\">❄️</span><span font_family=\"Tinos\" foreground=\"$TEXT_COLOR\"> hinata</span>" \
             -trim +repage \
-            -bordercolor transparent -border "$MARGIN" \
-        \) \
-        "$JXL_INPUT" -gravity center -compose over -composite \
-        "$OUTPUT_LOGO"
+            "$OUTPUT_LOGO"
+    fi
 fi
 
 echo "Success! Logo created at ./${OUTPUT_LOGO}"
