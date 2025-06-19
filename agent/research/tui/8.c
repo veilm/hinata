@@ -75,6 +75,7 @@ struct grid {
 	int cx, cy; /* cursor position */
 	int scroll_top;
 	int scroll_bottom;
+	int cursor_visible;
 };
 
 /* Input parser states */
@@ -153,6 +154,7 @@ static void init_grid(struct grid *g, int sx, int sy) {
 	g->cy = 0;
 	g->scroll_top = 0;
 	g->scroll_bottom = sy - 1;
+	g->cursor_visible = 1;
 
 	for (y = 0; y < sy; y++) {
 		for (x = 0; x < sx; x++) {
@@ -263,6 +265,7 @@ static void setup_terminal(void) {
 static void restore_terminal(void) {
 	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
 	clear_screen();
+	printf("\033[?25h");
 	move_cursor(1, 1);
 }
 
@@ -1120,15 +1123,45 @@ static void parse_control_sequence(const char *buf, int len) {
 							    ch, ch, ctx->param_buf);
 							break;
 					}
+				} else if (ctx->private_marker) {
+					switch (ch) {
+					case 'h':
+					case 'l': {
+						int param = atoi(ctx->param_buf);
+						switch (param) {
+						case 25: /* DECTCEM */
+							ctx->grid->cursor_visible = (ch == 'h');
+							break;
+						case 1049: /* alternate screen */
+						case 2004: /* bracketed paste */
+						case 1000: /* mouse reporting */
+						case 1002:
+						case 1006:
+						case 1004: /* focus events */
+							/* Silently consume */
+							break;
+						default:
+							log_unhandled(
+							    "Unhandled private CSI sequence: final '%c', "
+							    "params '%s'\n",
+							    ch, ctx->param_buf);
+							break;
+						}
+						break;
+					}
+					default:
+						log_unhandled(
+						    "Unhandled private CSI sequence: final '%c', "
+						    "params '%s'\n",
+						    ch, ctx->param_buf);
+						break;
+					}
 				} else {
-					/* All private mode sequences and sequences with
-					 * intermediates are consumed */
+					/* All sequences with intermediates are consumed */
 					log_unhandled(
-					    "Unhandled private/intermediate CSI sequence: final "
-					    "'%c' (0x%02x), params '%s', intermediates '%s', "
-					    "private '%d'\n",
-					    ch, ch, ctx->param_buf, ctx->intermediate_buf,
-					    ctx->private_marker);
+					    "Unhandled intermediate CSI sequence: final "
+					    "'%c' (0x%02x), params '%s', intermediates '%s'\n",
+					    ch, ch, ctx->param_buf, ctx->intermediate_buf);
 				}
 				/* All private mode sequences and sequences with intermediates
 				 * are consumed */
@@ -1253,7 +1286,12 @@ static void render_pane(void) {
 	}
 
 	/* Position cursor */
-	move_cursor(pane_start_row + 1 + pane_grid.cy + 1, pane_grid.cx + 1);
+	if (pane_grid.cursor_visible) {
+		printf("\033[?25h");
+		move_cursor(pane_start_row + 1 + pane_grid.cy + 1, pane_grid.cx + 1);
+	} else {
+		printf("\033[?25l");
+	}
 	fflush(stdout);
 }
 
