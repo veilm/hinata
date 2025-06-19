@@ -1,11 +1,11 @@
 /*
- * 10.c - A simple fzf-like selector.
+ * tui-select.c - A simple fzf-like selector.
  * Reads lines from stdin and allows selecting one with arrow keys.
  * The selected line is printed to stdout.
  * It does not use the alternate screen buffer, drawing at the bottom.
  *
  * Usage:
- *   echo "one\ntwo\nthree" | ./10
+ *   echo "one\ntwo\nthree" | ./tui-select
  */
 
 #include <fcntl.h>
