@@ -1,53 +1,83 @@
-# hnt-llm
-note: this might be deleted at any time if I decide on a different design or
-realize the Unix philosophy is poisonous or something
+# ❄️ hnt-llm
 
 ## build
-```
+```sh
 git clone https://github.com/veilm/hinata
-cd hinata/llm
-./build
+./hinata/llm/build
 ```
 
 ## basic usage
-```
+```sh
 export OPENROUTER_API_KEY="my api key"
-echo hello | hnt-llm
+echo hello | hnt-llm --model openrouter/deepseek/deepseek-r1
 
 # system prompt using -s or --system
 echo 2027 | hnt-llm -s "Please repeat the given number verbatim"
 ```
-(The model is specified by the `--model` CLI argument, or the `$HINATA_LLM_MODEL` environment variable if set, or finally defaults to `openrouter/deepseek/deepseek-chat-v3-0324:free`)
+
+The model is determined by:
+- the `-m` or `--model` CLI argument
+- fallback: the `$HINATA_LLM_MODEL` environment variable
+- second fallback: `openrouter/deepseek/deepseek-chat-v3-0324:free`
+
+you can set `--include-reasoning` to also receive reasoning tokens, for models
+that produce them. the output format has no sophisticated escaping and is simply
+```
+<think>
+thinking here
+</think>
+summary here
+```
+
+## on-device key management
+besides using the `*_API_KEY` env variables, you can use the built-in (bloat)
+key manager:
+```sh
+# save a key
+# (this will prompt you to paste it in)
+hnt-llm save-key OPENAI_API_KEY
+
+# list
+hnt-llm list-keys
+
+# delete
+hnt-llm delete-key OPENAI_API_KEY
+
+# by intention, there's no get-key or fetch-key command
+```
+
+if you have a given key saved, it will be used in cases where you request that
+provider but do not have the appropriate env variable set
+
+your direct API keys are encrypted with XOR against a generated private key, but
+the private key is stored in plaintext, with some appropriate filesystem perms.
+it's secure enough that someone casually browsing your filesystem will not find
+key keys
 
 ## supported model providers
-you can specify a model with `-m` or `--model`
-
 ### [OpenRouter](https://openrouter.ai/settings/keys)
-```
+```sh
 export OPENROUTER_API_KEY="my api key"
 echo hello | hnt-llm -m openrouter/qwen/qwen2.5-coder-7b-instruct
-```
+```sh
 
 ### [DeepSeek](https://platform.deepseek.com/api_keys)
-```
+```sh
 export DEEPSEEK_API_KEY="my api key"
 echo hello | hnt-llm -m deepseek/deepseek-chat
 ```
 
 ### [OpenAI](https://platform.openai.com/settings/organization/api-keys)
-```
+```sh
 export OPENAI_API_KEY="my api key"
 echo hello | hnt-llm -m openai/gpt-4o
 ```
 
 ### [Google](https://aistudio.google.com/apikey)
-```
+```sh
 export GEMINI_API_KEY="my api key"
 echo hello | hnt-llm -m google/gemini-2.5-flash-preview-04-17
 ```
-
-### local
-no support yet. I'm an ill , homeless peasant with no GPU
 
 ## XML history input
 you can provide conversation history via stdin using XML tags:
@@ -61,7 +91,7 @@ very first message in the request, before any `<hnt-system>` content
 
 this would send msg1 and msg2 as consecutive system messages, with "msg5"
 (surrounding space trimmed) as the final user message:
-```
+```sh
 echo "
 <hnt-system>msg2</hnt-system>
 <hnt-user>msg3</hnt-user>
@@ -119,6 +149,6 @@ the flow and trying to intercept too late
 ## debugging
 you can use the `--debug-unsafe` flag to examine the raw LLM request/response
 for your query. **This will include your API key in the output.**
-```
+```sh
 echo test | hnt-llm --debug-unsafe
 ```
