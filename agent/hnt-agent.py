@@ -879,10 +879,15 @@ cat /etc/os-release
                         sys.stderr.flush()
                         try:
                             yes_option = (
-                                "Accept. Proceed to execute Hinata's shell commands"
+                                "Yes. Proceed to execute Hinata's shell commands."
                             )
-                            no_option = "Decline. Abort execution."
-                            options = f"{yes_option}\n{no_option}"
+                            no_instruct_option = (
+                                "No, and provide new instructions instead."
+                            )
+                            no_quit_option = "No. Abort execution."
+                            options = (
+                                f"{yes_option}\n{no_instruct_option}\n{no_quit_option}"
+                            )
 
                             process = subprocess.run(
                                 [tui_select_path, "--color", "4"],
@@ -892,15 +897,98 @@ cat /etc/os-release
                                 text=True,
                             )
                             # tui-select exits 1 on cancel (esc/ctrl-c)
-                            if (
-                                process.returncode != 0
-                                or process.stdout.strip() != yes_option
-                            ):
+                            if process.returncode != 0:
                                 print(
                                     "Aborted by user before hnt-shell-apply.",
                                     file=sys.stderr,
                                 )
                                 sys.exit(0)
+
+                            user_choice = process.stdout.strip()
+
+                            if user_choice == no_quit_option:
+                                print(
+                                    "Aborted by user before hnt-shell-apply.",
+                                    file=sys.stderr,
+                                )
+                                sys.exit(0)
+                            elif user_choice == no_instruct_option:
+                                # Open editor for new instructions
+                                editor = os.environ.get("EDITOR", "vi")
+                                initial_text = "# Provide your new instructions to the LLM. Save and exit to send. Leave this empty or unchanged to abort."
+                                tmp_path = None
+                                new_message_content = None
+                                try:
+                                    with tempfile.NamedTemporaryFile(
+                                        mode="w+",
+                                        prefix="hnt-agent-usermsg-",
+                                        suffix=".md",
+                                        delete=False,
+                                    ) as tmpfile:
+                                        tmpfile.write(initial_text)
+                                        tmpfile.flush()
+                                        tmp_path = tmpfile.name
+                                    editor_cmd = [editor, tmp_path]
+                                    if os.environ.get("HINATA_USE_TUI_PANE"):
+                                        tui_pane_path = shutil.which("tui-pane")
+                                        if tui_pane_path:
+                                            editor_cmd = [
+                                                tui_pane_path,
+                                                editor,
+                                                tmp_path,
+                                            ]
+                                    run_command(
+                                        editor_cmd, capture_output=False, check=True
+                                    )
+                                    with open(tmp_path, "r") as f:
+                                        new_message_content = f.read().strip()
+                                finally:
+                                    if tmp_path and os.path.exists(tmp_path):
+                                        os.unlink(tmp_path)
+
+                                if (
+                                    new_message_content
+                                    and new_message_content != initial_text.strip()
+                                ):
+                                    print_user_instruction(
+                                        new_message_content, user_instruction_idx
+                                    )
+                                    user_instruction_idx += 1
+                                    wrapped_message = f"<user_request>\n{new_message_content}\n</user_request>"
+                                    debug_log(
+                                        args, "Adding user-provided message to chat..."
+                                    )
+                                    run_command(
+                                        hnt_chat_add_user_cmd,
+                                        stdin_content=wrapped_message,
+                                        check=True,
+                                        text=True,
+                                    )
+                                    debug_log(
+                                        args,
+                                        "Generating new LLM response after user message...",
+                                    )
+                                    llm_message_raw = stream_and_capture_llm_output(
+                                        args,
+                                        hnt_chat_gen_cmd,
+                                        syntax_highlight_enabled,
+                                        effective_syntax_cmd,
+                                        description=f"LLM Navigator <{llm_navigator_idx}>",
+                                    )
+                                    llm_navigator_idx += 1
+                                    if not llm_message_raw.strip():
+                                        print(
+                                            "Warning: LLM produced no output after user message. Ending interaction.",
+                                            file=sys.stderr,
+                                        )
+                                        sys.exit(0)
+                                    continue
+                                else:
+                                    print(
+                                        "No message provided or message unchanged. Aborting.",
+                                        file=sys.stderr,
+                                    )
+                                    sys.exit(0)
                             # if "yes_option" was selected, continue
                         except Exception as e:
                             print(
@@ -1145,6 +1233,7 @@ cat /etc/os-release
                     break  # EXIT LOOP (cleanly, no new info to process)
 
                 user_wants_to_add_to_chat = True  # Assume yes if --no-confirm
+                get_new_instruction_after_add = False
                 if not args.no_confirm:
                     tui_select_path = shutil.which("tui-select")
                     if not tui_select_path:
@@ -1159,13 +1248,12 @@ cat /etc/os-release
                     )
                     sys.stderr.flush()
                     try:
-                        yes_option = (
-                            "Continue. Add command output to chat history for context."
+                        yes_option = "Yes, and continue to next LLM generation."
+                        no_instruct_option = "Yes, but provide further instructions."
+                        no_quit_option = "No, halt (will not add output to chat)."
+                        options = (
+                            f"{yes_option}\n{no_instruct_option}\n{no_quit_option}"
                         )
-                        no_option = (
-                            "Halt. Do not add output to chat, and end interaction."
-                        )
-                        options = f"{yes_option}\n{no_option}"
 
                         process = subprocess.run(
                             [tui_select_path, "--color", "4"],
@@ -1174,20 +1262,27 @@ cat /etc/os-release
                             check=False,
                             text=True,
                         )
-                        if (
-                            process.returncode != 0
-                            or process.stdout.strip() != yes_option
-                        ):
+                        if process.returncode != 0:  # Cancelled
                             user_wants_to_add_to_chat = False
                             print(
-                                "User chose not to add hnt-shell-apply output. Ending interaction loop.",
+                                "Aborted by user. Ending interaction loop.",
                                 file=sys.stderr,
                             )
-                        # if yes_option selected, user_wants_to_add_to_chat remains True
+                        else:
+                            user_choice = process.stdout.strip()
+                            if user_choice == no_quit_option:
+                                user_wants_to_add_to_chat = False
+                                print(
+                                    "User chose to halt. Ending interaction loop.",
+                                    file=sys.stderr,
+                                )
+                            elif user_choice == no_instruct_option:
+                                user_wants_to_add_to_chat = True
+                                get_new_instruction_after_add = True
+                            # else: yes_option was chosen, user_wants_to_add_to_chat remains True
                     except Exception as e:
                         print(
-                            f"Error during selection: {e}. Aborting.",
-                            file=sys.stderr,
+                            f"Error during selection: {e}. Aborting.", file=sys.stderr
                         )
                         sys.exit(1)
 
@@ -1196,19 +1291,69 @@ cat /etc/os-release
                 ):  # Check if user opted out
                     break  # EXIT MAIN INTERACTION LOOP (cleanly, user choice)
 
-                # proceed_add_to_chat (now user_wants_to_add_to_chat) being true means we continue
                 if user_wants_to_add_to_chat:
                     debug_log(
                         args, "Adding hnt-shell-apply stdout to chat conversation..."
                     )
-                    run_command(  # hnt_chat_add_user_cmd is defined outside the loop
+                    run_command(
                         hnt_chat_add_user_cmd,
                         stdin_content=shell_apply_stdout,
-                        check=True,  # sys.exit on error
+                        check=True,
                         text=True,
                     )
                     debug_log(args, "hnt-shell-apply stdout added to chat.")
-                # else: if proceed_add_to_chat is False and not args.no_confirm, we broke the loop
+
+                if get_new_instruction_after_add:
+                    editor = os.environ.get("EDITOR", "vi")
+                    initial_text = "# Provide your new instructions to the LLM. Save and exit to send. Leave this empty or unchanged to abort."
+                    tmp_path = None
+                    new_message_content = None
+                    try:
+                        with tempfile.NamedTemporaryFile(
+                            mode="w+",
+                            prefix="hnt-agent-usermsg-",
+                            suffix=".md",
+                            delete=False,
+                        ) as tmpfile:
+                            tmpfile.write(initial_text)
+                            tmpfile.flush()
+                            tmp_path = tmpfile.name
+                        editor_cmd = [editor, tmp_path]
+                        if os.environ.get("HINATA_USE_TUI_PANE"):
+                            tui_pane_path = shutil.which("tui-pane")
+                            if tui_pane_path:
+                                editor_cmd = [tui_pane_path, editor, tmp_path]
+                        run_command(editor_cmd, capture_output=False, check=True)
+                        with open(tmp_path, "r") as f:
+                            new_message_content = f.read().strip()
+                    finally:
+                        if tmp_path and os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+
+                    if (
+                        new_message_content
+                        and new_message_content != initial_text.strip()
+                    ):
+                        print_user_instruction(
+                            new_message_content, user_instruction_idx
+                        )
+                        user_instruction_idx += 1
+                        wrapped_message = (
+                            f"<user_request>\n{new_message_content}\n</user_request>"
+                        )
+                        debug_log(args, "Adding user-provided message to chat...")
+                        run_command(
+                            hnt_chat_add_user_cmd,
+                            stdin_content=wrapped_message,
+                            check=True,
+                            text=True,
+                        )
+                    else:
+                        print(
+                            "No message provided or message unchanged. Aborting.",
+                            file=sys.stderr,
+                        )
+                        sys.exit(0)
 
                 # Generate NEXT LLM message for the next iteration
                 debug_log(args, "Generating next LLM response...")
