@@ -4,3 +4,4 @@ members = [
     "hnt-escape",
     "hnt-llm",
 ]
+resolver = "2"

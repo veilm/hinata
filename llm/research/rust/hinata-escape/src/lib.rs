@@ -1,84 +1,139 @@
 const SPECIAL_TAGS: &[&str] = &["hnt-system", "hnt-user", "hnt-assistant"];
 
 /// Private helper function to process special tags for escaping or unescaping.
-/// It iterates through the input string, identifies special tags, and applies a transformation.
+/// It iterates through the input string, identifies special tags, and applies a transformation
+/// using a character-by-character state machine.
 fn _process(input: &str, is_escape: bool) -> String {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum State {
+        Normal,
+        SeenLt,
+        SeenSlash,
+        ParsingTag,
+    }
+
     let mut result = String::with_capacity(input.len());
-    let mut last_end = 0;
+    let mut state = State::Normal;
 
-    for (start_bracket, _) in input.match_indices('<') {
-        result.push_str(&input[last_end..start_bracket]);
+    let mut buffer = String::new();
+    let mut tag_name_buf = String::new();
+    let mut is_closing = false;
 
-        let remaining = &input[start_bracket..];
-
-        if let Some(end_bracket_offset) = remaining.find('>') {
-            let tag_with_brackets = &remaining[..=end_bracket_offset];
-            let tag_content = &tag_with_brackets[1..tag_with_brackets.len() - 1];
-
-            let (tag_name_part, is_closing) = if let Some(stripped) = tag_content.strip_prefix('/') {
-                (stripped, true)
-            } else {
-                (tag_content, false)
-            };
-
-            let mut temp_name = tag_name_part;
-            let mut underscore_count = 0;
-            while temp_name.starts_with('_') {
-                temp_name = &temp_name[1..];
-                underscore_count += 1;
-            }
-
-            let mut is_special_tag = false;
-            for &tag in SPECIAL_TAGS {
-                if temp_name == tag {
-                    is_special_tag = true;
-                    break;
-                }
-            }
-
-            if is_special_tag {
-                if is_escape {
-                    // escape: add one leading underscore
-                    result.push('<');
-                    if is_closing {
-                        result.push('/');
-                    }
-                    result.push('_');
-                    result.push_str(tag_name_part);
-                    result.push('>');
+    for c in input.chars() {
+        match state {
+            State::Normal => {
+                if c == '<' {
+                    state = State::SeenLt;
+                    buffer.push(c);
                 } else {
-                    // unescape: remove one leading underscore
-                    if underscore_count > 0 {
-                        result.push('<');
-                        if is_closing {
-                            result.push('/');
-                        }
-                        result.push_str(&tag_name_part[1..]);
-                        result.push('>');
-                    } else {
-                        // no leading underscores, print warning and leave as is.
-                        eprintln!(
-                            "warning: tag '<{}>' found with no leading underscore during unescape",
-                            tag_content
-                        );
-                        result.push_str(tag_with_brackets);
-                    }
+                    result.push(c);
                 }
-                last_end = start_bracket + tag_with_brackets.len();
-            } else {
-                // Not a special tag, so treat '<' literally.
-                result.push('<');
-                last_end = start_bracket + 1;
             }
-        } else {
-            // No matching '>', so treat '<' literally.
-            result.push('<');
-            last_end = start_bracket + 1;
+            State::SeenLt => {
+                buffer.push(c);
+                if c == '/' {
+                    is_closing = true;
+                    state = State::SeenSlash;
+                } else if c.is_alphanumeric() || c == '_' {
+                    is_closing = false;
+                    tag_name_buf.push(c);
+                    state = State::ParsingTag;
+                } else if c == '<' {
+                    // A `<<` sequence. Flush the first `<` to the result, and restart
+                    // the FSM for the second `<` by leaving it in the buffer.
+                    result.push(buffer.remove(0));
+                } else {
+                    // Not a valid tag character sequence (e.g., `< `).
+                    result.push_str(&buffer);
+                    buffer.clear();
+                    state = State::Normal;
+                }
+            }
+            State::SeenSlash => {
+                buffer.push(c);
+                if c.is_alphanumeric() || c == '_' {
+                    tag_name_buf.push(c);
+                    state = State::ParsingTag;
+                } else {
+                    // Not a valid tag character sequence (e.g., `</ ` or `</>`).
+                    result.push_str(&buffer);
+                    buffer.clear();
+                    is_closing = false; // Reset as we are aborting.
+                    state = State::Normal;
+                }
+            }
+            State::ParsingTag => {
+                buffer.push(c);
+                if c == '>' {
+                    // End of a potential tag.
+                    let mut temp_name = tag_name_buf.as_str();
+                    let mut underscore_count = 0;
+                    while temp_name.starts_with('_') {
+                        temp_name = &temp_name[1..];
+                        underscore_count += 1;
+                    }
+
+                    if SPECIAL_TAGS.iter().any(|&tag| tag == temp_name) {
+                        // It is a special tag, process it.
+                        if is_escape {
+                            result.push('<');
+                            if is_closing {
+                                result.push('/');
+                            }
+                            result.push('_');
+                            result.push_str(&tag_name_buf);
+                            result.push('>');
+                        } else {
+                            // Unescape
+                            if underscore_count > 0 {
+                                result.push('<');
+                                if is_closing {
+                                    result.push('/');
+                                }
+                                result.push_str(&tag_name_buf[1..]);
+                                result.push('>');
+                            } else {
+                                let tag_content = if is_closing {
+                                    format!("/{}", tag_name_buf)
+                                } else {
+                                    tag_name_buf.clone()
+                                };
+                                eprintln!(
+                                    "warning: tag '<{}>' found with no leading underscore during unescape",
+                                    tag_content
+                                );
+                                result.push_str(&buffer);
+                            }
+                        }
+                    } else {
+                        // Not a special tag, so append the buffered original text.
+                        result.push_str(&buffer);
+                    }
+
+                    // Reset for the next characters.
+                    state = State::Normal;
+                    buffer.clear();
+                    tag_name_buf.clear();
+                    is_closing = false;
+                } else if c.is_alphanumeric() || c == '_' || c == '-' {
+                    // A valid character for a tag name.
+                    tag_name_buf.push(c);
+                } else {
+                    // Invalid character for a tag name, so this is not a tag we should process.
+                    result.push_str(&buffer);
+
+                    state = State::Normal;
+                    buffer.clear();
+                    tag_name_buf.clear();
+                    is_closing = false;
+                }
+            }
         }
     }
 
-    if last_end < input.len() {
-        result.push_str(&input[last_end..]);
+    // If the input ends while inside a tag, flush the buffer.
+    if !buffer.is_empty() {
+        result.push_str(&buffer);
     }
 
     result
