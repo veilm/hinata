@@ -3,15 +3,18 @@
 # Change to directory where build script is located
 cd "$(dirname "$0")"
 
-# gcc -lcurl -ljansson main.c -o ./hnt-llm
 gcc \
 	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
+	main.c \
 	-lcurl -ljansson \
-	main.c -o ./hnt-llm
+	-o ./hnt-llm.out
 
 gcc \
 	-O2 -Wall -Wextra -Werror -std=c99 -pedantic \
-	escape.c -o ./hnt-escape
+	escape.c -o ./hnt-escape.out
 
-sudo cp ./hnt-llm ./hnt-escape /usr/local/bin/
-echo "llm/build: compiled hnt-llm and hnt-escape"
+sudo cp ./hnt-llm.out /usr/local/bin/hnt-llm
+sudo cp ./hnt-escape.out /usr/local/bin/hnt-escape
+
+echo "llm/build: installed hnt-llm in /usr/local/bin/"
+echo "llm/build: installed hnt-escape in /usr/local/bin/"

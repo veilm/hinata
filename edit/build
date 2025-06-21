@@ -8,7 +8,7 @@ then
 	if which uv > /dev/null 2>&1
 	then
 		echo "edit/build: uv installed but hlmd-st not found. installing..."
-		../fmt/highlight
+		../fmt/highlight/build
 	else
 		echo "edit/build: not installing hldm-st because uv not found. lol what are you doing"
 	fi
