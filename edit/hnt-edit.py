@@ -282,7 +282,15 @@ def main():
         action="store_true",
         help="Enable unsafe debugging options in hnt-llm",
     )
+    parser.add_argument(
+        "--ignore-reasoning",
+        action="store_true",
+        help="Do not ask the LLM for reasoning. Also checks $HINATA_EDIT_IGNORE_REASONING.",
+    )
     args = parser.parse_args()
+
+    if os.environ.get("HINATA_EDIT_IGNORE_REASONING"):
+        args.ignore_reasoning = True
 
     # If --continue-dir is not used, source_files are required.
     if not args.continue_dir and not args.source_files:
@@ -722,12 +730,12 @@ def main():
         "hnt-chat",
         "gen",
         "--write",
-        "--include-reasoning",
-        "--separate-reasoning",
         "--merge",
         "-c",
         str(conversation_dir),  # hnt-chat expects string path
     ]
+    if not args.ignore_reasoning:
+        hnt_chat_gen_cmd.extend(["--include-reasoning", "--separate-reasoning"])
     if args.model:
         hnt_chat_gen_cmd.extend(["--model", args.model])
         debug_log(args, "Using model:", args.model)

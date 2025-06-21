@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "hinata-escape",
+    "hnt-escape",
+    "hnt-llm",
+]

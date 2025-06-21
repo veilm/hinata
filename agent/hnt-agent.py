@@ -516,6 +516,23 @@ def main():
         )
         debug_log(args, f"Headlesh session {session_name} created successfully.")
 
+        # Set HINATA_EDIT_IGNORE_REASONING in the headlesh session.
+        # This affects any tools run within the session, like hnt-edit via an LLM command.
+        debug_log(
+            args, f"Setting HINATA_EDIT_IGNORE_REASONING in session {session_name}"
+        )
+        run_command(
+            ["headlesh", "exec", session_name],
+            stdin_content="export HINATA_EDIT_IGNORE_REASONING=1\n",
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        debug_log(
+            args,
+            "HINATA_EDIT_IGNORE_REASONING set to 1 for the duration of the session.",
+        )
+
         # 1. Get system message
         debug_log(args, "Getting system message...")
         system_message = get_system_message(
