@@ -73,7 +73,7 @@ fn _process(input: &str, is_escape: bool) -> String {
                         underscore_count += 1;
                     }
 
-                    if SPECIAL_TAGS.iter().any(|&tag| tag == temp_name) {
+                    if SPECIAL_TAGS.contains(&temp_name) {
                         // It is a special tag, process it.
                         if is_escape {
                             result.push('<');
@@ -193,10 +193,7 @@ mod tests {
             "<_hnt-user> and </hnt-assistant>"
         );
         assert_eq!(unescape("not a tag <_hnt-usr>"), "not a tag <_hnt-usr>");
-        assert_eq!(
-            unescape("incomplete <_hnt-user"),
-            "incomplete <_hnt-user"
-        );
+        assert_eq!(unescape("incomplete <_hnt-user"), "incomplete <_hnt-user");
         assert_eq!(unescape("<<_hnt-user>"), "<<hnt-user>");
     }
 
@@ -218,8 +215,14 @@ mod tests {
         assert_eq!(unescape("nothing to do"), "nothing to do");
         assert_eq!(escape(""), "");
         assert_eq!(unescape(""), "");
-        assert_eq!(escape("text with < and > but no tags"), "text with < and > but no tags");
-        assert_eq!(unescape("text with < and > but no tags"), "text with < and > but no tags");
+        assert_eq!(
+            escape("text with < and > but no tags"),
+            "text with < and > but no tags"
+        );
+        assert_eq!(
+            unescape("text with < and > but no tags"),
+            "text with < and > but no tags"
+        );
     }
 
     #[test]

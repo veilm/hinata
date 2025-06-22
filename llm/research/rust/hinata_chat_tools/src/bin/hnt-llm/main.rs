@@ -1,17 +1,9 @@
-use anyhow::{Context, Result};
-use base64::{engine::general_purpose, Engine as _};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use futures_util::StreamExt;
-use log;
-use rand::RngCore;
-use reqwest;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
 use tokio::io::{stdout, AsyncWriteExt};
-
-
 
 // The structs needed for building the API request JSON payload.
 #[derive(Serialize, Deserialize, Debug)]
@@ -73,7 +65,12 @@ enum Commands {
 #[derive(Parser, Debug)]
 struct GenArgs {
     /// The model to use for the LLM.
-    #[arg(short, long, env = "HINATA_LLM_MODEL", default_value = "openrouter/deepseek/deepseek-chat-v3-0324:free")]
+    #[arg(
+        short,
+        long,
+        env = "HINATA_LLM_MODEL",
+        default_value = "openrouter/deepseek/deepseek-chat-v3-0324:free"
+    )]
     model: String,
 
     /// The system prompt to use.
@@ -103,14 +100,16 @@ struct DeleteKey {
     name: String,
 }
 
-struct Provider {
-    name: &'static str,
-    api_url: &'static str,
-    env_var: &'static str,
-    extra_headers: &'static [(&'static str, &'static str)],
+mod key_store;
+
+pub struct Provider {
+    pub name: &'static str,
+    pub api_url: &'static str,
+    pub env_var: &'static str,
+    pub extra_headers: &'static [(&'static str, &'static str)],
 }
 
-static PROVIDERS: &[Provider] = &[
+pub static PROVIDERS: &[Provider] = &[
     Provider {
         name: "openai",
         api_url: "https://api.openai.com/v1/chat/completions",
@@ -145,13 +144,11 @@ async fn main() -> Result<()> {
     env_logger::init();
     let cli = Cli::parse();
 
-
-
     match &cli.command {
         Some(Commands::Gen(args)) => run_llm(args).await?,
-        Some(Commands::SaveKey(args)) => handle_save_key(args).await?,
-        Some(Commands::ListKeys(args)) => handle_list_keys(args).await?,
-        Some(Commands::DeleteKey(args)) => handle_delete_key(args).await?,
+        Some(Commands::SaveKey(args)) => key_store::handle_save_key(args).await?,
+        Some(Commands::ListKeys(args)) => key_store::handle_list_keys(args).await?,
+        Some(Commands::DeleteKey(args)) => key_store::handle_delete_key(args).await?,
         None => run_llm(&cli.gen_args).await?,
     }
 
@@ -276,15 +273,18 @@ async fn process_sse_data(
     state: &mut StreamState,
     include_reasoning: bool,
 ) -> Result<()> {
-    if let Some(choice) = chunk.choices.get(0) {
+    if let Some(choice) = chunk.choices.first() {
         let delta = &choice.delta;
         let mut out = stdout();
 
-        let reasoning_text = delta.reasoning_content.as_deref().or(delta.reasoning.as_deref());
+        let reasoning_text = delta
+            .reasoning_content
+            .as_deref()
+            .or(delta.reasoning.as_deref());
         let content_text = delta.content.as_deref();
 
-        let has_reasoning_token = reasoning_text.map_or(false, |s| !s.is_empty());
-        let has_content_token = content_text.map_or(false, |s| !s.is_empty());
+        let has_reasoning_token = reasoning_text.is_some_and(|s| !s.is_empty());
+        let has_content_token = content_text.is_some_and(|s| !s.is_empty());
 
         if state.phase == OutputPhase::Init {
             if has_reasoning_token {
@@ -306,10 +306,8 @@ async fn process_sse_data(
                     state.think_tag_printed = false;
                 }
                 out.write_all(content_text.unwrap().as_bytes()).await?;
-            } else if has_reasoning_token {
-                if include_reasoning {
-                    out.write_all(reasoning_text.unwrap().as_bytes()).await?;
-                }
+            } else if has_reasoning_token && include_reasoning {
+                out.write_all(reasoning_text.unwrap().as_bytes()).await?;
             }
         } else if state.phase == OutputPhase::Responding {
             if let Some(text) = content_text {
@@ -321,7 +319,6 @@ async fn process_sse_data(
     }
     Ok(())
 }
-
 
 /// Main logic for running the LLM.
 async fn run_llm(args: &GenArgs) -> Result<()> {
@@ -337,7 +334,7 @@ async fn run_llm(args: &GenArgs) -> Result<()> {
 
     let api_key = match std::env::var(provider.env_var) {
         Ok(key) => Some(key),
-        Err(_) => get_api_key_from_store(provider.name).await?,
+        Err(_) => key_store::get_api_key_from_store(provider.name).await?,
     }
     .ok_or_else(|| {
         anyhow::anyhow!(
@@ -408,10 +405,10 @@ async fn run_llm(args: &GenArgs) -> Result<()> {
             let message = String::from_utf8_lossy(&message_bytes);
 
             for line in message.lines() {
-                if line.starts_with("data: ") {
-                    let data = &line["data: ".len()..];
+                if let Some(data) = line.strip_prefix("data: ") {
                     if data.trim() == "[DONE]" {
-                        if stream_state.think_tag_printed && stream_state.phase == OutputPhase::Thinking
+                        if stream_state.think_tag_printed
+                            && stream_state.phase == OutputPhase::Thinking
                         {
                             let mut out = stdout();
                             out.write_all(b"</think>\n").await?;
@@ -439,200 +436,5 @@ async fn run_llm(args: &GenArgs) -> Result<()> {
         out.flush().await?;
     }
 
-    Ok(())
-}
-
-/// Handles the 'save-key' subcommand.
-async fn handle_save_key(args: &SaveKey) -> Result<()> {
-    let canonical_name = match PROVIDERS.iter().find(|p| {
-        p.name.eq_ignore_ascii_case(&args.name) || p.env_var.eq_ignore_ascii_case(&args.name)
-    }) {
-        Some(p) => p.name,
-        None => &args.name,
-    };
-
-    let config_dir = get_hinata_dir("config")?;
-    let data_dir = get_hinata_dir("data")?;
-    ensure_local_key(&data_dir)?;
-
-    let keys_path = config_dir.join("keys");
-
-    let api_key = rpassword::prompt_password(format!("Enter API key for '{}': ", canonical_name))
-        .with_context(|| "Failed to read API key from prompt")?;
-
-    let mut lines = if keys_path.exists() {
-        fs::read_to_string(&keys_path)?
-            .lines()
-            .map(String::from)
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    let key_prefix = format!("{}=", canonical_name);
-    let key_exists = lines.iter().any(|line| line.starts_with(&key_prefix));
-    lines.retain(|line| !line.starts_with(&key_prefix));
-
-    let local_key = read_local_key(&data_dir)?;
-    let mut data_to_encrypt = api_key.into_bytes();
-    xor_crypt(&local_key, &mut data_to_encrypt);
-
-    let encoded_key = general_purpose::STANDARD.encode(&data_to_encrypt);
-    lines.push(format!("{}={}", canonical_name, encoded_key));
-
-    fs::write(&keys_path, lines.join("\n") + "\n")?;
-    set_permissions(&keys_path)?;
-
-    if key_exists {
-        println!("Updated key '{}'.", canonical_name);
-    } else {
-        println!("Saved key '{}'.", canonical_name);
-    }
-
-    Ok(())
-}
-
-/// Handles the 'list-keys' subcommand.
-async fn handle_list_keys(_args: &ListKeys) -> Result<()> {
-    let config_dir = get_hinata_dir("config")?;
-    let keys_path = config_dir.join("keys");
-
-    if !keys_path.exists() {
-        println!("No keys saved.");
-        return Ok(());
-    }
-
-    let content = fs::read_to_string(keys_path)?;
-    let keys: Vec<_> = content
-        .lines()
-        .filter(|line| !line.is_empty())
-        .filter_map(|line| line.split('=').next())
-        .collect();
-
-    if keys.is_empty() {
-        println!("No keys saved.");
-    } else {
-        println!("Saved API keys:");
-        for key in keys {
-            println!("- {}", key);
-        }
-    }
-
-    Ok(())
-}
-
-/// Handles the 'delete-key' subcommand.
-async fn handle_delete_key(args: &DeleteKey) -> Result<()> {
-    let config_dir = get_hinata_dir("config")?;
-    let keys_path = config_dir.join("keys");
-
-    if !keys_path.exists() {
-        println!("Key '{}' not found.", args.name);
-        return Ok(());
-    }
-
-    let lines: Vec<String> = fs::read_to_string(&keys_path)?
-        .lines()
-        .map(String::from)
-        .collect();
-
-    let key_prefix = format!("{}=", args.name);
-    let mut key_found = false;
-    let new_lines: Vec<_> = lines
-        .into_iter()
-        .filter(|line| {
-            if line.starts_with(&key_prefix) {
-                key_found = true;
-                false
-            } else {
-                true
-            }
-        })
-        .collect();
-
-    if !key_found {
-        println!("Key '{}' not found.", args.name);
-        return Ok(());
-    }
-
-    fs::write(&keys_path, new_lines.join("\n") + "\n")?;
-    set_permissions(&keys_path)?;
-
-    println!("Deleted key '{}'.", args.name);
-
-    Ok(())
-}
-
-async fn get_api_key_from_store(key_name: &str) -> anyhow::Result<Option<String>> {
-    let config_dir = get_hinata_dir("config")?;
-    let keys_path = config_dir.join("keys");
-
-    if !keys_path.exists() {
-        return Ok(None);
-    }
-
-    let content = fs::read_to_string(&keys_path)?;
-    let key_prefix = format!("{}=", key_name);
-
-    if let Some(line) = content.lines().find(|line| line.starts_with(&key_prefix)) {
-        if let Some(encoded_key) = line.splitn(2, '=').nth(1) {
-            let data_dir = get_hinata_dir("data")?;
-            let local_key = read_local_key(&data_dir)?;
-            let mut encrypted_data = general_purpose::STANDARD.decode(encoded_key)?;
-            xor_crypt(&local_key, &mut encrypted_data);
-            let api_key = String::from_utf8(encrypted_data)?;
-            return Ok(Some(api_key));
-        }
-    }
-
-    Ok(None)
-}
-
-fn get_hinata_dir(dir_type: &str) -> anyhow::Result<PathBuf> {
-    let base_dir = match dir_type {
-        "config" => dirs::config_dir(),
-        "data" => dirs::data_dir(),
-        _ => return Err(anyhow::anyhow!("Invalid directory type specified: '{}'", dir_type)),
-    };
-
-    let dir = base_dir
-        .ok_or_else(|| anyhow::anyhow!("Could not find {} directory", dir_type))?
-        .join("hinata");
-
-    fs::create_dir_all(&dir).with_context(|| format!("Failed to create directory at {}", dir.display()))?;
-    Ok(dir)
-}
-
-fn ensure_local_key(data_dir: &Path) -> anyhow::Result<()> {
-    let key_path = data_dir.join(".local_key");
-    if !key_path.exists() {
-        let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
-        fs::write(&key_path, key).with_context(|| "Failed to write local key")?;
-        set_permissions(&key_path)?;
-    }
-    Ok(())
-}
-
-fn read_local_key(data_dir: &Path) -> anyhow::Result<Vec<u8>> {
-    let key_path = data_dir.join(".local_key");
-    fs::read(&key_path).with_context(|| "Failed to read local key")
-}
-
-fn xor_crypt(key: &[u8], data: &mut [u8]) {
-    for (i, byte) in data.iter_mut().enumerate() {
-        *byte ^= key[i % key.len()];
-    }
-}
-
-fn set_permissions(path: &Path) -> anyhow::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        fs::set_permissions(path, perms)
-            .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
-    }
-    // On non-UNIX systems, this is a no-op.
     Ok(())
 }
