@@ -463,9 +463,13 @@ def main():
 
         for file_path_obj in source_file_paths_for_checking:
             if not file_path_obj.exists():
+                if not file_path_obj.parent.is_dir():
+                    print(
+                        f"Error: Parent directory for new file '{file_path_obj}' must exist.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
                 try:
-                    # Ensure parent directory exists if creating a file in a new subdirectory
-                    file_path_obj.parent.mkdir(parents=True, exist_ok=True)
                     file_path_obj.touch()  # Create the file empty
                     debug_log(args, f"Created missing file: {file_path_obj}")
                     created_files_this_run.append(file_path_obj)  # Track it for cleanup
