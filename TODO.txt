@@ -16,6 +16,9 @@
 	and then you append/compress it separately
 	
 	or maybe a compress just means splitting it out to a different file
+	
+	ideally the main append  could be very easy to type, so hnt-agent
+	can make a memory append once per turn at the start
 - make an alternate output format for hnt-edit
 	it will make a copy of all input files and then analyze the diff
 	and just kind of write a git diff between all the files
