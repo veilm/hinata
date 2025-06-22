@@ -32,6 +32,10 @@ enum Commands {
         /// Path to the conversation directory (overrides env var, defaults to latest)
         #[arg(short, long)]
         conversation: Option<PathBuf>,
+
+        /// For 'assistant' role only. If input starts with <think>...</think>, save it to a separate reasoning file.
+        #[arg(long, action = ArgAction::SetTrue)]
+        separate_reasoning: bool,
     },
 
     /// Pack conversation messages for processing
@@ -79,8 +83,15 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::New => handle_new_command()?,
-        Commands::Add { role, conversation } => handle_add_command(role, conversation)?,
-        Commands::Pack { conversation, merge } => handle_pack_command(conversation, merge)?,
+        Commands::Add {
+            role,
+            conversation,
+            separate_reasoning,
+        } => handle_add_command(role, conversation, separate_reasoning)?,
+        Commands::Pack {
+            conversation,
+            merge,
+        } => handle_pack_command(conversation, merge)?,
         Commands::Gen {
             args,
             conversation,
@@ -88,15 +99,17 @@ async fn main() -> Result<()> {
             write,
             output_filename,
             separate_reasoning,
-        } => handle_gen_command(
-            args,
-            conversation,
-            merge,
-            write,
-            output_filename,
-            separate_reasoning,
-        )
-        .await?,
+        } => {
+            handle_gen_command(
+                args,
+                conversation,
+                merge,
+                write,
+                output_filename,
+                separate_reasoning,
+            )
+            .await?
+        }
     }
 
     Ok(())
@@ -116,7 +129,11 @@ fn handle_new_command() -> Result<()> {
 }
 
 /// Handles the 'add' command by reading from stdin and writing a new message file.
-fn handle_add_command(role: Role, conversation_path: Option<PathBuf>) -> Result<()> {
+fn handle_add_command(
+    role: Role,
+    conversation_path: Option<PathBuf>,
+    separate_reasoning: bool,
+) -> Result<()> {
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
         .context("Failed to determine conversation directory")?;
 
@@ -124,6 +141,23 @@ fn handle_add_command(role: Role, conversation_path: Option<PathBuf>) -> Result<
     io::stdin()
         .read_to_string(&mut content)
         .context("Failed to read from stdin")?;
+
+    if role == Role::Assistant && separate_reasoning && content.starts_with("<think>") {
+        if let Some(end_tag_pos) = content.find("</think>") {
+            let split_pos = end_tag_pos + "</think>".len();
+            let reasoning_content = &content[..split_pos];
+            let main_content = content[split_pos..].trim_start();
+
+            chat::write_message_file(&conv_dir, Role::AssistantReasoning, reasoning_content)
+                .context("Failed to write reasoning file")?;
+
+            let relative_path = chat::write_message_file(&conv_dir, Role::Assistant, main_content)
+                .context("Failed to write assistant message file")?;
+
+            println!("{}", relative_path.display());
+            return Ok(());
+        }
+    }
 
     let relative_path = chat::write_message_file(&conv_dir, role, &content)
         .context("Failed to write message file")?;
@@ -138,7 +172,8 @@ fn handle_pack_command(conversation_path: Option<PathBuf>, merge: bool) -> Resul
         .context("Failed to determine conversation directory")?;
 
     let mut stdout = io::stdout().lock();
-    chat::pack_conversation(&conv_dir, &mut stdout, merge).context("Failed to pack conversation")?;
+    chat::pack_conversation(&conv_dir, &mut stdout, merge)
+        .context("Failed to pack conversation")?;
 
     Ok(())
 }
@@ -155,23 +190,23 @@ async fn handle_gen_command(
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
         .context("Failed to determine conversation directory")?;
 
-    if let Some(model_name) = &args.model {
-        fs::write(conv_dir.join("model.txt"), model_name).context("Failed to write model file")?;
-    }
-
-    let mut writer = Vec::new();
-    chat::pack_conversation(&conv_dir, &mut writer, merge).context("Failed to pack conversation")?;
-
-    let packed_string =
-        String::from_utf8(writer).context("Failed to convert packed conversation to string")?;
-
     let should_write = write || output_filename || separate_reasoning;
+
+    fs::write(conv_dir.join("model.txt"), &args.model).context("Failed to write model file")?;
 
     let config = LlmConfig {
         model: args.model,
         system_prompt: args.system,
         include_reasoning: args.include_reasoning || separate_reasoning,
     };
+
+    let mut writer = Vec::new();
+    chat::pack_conversation(&conv_dir, &mut writer, merge)
+        .context("Failed to pack conversation")?;
+
+    let packed_string =
+        String::from_utf8(writer).context("Failed to convert packed conversation to string")?;
+
     let stream = stream_llm_response(config, packed_string);
 
     let mut content_buffer = String::new();
@@ -205,12 +240,8 @@ async fn handle_gen_command(
     if should_write {
         if separate_reasoning {
             if !reasoning_buffer.is_empty() {
-                chat::write_message_file(
-                    &conv_dir,
-                    Role::AssistantReasoning,
-                    &reasoning_buffer,
-                )
-                .context("Failed to write reasoning file")?;
+                chat::write_message_file(&conv_dir, Role::AssistantReasoning, &reasoning_buffer)
+                    .context("Failed to write reasoning file")?;
             }
             let path = chat::write_message_file(&conv_dir, Role::Assistant, &content_buffer)
                 .context("Failed to write assistant message file")?;
@@ -218,9 +249,8 @@ async fn handle_gen_command(
         } else {
             let full_response = format!("{}{}", reasoning_buffer, content_buffer);
             if !full_response.is_empty() {
-                let path =
-                    chat::write_message_file(&conv_dir, Role::Assistant, &full_response)
-                        .context("Failed to write assistant message file")?;
+                let path = chat::write_message_file(&conv_dir, Role::Assistant, &full_response)
+                    .context("Failed to write assistant message file")?;
                 assistant_file_path = Some(path);
             }
         }
