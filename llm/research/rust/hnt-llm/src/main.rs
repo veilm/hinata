@@ -271,42 +271,44 @@ async fn process_sse_data(
         let delta = &choice.delta;
         let mut out = stdout();
 
-        // Handle reasoning
-        if delta.reasoning.is_some() {
-            if state.phase == OutputPhase::Init {
+        let reasoning_text = delta.reasoning_content.as_deref().or(delta.reasoning.as_deref());
+        let content_text = delta.content.as_deref();
+
+        let has_reasoning_token = reasoning_text.map_or(false, |s| !s.is_empty());
+        let has_content_token = content_text.map_or(false, |s| !s.is_empty());
+
+        if state.phase == OutputPhase::Init {
+            if has_reasoning_token {
                 state.phase = OutputPhase::Thinking;
                 if include_reasoning {
                     out.write_all(b"<think>").await?;
-                    out.flush().await?;
                     state.think_tag_printed = true;
+                    out.write_all(reasoning_text.unwrap().as_bytes()).await?;
                 }
+            } else if has_content_token {
+                state.phase = OutputPhase::Responding;
+                out.write_all(content_text.unwrap().as_bytes()).await?;
             }
-        }
-
-        if let Some(reasoning_content) = &delta.reasoning_content {
-            if state.phase == OutputPhase::Thinking && include_reasoning {
-                out.write_all(reasoning_content.as_bytes()).await?;
-                out.flush().await?;
-            }
-        }
-
-        // Handle content
-        if let Some(content) = &delta.content {
-            if state.phase == OutputPhase::Thinking {
+        } else if state.phase == OutputPhase::Thinking {
+            if has_content_token {
                 state.phase = OutputPhase::Responding;
                 if state.think_tag_printed {
                     out.write_all(b"</think>\n").await?;
-                    // Flushed with content to make it appear atomic
+                    state.think_tag_printed = false;
                 }
-            } else if state.phase == OutputPhase::Init {
-                state.phase = OutputPhase::Responding;
+                out.write_all(content_text.unwrap().as_bytes()).await?;
+            } else if has_reasoning_token {
+                if include_reasoning {
+                    out.write_all(reasoning_text.unwrap().as_bytes()).await?;
+                }
             }
-
-            if state.phase == OutputPhase::Responding {
-                out.write_all(content.as_bytes()).await?;
-                out.flush().await?;
+        } else if state.phase == OutputPhase::Responding {
+            if let Some(text) = content_text {
+                out.write_all(text.as_bytes()).await?;
             }
         }
+
+        out.flush().await?;
     }
     Ok(())
 }
