@@ -1,0 +1,26 @@
+- rust rewrite
+- recompute summaries
+- make a `memory` CLI or something
+	for now it can just have some different profiles (simple .md files)
+	
+	then you just have a `memory append PROFILE TEXT` and `memory compress` and
+	`memory read PROFILE`
+	or something
+	
+	or hnt-memory
+	
+	
+	
+	then maybe your main memory profile entry can say "read the MAIN-SUBTOPIC
+	profile entry to learn more" or something
+	and then you append/compress it separately
+	
+	or maybe a compress just means splitting it out to a different file
+- make an alternate output format for hnt-edit
+	it will make a copy of all input files and then analyze the diff
+	and just kind of write a git diff between all the files
+	
+	should probably be shorter in general
+- make it so hnt-shell has a max amount of tokens it can give
+	then it logs the whole message to like /tmp/hnt-shell-1750571344.log
+	so the LLM can read it if it really wants
