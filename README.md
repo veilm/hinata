@@ -100,6 +100,12 @@ shell sessions and easily read/write to them
 - [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM to use
 a shell and receive output, in a feedback loop
 
+# bugs / support
+feel free to @ me on X or make a GitHub issue, for literally any reason
+
+you don't need to read any documentation or even try installing. I'd be happy to
+answer any possible questions
+
 # philosophy
 
 **Goal: unequivocally mog yacine's setup**
