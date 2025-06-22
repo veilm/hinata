@@ -17,9 +17,9 @@ fn main() -> io::Result<()> {
     io::stdin().read_to_string(&mut input)?;
 
     let output = if args.unescape {
-        hinata_escape::unescape(&input)
+        hinata_chat_tools::unescape(&input)
     } else {
-        hinata_escape::escape(&input)
+        hinata_chat_tools::escape(&input)
     };
 
     io::stdout().write_all(output.as_bytes())?;

@@ -231,7 +231,7 @@ fn build_messages_from_stdin(
 
         messages.push(Message {
             role: role.to_string(),
-            content: hinata_escape::unescape(content),
+            content: hinata_chat_tools::unescape(content),
         });
 
         current_pos = closing_tag_start_abs + closing_tag.len();
@@ -243,7 +243,7 @@ fn build_messages_from_stdin(
     if !trimmed_user_content.is_empty() {
         messages.push(Message {
             role: "user".to_string(),
-            content: hinata_escape::unescape(trimmed_user_content),
+            content: hinata_chat_tools::unescape(trimmed_user_content),
         });
     }
 

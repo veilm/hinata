@@ -1,7 +1,0 @@
-[workspace]
-members = [
-    "hinata-escape",
-    "hnt-escape",
-    "hnt-llm",
-]
-resolver = "2"

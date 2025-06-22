@@ -1,0 +1,16 @@
+#!/bin/sh -e
+
+# Change to the directory where the build script is located to ensure paths are correct
+cd "$(dirname "$0")"
+
+echo "Building Rust executables in release mode..."
+cargo build --release
+
+echo "Installing executables to /usr/local/bin..."
+# Use sudo to copy the compiled binaries to a system-wide location
+sudo cp ./target/release/hnt-llm /usr/local/bin/hnt-llm
+sudo cp ./target/release/hnt-escape /usr/local/bin/hnt-escape
+
+echo "Installation complete."
+echo " - hnt-llm installed in /usr/local/bin/"
+echo " - hnt-escape installed in /usr/local/bin/"
