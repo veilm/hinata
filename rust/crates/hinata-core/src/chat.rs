@@ -1,15 +1,15 @@
-use std::path::{Path, PathBuf};
-use thiserror::Error;
+use crate::escaping;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
-use crate::escaping;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -95,7 +95,8 @@ pub fn get_conversations_dir() -> Result<PathBuf> {
         Some(path) => path,
         None => {
             // Fallback for systems where data_dir might not be available, though home_dir should be.
-            dirs_next::home_dir().ok_or(ChatError::HomeDirNotFound)?
+            dirs_next::home_dir()
+                .ok_or(ChatError::HomeDirNotFound)?
                 .join(".local/share")
         }
     };
@@ -103,8 +104,12 @@ pub fn get_conversations_dir() -> Result<PathBuf> {
     let conversations_dir = data_dir.join("hinata/chat/conversations");
 
     if !conversations_dir.exists() {
-        std::fs::create_dir_all(&conversations_dir)
-            .with_context(|| format!("Failed to create conversation directory at {:?}", conversations_dir))?;
+        std::fs::create_dir_all(&conversations_dir).with_context(|| {
+            format!(
+                "Failed to create conversation directory at {:?}",
+                conversations_dir
+            )
+        })?;
     }
 
     Ok(conversations_dir)
@@ -135,7 +140,12 @@ pub fn create_new_conversation(base_dir: &Path) -> Result<PathBuf> {
                 continue;
             }
             Err(e) => {
-                return Err(e).with_context(|| format!("Failed to create new conversation directory at {:?}", new_conv_path));
+                return Err(e).with_context(|| {
+                    format!(
+                        "Failed to create new conversation directory at {:?}",
+                        new_conv_path
+                    )
+                });
             }
         }
     }
@@ -186,7 +196,10 @@ pub fn write_message_file(conv_dir: &Path, role: Role, content: &str) -> Result<
 
     if file_path.exists() {
         // Extremely unlikely, but handle defensively.
-        return Err(anyhow::anyhow!("File collision detected for path: {:?}", file_path));
+        return Err(anyhow::anyhow!(
+            "File collision detected for path: {:?}",
+            file_path
+        ));
     }
 
     fs::write(&file_path, content)
@@ -220,7 +233,7 @@ pub fn list_messages(conv_dir: &Path) -> Result<Vec<ChatMessage>> {
         if extension != Some("md") {
             continue;
         }
-        
+
         if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
             let parts: Vec<&str> = file_stem.splitn(2, '-').collect();
             if parts.len() == 2 {
@@ -259,7 +272,7 @@ pub fn pack_conversation(conv_dir: &Path, writer: &mut impl io::Write) -> Result
 
         let mut file = fs::File::open(&msg.path)
             .with_context(|| format!("Failed to open message file: {:?}", msg.path))?;
-        
+
         // Use the core escaping function to process the content directly.
         escaping::escape(&mut file, writer)?;
 
@@ -303,7 +316,9 @@ mod tests {
 
         let home_dir = dirs_next::home_dir().unwrap();
         let default_path = home_dir.join(".local/share/hinata/chat/conversations");
-        let another_possible_path = dirs_next::data_dir().unwrap().join("hinata/chat/conversations");
+        let another_possible_path = dirs_next::data_dir()
+            .unwrap()
+            .join("hinata/chat/conversations");
 
         // The result should be one of the standard locations
         assert!(path == default_path || path == another_possible_path);
@@ -345,7 +360,6 @@ mod tests {
         fs::write(base_dir.join("a_file.txt"), "hello").unwrap(); // should be ignored
         fs::create_dir(base_dir.join("200")).unwrap();
 
-
         let latest = find_latest_conversation(base_dir).unwrap();
         assert_eq!(latest.unwrap().file_name().unwrap(), "300");
     }
@@ -384,7 +398,6 @@ mod tests {
         fs::write(conv_dir.join("ignore.txt"), "not a message").unwrap();
         fs::write(conv_dir.join("123-invalidrole.md"), "bad role").unwrap();
 
-
         let messages = list_messages(conv_dir).unwrap();
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].role, Role::User);
@@ -392,9 +405,18 @@ mod tests {
         assert_eq!(messages[2].role, Role::User);
 
         // Check that paths are correct
-        assert_eq!(messages[0].path.file_name().unwrap(), path1.file_name().unwrap());
-        assert_eq!(messages[1].path.file_name().unwrap(), path2.file_name().unwrap());
-        assert_eq!(messages[2].path.file_name().unwrap(), path3.file_name().unwrap());
+        assert_eq!(
+            messages[0].path.file_name().unwrap(),
+            path1.file_name().unwrap()
+        );
+        assert_eq!(
+            messages[1].path.file_name().unwrap(),
+            path2.file_name().unwrap()
+        );
+        assert_eq!(
+            messages[2].path.file_name().unwrap(),
+            path3.file_name().unwrap()
+        );
 
         // Check if sorted correctly
         assert!(messages[0].timestamp < messages[1].timestamp);
@@ -414,7 +436,7 @@ mod tests {
         pack_conversation(conv_dir, &mut output_buffer).unwrap();
 
         let packed_string = String::from_utf8(output_buffer).unwrap();
-        
+
         let mut lines = packed_string.lines();
         let first_line = lines.next().unwrap();
         let second_line = lines.next().unwrap();

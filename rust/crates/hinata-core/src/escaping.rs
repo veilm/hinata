@@ -1,5 +1,4 @@
 use std::io::{self, Read, Write};
-use thiserror::Error;
 
 /// Reads from a reader, escapes specific characters ('<'), and writes to a writer.
 ///
@@ -95,6 +94,9 @@ mod tests {
         assert_eq!(unescape("\\<tag>"), "<tag>");
         assert_eq!(unescape("text \\< text"), "text < text");
         assert_eq!(unescape("no escaping here"), "no escaping here");
-        assert_eq!(unescape("\\<outer>\\<inner>\\</inner>\\</outer>"), "<outer><inner></inner></outer>");
+        assert_eq!(
+            unescape("\\<outer>\\<inner>\\</inner>\\</outer>"),
+            "<outer><inner></inner></outer>"
+        );
     }
 }
