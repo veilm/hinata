@@ -24,3 +24,16 @@
 - make it so hnt-shell has a max amount of tokens it can give
 	then it logs the whole message to like /tmp/hnt-shell-1750571344.log
 	so the LLM can read it if it really wants
+
+- I think based Gemini nuked my idea for the hnt-user escaping in hnt-llm etc.
+	so at least then make the main parser flexible
+	
+	like
+	echo "hello !??? < eof>" | hnt-llm
+	etc.
+	shouldn't break
+
+- make some way to continue a hnt-agent conversation
+	even if headlesh has to get reset, no big deal
+- maybe always include a <pwd>
+	in each user turn, just for good reference

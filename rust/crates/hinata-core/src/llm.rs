@@ -1,9 +1,25 @@
 use anyhow::Result;
+use async_stream::stream;
 use clap::Parser;
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use tokio::io::{stdout, AsyncWriteExt};
+
+/// Configuration for an LLM request.
+#[derive(Debug, Clone)]
+pub struct LlmConfig {
+    pub model: String,
+    pub system_prompt: Option<String>,
+    pub include_reasoning: bool,
+}
+
+/// Events yielded by the LLM stream.
+#[derive(Debug, Clone)]
+pub enum LlmStreamEvent {
+    Content(String),
+    Reasoning(String),
+}
 
 // The structs needed for building the API request JSON payload.
 #[derive(Serialize, Deserialize, Debug)]
@@ -47,15 +63,15 @@ pub struct GenArgs {
         env = "HINATA_LLM_MODEL",
         default_value = "openrouter/deepseek/deepseek-chat-v3-0324:free"
     )]
-    model: String,
+    pub model: String,
 
     /// The system prompt to use.
     #[arg(short, long)]
-    system: Option<String>,
+    pub system: Option<String>,
 
     /// Include reasoning in the output.
     #[arg(long)]
-    include_reasoning: bool,
+    pub include_reasoning: bool,
 }
 
 pub struct Provider {
@@ -95,8 +111,8 @@ pub static PROVIDERS: &[Provider] = &[
     },
 ];
 
-pub fn build_messages_from_stdin(
-    stdin_content: &str,
+pub fn build_messages(
+    content: &str,
     system_prompt: Option<String>,
 ) -> anyhow::Result<Vec<Message>> {
     let mut messages = Vec::new();
@@ -111,12 +127,12 @@ pub fn build_messages_from_stdin(
     let mut current_pos = 0;
     let mut non_tag_content = String::new();
 
-    while let Some(tag_start_rel) = stdin_content[current_pos..].find("<hnt-") {
+    while let Some(tag_start_rel) = content[current_pos..].find("<hnt-") {
         let tag_start_abs = current_pos + tag_start_rel;
 
-        non_tag_content.push_str(&stdin_content[current_pos..tag_start_abs]);
+        non_tag_content.push_str(&content[current_pos..tag_start_abs]);
 
-        let remaining_from_tag = &stdin_content[tag_start_abs..];
+        let remaining_from_tag = &content[tag_start_abs..];
 
         let tag_end_rel = match remaining_from_tag.find('>') {
             Some(pos) => pos,
@@ -135,7 +151,7 @@ pub fn build_messages_from_stdin(
 
         let closing_tag = format!("</{}>", tag_name);
 
-        let closing_tag_start_rel = match stdin_content[content_start_abs..].find(&closing_tag) {
+        let closing_tag_start_rel = match content[content_start_abs..].find(&closing_tag) {
             Some(pos) => pos,
             None => {
                 return Err(anyhow::anyhow!(
@@ -146,7 +162,7 @@ pub fn build_messages_from_stdin(
         };
 
         let closing_tag_start_abs = content_start_abs + closing_tag_start_rel;
-        let content = &stdin_content[content_start_abs..closing_tag_start_abs];
+        let tag_content = &content[content_start_abs..closing_tag_start_abs];
 
         let role = match tag_name {
             "hnt-system" => {
@@ -168,13 +184,13 @@ pub fn build_messages_from_stdin(
 
         messages.push(Message {
             role: role.to_string(),
-            content: crate::escaping::unescape(content),
+            content: crate::escaping::unescape(tag_content),
         });
 
         current_pos = closing_tag_start_abs + closing_tag.len();
     }
 
-    non_tag_content.push_str(&stdin_content[current_pos..]);
+    non_tag_content.push_str(&content[current_pos..]);
 
     let trimmed_user_content = non_tag_content.trim();
     if !trimmed_user_content.is_empty() {
@@ -187,191 +203,191 @@ pub fn build_messages_from_stdin(
     Ok(messages)
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum OutputPhase {
     Init,
     Thinking,
     Responding,
 }
 
-struct StreamState {
-    phase: OutputPhase,
-    think_tag_printed: bool,
-}
+fn find_sse_terminator(buffer: &[u8]) -> Option<(usize, usize)> {
+    let pos_crlf = buffer.windows(4).position(|w| w == b"\r\n\r\n");
+    let pos_lf = buffer.windows(2).position(|w| w == b"\n\n");
 
-impl StreamState {
-    fn new() -> Self {
-        StreamState {
-            phase: OutputPhase::Init,
-            think_tag_printed: false,
+    match (pos_crlf, pos_lf) {
+        (Some(p_crlf), Some(p_lf)) => {
+            if p_crlf < p_lf {
+                Some((p_crlf, 4))
+            } else {
+                Some((p_lf, 2))
+            }
         }
+        (Some(p_crlf), None) => Some((p_crlf, 4)),
+        (None, Some(p_lf)) => Some((p_lf, 2)),
+        (None, None) => None,
     }
 }
 
-async fn process_sse_data(
-    chunk: &ApiResponseChunk,
-    state: &mut StreamState,
-    include_reasoning: bool,
-) -> Result<()> {
-    if let Some(choice) = chunk.choices.first() {
-        let delta = &choice.delta;
-        let mut out = stdout();
+pub fn stream_llm_response(
+    config: LlmConfig,
+    prompt_content: String,
+) -> impl Stream<Item = Result<LlmStreamEvent>> {
+    stream! {
+        let (provider_name, model_name_str) = match config.model.split_once('/') {
+            Some((provider, model)) => (provider, model),
+            None => ("openrouter", config.model.as_str()),
+        };
 
-        let reasoning_text = delta
-            .reasoning_content
-            .as_deref()
-            .or(delta.reasoning.as_deref());
-        let content_text = delta.content.as_deref();
+        let provider = match PROVIDERS.iter().find(|p| p.name == provider_name) {
+            Some(p) => p,
+            None => {
+                yield Err(anyhow::anyhow!("Provider '{}' not found", provider_name));
+                return;
+            }
+        };
 
-        let has_reasoning_token = reasoning_text.is_some_and(|s| !s.is_empty());
-        let has_content_token = content_text.is_some_and(|s| !s.is_empty());
+        let api_key = match std::env::var(provider.env_var) {
+            Ok(key) => Some(key),
+            Err(_) => crate::key_management::get_api_key_from_store(provider.name).await?,
+        }
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "API key for '{}' not found. Please set {} or save the key with `hnt-llm save-key {}`",
+                provider.name,
+                provider.env_var,
+                provider.name
+            )
+        })?;
 
-        if state.phase == OutputPhase::Init {
-            if has_reasoning_token {
-                state.phase = OutputPhase::Thinking;
-                if include_reasoning {
-                    out.write_all(b"<think>").await?;
-                    state.think_tag_printed = true;
-                    out.write_all(reasoning_text.unwrap().as_bytes()).await?;
-                }
-            } else if has_content_token {
-                state.phase = OutputPhase::Responding;
-                out.write_all(content_text.unwrap().as_bytes()).await?;
-            }
-        } else if state.phase == OutputPhase::Thinking {
-            if has_content_token {
-                state.phase = OutputPhase::Responding;
-                if state.think_tag_printed {
-                    out.write_all(b"</think>\n").await?;
-                    state.think_tag_printed = false;
-                }
-                out.write_all(content_text.unwrap().as_bytes()).await?;
-            } else if has_reasoning_token && include_reasoning {
-                out.write_all(reasoning_text.unwrap().as_bytes()).await?;
-            }
-        } else if state.phase == OutputPhase::Responding {
-            if let Some(text) = content_text {
-                out.write_all(text.as_bytes()).await?;
-            }
+        let messages = build_messages(&prompt_content, config.system_prompt)?;
+
+        let api_request = ApiRequest {
+            model: model_name_str.to_string(),
+            messages,
+            stream: true,
+        };
+
+        let client = reqwest::Client::new();
+        let url = provider.api_url.replace("{model}", model_name_str);
+
+        let mut req_builder = client.post(url).bearer_auth(api_key).json(&api_request);
+
+        for (key, value) in provider.extra_headers {
+            req_builder = req_builder.header(*key, *value);
         }
 
-        out.flush().await?;
+        let res = req_builder.send().await?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res.text().await.unwrap_or_else(|_| "Failed to read error body".to_string());
+            yield Err(anyhow::anyhow!("API request failed with status {}: {}", status, text));
+            return;
+        }
+
+        let mut stream = res.bytes_stream();
+        let mut buffer = Vec::new();
+        let mut done = false;
+
+        while let Some(item) = stream.next().await {
+            buffer.extend_from_slice(&item?);
+
+            while let Some((pos, len)) = find_sse_terminator(&buffer) {
+                let message_bytes = buffer.drain(..pos + len).collect::<Vec<u8>>();
+                let message = String::from_utf8_lossy(&message_bytes);
+
+                for line in message.lines() {
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data.trim() == "[DONE]" {
+                            done = true;
+                            break;
+                        }
+                        match serde_json::from_str::<ApiResponseChunk>(data) {
+                            Ok(api_chunk) => {
+                                if let Some(choice) = api_chunk.choices.first() {
+                                    let delta = &choice.delta;
+                                    let reasoning_text = delta.reasoning_content.as_deref().or(delta.reasoning.as_deref());
+                                    if let Some(text) = reasoning_text {
+                                        if !text.is_empty() {
+                                            yield Ok(LlmStreamEvent::Reasoning(text.to_string()));
+                                        }
+                                    }
+                                    if let Some(text) = delta.content.as_deref() {
+                                        if !text.is_empty() {
+                                            yield Ok(LlmStreamEvent::Content(text.to_string()));
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to deserialize chunk: {} - data: '{}'", e, data);
+                            }
+                        }
+                    }
+                }
+                if done {
+                    break;
+                }
+            }
+            if done {
+                break;
+            }
+        }
     }
-    Ok(())
 }
 
 /// Main logic for running the LLM.
 pub async fn generate(args: &GenArgs) -> Result<()> {
-    let (provider_name, model_name_str) = match args.model.split_once('/') {
-        Some((provider, model)) => (provider, model),
-        None => ("openrouter", args.model.as_str()),
-    };
-
-    let provider = PROVIDERS
-        .iter()
-        .find(|p| p.name == provider_name)
-        .ok_or_else(|| anyhow::anyhow!("Provider '{}' not found", provider_name))?;
-
-    let api_key = match std::env::var(provider.env_var) {
-        Ok(key) => Some(key),
-        Err(_) => crate::key_management::get_api_key_from_store(provider.name).await?,
-    }
-    .ok_or_else(|| {
-        anyhow::anyhow!(
-            "API key for '{}' not found. Please set {} or save the key with `hnt-llm save-key {}`",
-            provider.name,
-            provider.env_var,
-            provider.name
-        )
-    })?;
-
     let mut stdin_content = String::new();
     std::io::stdin().read_to_string(&mut stdin_content)?;
 
-    let messages = build_messages_from_stdin(&stdin_content, args.system.clone())?;
-
-    let api_request = ApiRequest {
-        model: model_name_str.to_string(),
-        messages,
-        stream: true,
+    let config = LlmConfig {
+        model: args.model.clone(),
+        system_prompt: args.system.clone(),
+        include_reasoning: args.include_reasoning,
     };
 
-    let client = reqwest::Client::new();
-    let url = provider.api_url.replace("{model}", model_name_str);
+    let stream = stream_llm_response(config, stdin_content);
+    tokio::pin!(stream);
 
-    let mut req_builder = client.post(url).bearer_auth(api_key).json(&api_request);
+    let mut out = stdout();
+    let mut phase = OutputPhase::Init;
+    let mut think_tag_printed = false;
 
-    for (key, value) in provider.extra_headers {
-        req_builder = req_builder.header(*key, *value);
-    }
-
-    let res = req_builder.send().await?;
-
-    if !res.status().is_success() {
-        let status = res.status();
-        let text = res.text().await?;
-        return Err(anyhow::anyhow!(
-            "API request failed with status {}: {}",
-            status,
-            text
-        ));
-    }
-
-    let mut stream_state = StreamState::new();
-    let mut stream = res.bytes_stream();
-    let mut buffer = Vec::new();
-
-    while let Some(item) = stream.next().await {
-        buffer.extend_from_slice(&item?);
-
-        while let Some((pos, len)) = {
-            let pos_crlf = buffer.windows(4).position(|w| w == b"\r\n\r\n");
-            let pos_lf = buffer.windows(2).position(|w| w == b"\n\n");
-
-            match (pos_crlf, pos_lf) {
-                (Some(p_crlf), Some(p_lf)) => {
-                    if p_crlf < p_lf {
-                        Some((p_crlf, 4))
-                    } else {
-                        Some((p_lf, 2))
+    while let Some(event) = stream.next().await {
+        match event? {
+            LlmStreamEvent::Content(text) => {
+                if phase == OutputPhase::Init {
+                    phase = OutputPhase::Responding;
+                }
+                if phase == OutputPhase::Thinking {
+                    phase = OutputPhase::Responding;
+                    if think_tag_printed {
+                        out.write_all(b"</think>\n").await?;
+                        think_tag_printed = false;
                     }
                 }
-                (Some(p_crlf), None) => Some((p_crlf, 4)),
-                (None, Some(p_lf)) => Some((p_lf, 2)),
-                (None, None) => None,
+                out.write_all(text.as_bytes()).await?;
             }
-        } {
-            let message_bytes = buffer.drain(..pos + len).collect::<Vec<u8>>();
-            let message = String::from_utf8_lossy(&message_bytes);
-
-            for line in message.lines() {
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data.trim() == "[DONE]" {
-                        if stream_state.think_tag_printed
-                            && stream_state.phase == OutputPhase::Thinking
-                        {
-                            let mut out = stdout();
-                            out.write_all(b"</think>\n").await?;
-                            out.flush().await?;
+            LlmStreamEvent::Reasoning(text) => {
+                if args.include_reasoning {
+                    if phase == OutputPhase::Init {
+                        phase = OutputPhase::Thinking;
+                        if !think_tag_printed {
+                            out.write_all(b"<think>").await?;
+                            think_tag_printed = true;
                         }
-                        return Ok(());
                     }
-                    match serde_json::from_str::<ApiResponseChunk>(data) {
-                        Ok(api_chunk) => {
-                            process_sse_data(&api_chunk, &mut stream_state, args.include_reasoning)
-                                .await?;
-                        }
-                        Err(e) => {
-                            log::warn!("Failed to deserialize chunk: {} - data: '{}'", e, data);
-                        }
+                    if phase == OutputPhase::Thinking {
+                        out.write_all(text.as_bytes()).await?;
                     }
                 }
             }
         }
+        out.flush().await?;
     }
 
-    if stream_state.think_tag_printed && stream_state.phase == OutputPhase::Thinking {
-        let mut out = stdout();
+    if think_tag_printed {
         out.write_all(b"</think>\n").await?;
         out.flush().await?;
     }
