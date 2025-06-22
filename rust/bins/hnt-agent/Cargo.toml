@@ -1,0 +1,10 @@
+[package]
+name = "hnt-agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hinata-core = { path = "../../crates/hinata-core" }
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

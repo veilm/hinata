@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hinata-core",
+    "bins/hnt-llm",
+    "bins/hnt-chat",
+    "bins/hnt-edit",
+    "bins/hnt-agent",
+    "bins/hnt-web",
+]

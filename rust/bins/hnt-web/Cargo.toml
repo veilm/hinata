@@ -1,0 +1,9 @@
+[package]
+name = "hnt-web"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hinata-core = { path = "../../crates/hinata-core" }
+anyhow = "1.0"
+# Web framework dependencies like axum or actix-web will go here

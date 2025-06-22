@@ -5,7 +5,3 @@ out of date:
 	/home/oboro/src/hinata/util/tui/tui-pane.c
 /home/oboro/src/hinata/agent/hnt-agent.py
 /home/oboro/src/hinata/edit/hnt-edit.py
-
-TODO fix deepseek key saving/reading
-	TODO first fix hnt-agent and allow declining any submission to instead
-	send another message to the model
