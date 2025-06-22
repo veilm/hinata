@@ -153,8 +153,6 @@ fn build_messages_from_stdin(
     stdin_content: &str,
     system_prompt: Option<String>,
 ) -> anyhow::Result<Vec<Message>> {
-    use regex::Regex;
-
     let mut messages = Vec::new();
 
     if let Some(prompt) = system_prompt {
@@ -164,33 +162,51 @@ fn build_messages_from_stdin(
         });
     }
 
-    // This regex captures content within <hnt-tag>...</hnt-tag>
-    let tag_re = Regex::new(r"(?s)<(hnt-[\w-]+)>(.*?)</([\w-]+)>").unwrap();
+    let mut current_pos = 0;
     let mut non_tag_content = String::new();
-    let mut last_end = 0;
 
-    for cap in tag_re.captures_iter(stdin_content) {
-        let full_match = cap.get(0).unwrap();
-        non_tag_content.push_str(&stdin_content[last_end..full_match.start()]);
-        last_end = full_match.end();
+    while let Some(tag_start_rel) = stdin_content[current_pos..].find("<hnt-") {
+        let tag_start_abs = current_pos + tag_start_rel;
 
-        let tag_name = cap.get(1).unwrap().as_str();
-        let content = cap.get(2).unwrap().as_str();
-        let close_tag_name = cap.get(3).unwrap().as_str();
+        non_tag_content.push_str(&stdin_content[current_pos..tag_start_abs]);
 
-        if tag_name != close_tag_name {
-            log::warn!(
-                "Mismatched hnt tag: <{}> closed by </{}>. Skipping.",
-                tag_name,
-                close_tag_name
-            );
-            continue;
-        }
+        let remaining_from_tag = &stdin_content[tag_start_abs..];
+
+        let tag_end_rel = match remaining_from_tag.find('>') {
+            Some(pos) => pos,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Malformed hnt chat: Unclosed tag starting at position {}",
+                    tag_start_abs
+                ))
+            }
+        };
+
+        let open_tag = &remaining_from_tag[..=tag_end_rel];
+        let tag_name = &open_tag[1..open_tag.len() - 1];
+
+        let content_start_abs = tag_start_abs + tag_end_rel + 1;
+
+        let closing_tag = format!("</{}>", tag_name);
+
+        let closing_tag_start_rel = match stdin_content[content_start_abs..].find(&closing_tag) {
+            Some(pos) => pos,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Malformed hnt chat: Missing closing tag for {}",
+                    open_tag
+                ))
+            }
+        };
+
+        let closing_tag_start_abs = content_start_abs + closing_tag_start_rel;
+        let content = &stdin_content[content_start_abs..closing_tag_start_abs];
 
         let role = match tag_name {
             "hnt-system" => {
                 if messages.iter().any(|m| m.role == "system") {
                     log::warn!("<hnt-system> tag found in stdin, but a system prompt was already provided via --system argument. The stdin system prompt will be ignored.");
+                    current_pos = closing_tag_start_abs + closing_tag.len();
                     continue;
                 }
                 "system"
@@ -199,6 +215,7 @@ fn build_messages_from_stdin(
             "hnt-assistant" => "assistant",
             _ => {
                 log::warn!("Unknown hnt tag '{}' found. It will be ignored.", tag_name);
+                current_pos = closing_tag_start_abs + closing_tag.len();
                 continue;
             }
         };
@@ -207,9 +224,11 @@ fn build_messages_from_stdin(
             role: role.to_string(),
             content: hinata_escape::unescape(content),
         });
+
+        current_pos = closing_tag_start_abs + closing_tag.len();
     }
 
-    non_tag_content.push_str(&stdin_content[last_end..]);
+    non_tag_content.push_str(&stdin_content[current_pos..]);
 
     let trimmed_user_content = non_tag_content.trim();
     if !trimmed_user_content.is_empty() {
