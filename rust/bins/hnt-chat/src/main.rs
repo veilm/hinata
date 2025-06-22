@@ -1,9 +1,10 @@
 use anyhow::{bail, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use futures_util::StreamExt;
 use hinata_core::chat::{self, Role};
 use hinata_core::llm::{stream_llm_response, GenArgs, LlmConfig, LlmStreamEvent};
 use std::env;
+use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
@@ -39,6 +40,10 @@ enum Commands {
         /// Path to the conversation directory (overrides env var, defaults to latest)
         #[arg(short, long)]
         conversation: Option<PathBuf>,
+
+        /// Merge consecutive messages from the same author
+        #[arg(long, action = ArgAction::SetTrue)]
+        merge: bool,
     },
 
     /// Generate the next message in a conversation
@@ -46,6 +51,22 @@ enum Commands {
         /// Path to the conversation directory (overrides env var, defaults to latest)
         #[arg(short, long)]
         conversation: Option<PathBuf>,
+
+        /// Write the generated output as a new assistant message
+        #[arg(short = 'w', long, action = ArgAction::SetTrue)]
+        write: bool,
+
+        /// Implies --write. Also prints the filename of the created assistant message
+        #[arg(long, action = ArgAction::SetTrue)]
+        output_filename: bool,
+
+        /// Implies --write and --include-reasoning. Saves leading <think> block to a separate file.
+        #[arg(long, action = ArgAction::SetTrue)]
+        separate_reasoning: bool,
+
+        /// Merge consecutive messages from the same author
+        #[arg(long, action = ArgAction::SetTrue)]
+        merge: bool,
 
         #[command(flatten)]
         args: GenArgs,
@@ -59,8 +80,23 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::New => handle_new_command()?,
         Commands::Add { role, conversation } => handle_add_command(role, conversation)?,
-        Commands::Pack { conversation } => handle_pack_command(conversation)?,
-        Commands::Gen { args, conversation } => handle_gen_command(args, conversation).await?,
+        Commands::Pack { conversation, merge } => handle_pack_command(conversation, merge)?,
+        Commands::Gen {
+            args,
+            conversation,
+            merge,
+            write,
+            output_filename,
+            separate_reasoning,
+        } => handle_gen_command(
+            args,
+            conversation,
+            merge,
+            write,
+            output_filename,
+            separate_reasoning,
+        )
+        .await?,
     }
 
     Ok(())
@@ -97,35 +133,49 @@ fn handle_add_command(role: Role, conversation_path: Option<PathBuf>) -> Result<
 }
 
 /// Handles the 'pack' command by packing a conversation to stdout.
-fn handle_pack_command(conversation_path: Option<PathBuf>) -> Result<()> {
+fn handle_pack_command(conversation_path: Option<PathBuf>, merge: bool) -> Result<()> {
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
         .context("Failed to determine conversation directory")?;
 
     let mut stdout = io::stdout().lock();
-    chat::pack_conversation(&conv_dir, &mut stdout).context("Failed to pack conversation")?;
+    chat::pack_conversation(&conv_dir, &mut stdout, merge).context("Failed to pack conversation")?;
 
     Ok(())
 }
 
 /// Handles the 'gen' command by generating a new message from a model.
-async fn handle_gen_command(args: GenArgs, conversation_path: Option<PathBuf>) -> Result<()> {
+async fn handle_gen_command(
+    args: GenArgs,
+    conversation_path: Option<PathBuf>,
+    merge: bool,
+    write: bool,
+    output_filename: bool,
+    separate_reasoning: bool,
+) -> Result<()> {
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
         .context("Failed to determine conversation directory")?;
 
+    if let Some(model_name) = &args.model {
+        fs::write(conv_dir.join("model.txt"), model_name).context("Failed to write model file")?;
+    }
+
     let mut writer = Vec::new();
-    chat::pack_conversation(&conv_dir, &mut writer).context("Failed to pack conversation")?;
+    chat::pack_conversation(&conv_dir, &mut writer, merge).context("Failed to pack conversation")?;
 
     let packed_string =
         String::from_utf8(writer).context("Failed to convert packed conversation to string")?;
 
+    let should_write = write || output_filename || separate_reasoning;
+
     let config = LlmConfig {
         model: args.model,
         system_prompt: args.system,
-        include_reasoning: args.include_reasoning,
+        include_reasoning: args.include_reasoning || separate_reasoning,
     };
     let stream = stream_llm_response(config, packed_string);
 
-    let mut response_buffer = String::new();
+    let mut content_buffer = String::new();
+    let mut reasoning_buffer = String::new();
     let mut stdout = tokio::io::stdout();
     tokio::pin!(stream);
 
@@ -137,15 +187,50 @@ async fn handle_gen_command(args: GenArgs, conversation_path: Option<PathBuf>) -
                     .await
                     .context("Failed to write to stdout")?;
                 stdout.flush().await.context("Failed to flush stdout")?;
-                response_buffer.push_str(&text);
+                content_buffer.push_str(&text);
             }
-            LlmStreamEvent::Reasoning(_) => {}
+            LlmStreamEvent::Reasoning(text) => {
+                stdout
+                    .write_all(text.as_bytes())
+                    .await
+                    .context("Failed to write to stdout")?;
+                stdout.flush().await.context("Failed to flush stdout")?;
+                reasoning_buffer.push_str(&text);
+            }
         }
     }
 
-    if !response_buffer.is_empty() {
-        chat::write_message_file(&conv_dir, Role::Assistant, &response_buffer)
-            .context("Failed to write assistant message file")?;
+    let mut assistant_file_path: Option<PathBuf> = None;
+
+    if should_write {
+        if separate_reasoning {
+            if !reasoning_buffer.is_empty() {
+                chat::write_message_file(
+                    &conv_dir,
+                    Role::AssistantReasoning,
+                    &reasoning_buffer,
+                )
+                .context("Failed to write reasoning file")?;
+            }
+            let path = chat::write_message_file(&conv_dir, Role::Assistant, &content_buffer)
+                .context("Failed to write assistant message file")?;
+            assistant_file_path = Some(path);
+        } else {
+            let full_response = format!("{}{}", reasoning_buffer, content_buffer);
+            if !full_response.is_empty() {
+                let path =
+                    chat::write_message_file(&conv_dir, Role::Assistant, &full_response)
+                        .context("Failed to write assistant message file")?;
+                assistant_file_path = Some(path);
+            }
+        }
+    }
+
+    if output_filename {
+        if let Some(path) = assistant_file_path {
+            println!();
+            println!("{}", path.display());
+        }
     }
 
     Ok(())

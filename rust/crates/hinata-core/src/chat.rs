@@ -264,19 +264,51 @@ pub fn list_messages(conv_dir: &Path) -> Result<Vec<ChatMessage>> {
 /// * `conv_dir` - The path to the conversation directory.
 /// * `writer` - A mutable reference to a type that implements `io::Write`, where the
 ///              packed output will be written.
-pub fn pack_conversation(conv_dir: &Path, writer: &mut impl io::Write) -> Result<()> {
+/// * `merge` - If true, consecutive messages from the same role are merged into a single block.
+pub fn pack_conversation(conv_dir: &Path, writer: &mut impl io::Write, merge: bool) -> Result<()> {
     let messages = list_messages(conv_dir)?;
 
-    for msg in messages {
-        writer.write_all(format!("<hnt-{}>", msg.role).as_bytes())?;
+    if merge {
+        let mut iter = messages.iter().peekable();
 
-        let mut file = fs::File::open(&msg.path)
-            .with_context(|| format!("Failed to open message file: {:?}", msg.path))?;
+        while let Some(msg) = iter.next() {
+            let role = msg.role;
+            writer.write_all(format!("<hnt-{}>", role).as_bytes())?;
 
-        // Use the core escaping function to process the content directly.
-        escaping::escape(&mut file, writer)?;
+            // Process current message
+            let mut file = fs::File::open(&msg.path)
+                .with_context(|| format!("Failed to open message file: {:?}", msg.path))?;
+            escaping::escape(&mut file, writer)?;
 
-        writer.write_all(format!("</hnt-{}>\n", msg.role).as_bytes())?;
+            // Merge subsequent messages of the same role
+            while let Some(next_msg) = iter.peek() {
+                if next_msg.role == role {
+                    let merged_msg = iter.next().unwrap(); // Consume from iterator
+                    writer.write_all(b"\n")?;
+                    let mut file = fs::File::open(&merged_msg.path).with_context(|| {
+                        format!("Failed to open message file: {:?}", merged_msg.path)
+                    })?;
+                    escaping::escape(&mut file, writer)?;
+                } else {
+                    break; // Role changed, break from inner loop
+                }
+            }
+
+            // All messages for this role are done, close tag.
+            writer.write_all(format!("</hnt-{}>\n", role).as_bytes())?;
+        }
+    } else {
+        for msg in messages {
+            writer.write_all(format!("<hnt-{}>", msg.role).as_bytes())?;
+
+            let mut file = fs::File::open(&msg.path)
+                .with_context(|| format!("Failed to open message file: {:?}", msg.path))?;
+
+            // Use the core escaping function to process the content directly.
+            escaping::escape(&mut file, writer)?;
+
+            writer.write_all(format!("</hnt-{}>\n", msg.role).as_bytes())?;
+        }
     }
 
     Ok(())
@@ -433,7 +465,7 @@ mod tests {
         write_message_file(conv_dir, Role::Assistant, "Hi! <tag>").unwrap();
 
         let mut output_buffer = Vec::new();
-        pack_conversation(conv_dir, &mut output_buffer).unwrap();
+        pack_conversation(conv_dir, &mut output_buffer, false).unwrap();
 
         let packed_string = String::from_utf8(output_buffer).unwrap();
 
@@ -443,5 +475,27 @@ mod tests {
 
         assert_eq!(first_line, "<hnt-user>Hello</hnt-user>");
         assert_eq!(second_line, "<hnt-assistant>Hi! \\<tag></hnt-assistant>");
+    }
+
+    #[test]
+    fn test_pack_conversation_with_merge() {
+        let tmp_dir = tempdir().unwrap();
+        let conv_dir = tmp_dir.path();
+
+        write_message_file(conv_dir, Role::User, "Part 1").unwrap();
+        thread::sleep(Duration::from_millis(2));
+        write_message_file(conv_dir, Role::User, "Part 2").unwrap();
+        thread::sleep(Duration::from_millis(2));
+        write_message_file(conv_dir, Role::Assistant, "Response 1").unwrap();
+        thread::sleep(Duration::from_millis(2));
+        write_message_file(conv_dir, Role::User, "Part 3").unwrap();
+
+        let mut output_buffer = Vec::new();
+        pack_conversation(conv_dir, &mut output_buffer, true).unwrap();
+
+        let packed_string = String::from_utf8(output_buffer).unwrap();
+        let expected = "<hnt-user>Part 1\nPart 2</hnt-user>\n<hnt-assistant>Response 1</hnt-assistant>\n<hnt-user>Part 3</hnt-user>\n";
+
+        assert_eq!(packed_string, expected);
     }
 }
