@@ -1,1 +1,3 @@
-fn main() { println!("Hello from hnt-edit!"); }
+fn main() {
+    println!("Hello from hnt-edit!");
+}
