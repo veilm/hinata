@@ -52,6 +52,26 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
+    #[command(flatten)]
+    gen_args: GenArgs,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Generate text using an LLM (default command).
+    #[command(name = "gen")]
+    Gen(GenArgs),
+    /// Save an API key.
+    SaveKey(SaveKey),
+    /// List available API keys.
+    ListKeys(ListKeys),
+    /// Delete an API key.
+    DeleteKey(DeleteKey),
+}
+
+/// Arguments for the LLM generation task.
+#[derive(Parser, Debug)]
+struct GenArgs {
     /// The model to use for the LLM.
     #[arg(short, long, env = "HINATA_LLM_MODEL", default_value = "openrouter/deepseek/deepseek-chat-v3-0324:free")]
     model: String,
@@ -63,16 +83,6 @@ struct Cli {
     /// Include reasoning in the output.
     #[arg(long)]
     include_reasoning: bool,
-}
-
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Save an API key.
-    SaveKey(SaveKey),
-    /// List available API keys.
-    ListKeys(ListKeys),
-    /// Delete an API key.
-    DeleteKey(DeleteKey),
 }
 
 /// Save a new API key with a given name.
@@ -138,12 +148,11 @@ async fn main() -> Result<()> {
 
 
     match &cli.command {
+        Some(Commands::Gen(args)) => run_llm(args).await?,
         Some(Commands::SaveKey(args)) => handle_save_key(args).await?,
         Some(Commands::ListKeys(args)) => handle_list_keys(args).await?,
         Some(Commands::DeleteKey(args)) => handle_delete_key(args).await?,
-        None => {
-            run_llm(&cli).await?;
-        }
+        None => run_llm(&cli.gen_args).await?,
     }
 
     Ok(())
@@ -315,10 +324,10 @@ async fn process_sse_data(
 
 
 /// Main logic for running the LLM.
-async fn run_llm(cli: &Cli) -> Result<()> {
-    let (provider_name, model_name_str) = match cli.model.split_once('/') {
+async fn run_llm(args: &GenArgs) -> Result<()> {
+    let (provider_name, model_name_str) = match args.model.split_once('/') {
         Some((provider, model)) => (provider, model),
-        None => ("openrouter", cli.model.as_str()),
+        None => ("openrouter", args.model.as_str()),
     };
 
     let provider = PROVIDERS
@@ -342,7 +351,7 @@ async fn run_llm(cli: &Cli) -> Result<()> {
     let mut stdin_content = String::new();
     std::io::stdin().read_to_string(&mut stdin_content)?;
 
-    let messages = build_messages_from_stdin(&stdin_content, cli.system.clone())?;
+    let messages = build_messages_from_stdin(&stdin_content, args.system.clone())?;
 
     let api_request = ApiRequest {
         model: model_name_str.to_string(),
@@ -412,7 +421,7 @@ async fn run_llm(cli: &Cli) -> Result<()> {
                     }
                     match serde_json::from_str::<ApiResponseChunk>(data) {
                         Ok(api_chunk) => {
-                            process_sse_data(&api_chunk, &mut stream_state, cli.include_reasoning)
+                            process_sse_data(&api_chunk, &mut stream_state, args.include_reasoning)
                                 .await?;
                         }
                         Err(e) => {
@@ -435,13 +444,20 @@ async fn run_llm(cli: &Cli) -> Result<()> {
 
 /// Handles the 'save-key' subcommand.
 async fn handle_save_key(args: &SaveKey) -> Result<()> {
+    let canonical_name = match PROVIDERS.iter().find(|p| {
+        p.name.eq_ignore_ascii_case(&args.name) || p.env_var.eq_ignore_ascii_case(&args.name)
+    }) {
+        Some(p) => p.name,
+        None => &args.name,
+    };
+
     let config_dir = get_hinata_dir("config")?;
     let data_dir = get_hinata_dir("data")?;
     ensure_local_key(&data_dir)?;
 
     let keys_path = config_dir.join("keys");
 
-    let api_key = rpassword::prompt_password(format!("Enter API key for '{}': ", args.name))
+    let api_key = rpassword::prompt_password(format!("Enter API key for '{}': ", canonical_name))
         .with_context(|| "Failed to read API key from prompt")?;
 
     let mut lines = if keys_path.exists() {
@@ -453,7 +469,7 @@ async fn handle_save_key(args: &SaveKey) -> Result<()> {
         Vec::new()
     };
 
-    let key_prefix = format!("{}=", args.name);
+    let key_prefix = format!("{}=", canonical_name);
     let key_exists = lines.iter().any(|line| line.starts_with(&key_prefix));
     lines.retain(|line| !line.starts_with(&key_prefix));
 
@@ -462,15 +478,15 @@ async fn handle_save_key(args: &SaveKey) -> Result<()> {
     xor_crypt(&local_key, &mut data_to_encrypt);
 
     let encoded_key = general_purpose::STANDARD.encode(&data_to_encrypt);
-    lines.push(format!("{}={}", args.name, encoded_key));
+    lines.push(format!("{}={}", canonical_name, encoded_key));
 
     fs::write(&keys_path, lines.join("\n") + "\n")?;
     set_permissions(&keys_path)?;
 
     if key_exists {
-        println!("Updated key '{}'.", args.name);
+        println!("Updated key '{}'.", canonical_name);
     } else {
-        println!("Saved key '{}'.", args.name);
+        println!("Saved key '{}'.", canonical_name);
     }
 
     Ok(())
@@ -489,6 +505,7 @@ async fn handle_list_keys(_args: &ListKeys) -> Result<()> {
     let content = fs::read_to_string(keys_path)?;
     let keys: Vec<_> = content
         .lines()
+        .filter(|line| !line.is_empty())
         .filter_map(|line| line.split('=').next())
         .collect();
 
