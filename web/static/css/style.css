@@ -304,7 +304,7 @@ li {
 
 #new-message-content:focus {
 	outline: none;
-	border-color: #ff615e;
+	border-color: #9d81ae;
 	background-color: #303030;
 }
 
@@ -352,7 +352,7 @@ li {
 	color: #1e1e1e; /* Dark text for contrast */
 }
 #btn-add-user:hover {
-	background-color: #709a8a; /* Darker green on hover */
+	background-color: #89709c; /* Darker purple on hover */
 }
 
 /* Disabled state for all buttons in this group */
@@ -498,6 +498,18 @@ li {
 	outline: none;
 	border-color: #6ec8ff; /* Theme color for focus */
 	background-color: #303030; /* Slightly lighter background on focus */
+}
+
+.message-user .message-content-wrapper textarea:focus {
+	border-color: #9d81ae;
+}
+
+.message-system .message-content-wrapper textarea:focus {
+	border-color: #fcddf2; /* Match system message theme */
+}
+
+.message-assistant-reasoning .message-content-wrapper textarea:focus {
+	border-color: #b19dff; /* Match assistant reasoning theme */
 }
 
 /* Fork Conversation Button Style */
