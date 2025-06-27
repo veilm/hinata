@@ -591,7 +591,8 @@ document.addEventListener("DOMContentLoaded", () => {
 		const allButtons = [primaryBtn, dropdownToggleBtn]; // Dropdown buttons will be added.
 
 		const messages = document.querySelectorAll("#messages-container .message");
-		const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+		const lastMessage =
+			messages.length > 0 ? messages[messages.length - 1] : null;
 		const lastMessageIsUser =
 			lastMessage && lastMessage.classList.contains("message-user");
 
@@ -842,6 +843,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			// On success, remove the message element from the DOM
 			messageElement.remove();
+			updateSplitButtonState(conversationId);
 			updateGlobalActionButtonsState(); // Check if this removal affects global buttons state
 			jumpToLatestMessage(); // Scroll to the latest message after archiving one
 

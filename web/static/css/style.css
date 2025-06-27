@@ -371,12 +371,25 @@ li {
 
 #dropdown-toggle-btn {
 	border-radius: 0 4px 4px 0;
-	background-color: #2c2c2c;
 	padding-left: 8px;
 	padding-right: 8px;
+	/* color must be set for the arrow to be visible after removing background */
+	color: #e0e0e0;
 }
-#dropdown-toggle-btn:hover {
-	background-color: #3a3a3a;
+
+#primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn {
+	background-color: #4da3e0; /* Darker blue, matches main button hover */
+	color: #1e1e1e; /* Match main button text color */
+}
+#primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn:hover {
+	background-color: #3b8ac0; /* Even darker blue */
+}
+
+#primary-action-btn.btn-add-user + #dropdown-toggle-btn {
+	background-color: #89709c; /* Darker purple, matches main button hover */
+}
+#primary-action-btn.btn-add-user + #dropdown-toggle-btn:hover {
+	background-color: #755f88; /* Even darker purple */
 }
 
 #action-dropdown-menu {
