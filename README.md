@@ -10,7 +10,6 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 ### [`hnt-llm`](./llm/)
 basic LLM API in/out. significantly faster startup than openai-python
 ```
-$ export OPENROUTER_API_KEY=...
 $ echo "hello! ❄️" | hnt-llm --model openrouter/anthropic/claude-3.5-sonnet
 Hi there! Nice snowflake emoji! How are you today? ☺️
 ```
@@ -26,7 +25,7 @@ $ ls $conversation
 1747512247695244498-system.md
 1747512250714528664-user.md
 
-$ hnt-chat generate --write --model openrouter/deepseek/deepseek-chat-v3-0324:free
+$ hnt-chat generate --write --model deepseek/deepseek-chat
 **Iteration**  
 
 Again, the brushstroke on the page,  
@@ -38,8 +37,6 @@ A line retraced, a word replayed.
 simple hnt-chat wrapper for editing source code or other plaintext files
 
 ```
-$ export DEEPSEEK_API_KEY=...
-
 $ hnt-edit \
 	-m "please enable debugging in the config" \
 	--model "deepseek/deepseek-chat" \
@@ -62,10 +59,8 @@ index badefee..5eb3e0d 100644
  	do { if (DEBUG) fprintf(stderr, "%-20s " fmt, \
 ```
 
-in my (inevitably biased) experience, the [included system
-prompt](https://raw.githubusercontent.com/veilm/hinata/refs/heads/main/edit/prompts/main-file_edit.md)'s
-editing performance is higher than Aider's for my usual infra and web use cases,
-as of Apr 2025
+in my (inevitably biased) experience, hnt-edit's editing performance is higher
+than Aider's for my usual infra and web use cases, as of Apr 2025
 
 # build everything
 ```
