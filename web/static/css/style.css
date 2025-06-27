@@ -37,6 +37,10 @@ h2 {
 	font-size: 1.5em;
 }
 
+.hidden {
+	display: none !important;
+}
+
 a {
 	color: #6ec8ff; /* Icy-blue theme color */
 	text-decoration: none;
@@ -314,8 +318,9 @@ li {
 
 #message-buttons {
 	display: flex;
-	gap: 10px; /* Space between buttons */
+	/* gap: 10px; */ /* Space between buttons */
 	flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+	position: relative;
 }
 
 /* Base style for action buttons at the bottom of the page */
@@ -330,35 +335,74 @@ li {
 }
 
 /* Default: "Gen Assistant" uses the theme color */
-#btn-gen-assistant {
+.btn-gen-assistant {
 	background-color: #6ec8ff;
 	color: #1e1e1e;
 }
-#btn-gen-assistant:hover {
+.btn-gen-assistant:hover {
 	background-color: #4da3e0;
 }
 
 /* "Add System" and "Add Assistant" buttons: background like textarea (#2c2c2c) */
-#btn-add-system,
-#btn-add-assistant {
+.btn-add-system,
+.btn-add-assistant {
 	background-color: #2c2c2c; /* Match textarea background */
 	color: #e0e0e0; /* Light text */
 }
-#btn-add-system:hover,
-#btn-add-assistant:hover {
+.btn-add-system:hover,
+.btn-add-assistant:hover {
 	background-color: #3a3a3a; /* Slightly lighter version of #2c2c2c for hover */
 }
 
 /* "Add User" button: green */
-#btn-add-user {
+.btn-add-user {
 	/* background-color: #81ae9d; */ /* Green from .message-user border */
 	background-color: #9d81ae; /* Purple from .message-user border */
 	color: #1e1e1e; /* Dark text for contrast */
 }
-#btn-add-user:hover {
+.btn-add-user:hover {
 	background-color: #89709c; /* Darker purple on hover */
 }
 
+#primary-action-btn {
+	border-radius: 4px 0 0 4px;
+	flex-grow: 1; /* Take up remaining space */
+}
+
+#dropdown-toggle-btn {
+	border-radius: 0 4px 4px 0;
+	background-color: #2c2c2c;
+	padding-left: 8px;
+	padding-right: 8px;
+}
+#dropdown-toggle-btn:hover {
+	background-color: #3a3a3a;
+}
+
+#action-dropdown-menu {
+	position: absolute;
+	bottom: 100%;
+	right: 0;
+	z-index: 1001;
+	background-color: #2c2c2c;
+	border: 1px solid #444444;
+	box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.2);
+	border-radius: 4px;
+	margin-bottom: 5px;
+	min-width: 180px;
+	overflow: hidden; /* To apply border-radius to children */
+}
+
+#action-dropdown-menu button {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background-color: transparent;
+	color: #e0e0e0;
+}
+#action-dropdown-menu button:hover {
+	background-color: #3a3a3a;
+}
 /* Disabled state for all buttons in this group */
 #message-buttons button:disabled {
 	background-color: #4a4a4a;

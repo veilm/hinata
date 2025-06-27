@@ -1,4 +1,17 @@
 document.addEventListener("DOMContentLoaded", () => {
+	document.addEventListener("click", (event) => {
+		const menu = document.getElementById("action-dropdown-menu");
+		if (!menu || menu.classList.contains("hidden")) return;
+
+		// If the click is NOT on the toggle button AND NOT inside the menu, hide it.
+		if (
+			!event.target.closest("#dropdown-toggle-btn") &&
+			!event.target.closest("#action-dropdown-menu")
+		) {
+			menu.classList.add("hidden");
+		}
+	});
+
 	const DEFAULT_MODEL_NAME = "openrouter/deepseek/deepseek-chat-v3-0324:free";
 
 	// Lucide Icon SVG Strings
@@ -399,6 +412,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			// After rendering messages and other files, set up the input area
 			setupMessageInputArea(conversationId);
+			updateSplitButtonState(conversationId); // Set initial button state
 
 			// Setup Fork button listener
 			const forkButton = document.getElementById("fork-conversation-btn");
@@ -537,37 +551,27 @@ document.addEventListener("DOMContentLoaded", () => {
 		const buttonsDiv = document.createElement("div");
 		buttonsDiv.id = "message-buttons";
 
-		// References to all buttons for easy disabling/enabling
-		const allButtons = [];
+		// Create split button structure
+		const primaryBtn = document.createElement("button");
+		primaryBtn.id = "primary-action-btn";
 
-		const btnAddUser = createButton("btn-add-user", "Add User", () =>
-			handleAddMessage(conversationId, "user", textarea, allButtons),
-		);
-		allButtons.push(btnAddUser);
+		const dropdownToggleBtn = document.createElement("button");
+		dropdownToggleBtn.id = "dropdown-toggle-btn";
+		dropdownToggleBtn.textContent = "▼";
+		dropdownToggleBtn.addEventListener("click", () => {
+			const dropdownMenu = document.getElementById("action-dropdown-menu");
+			if (dropdownMenu) {
+				dropdownMenu.classList.toggle("hidden");
+			}
+		});
 
-		const btnAddSystem = createButton("btn-add-system", "Add System", () =>
-			handleAddMessage(conversationId, "system", textarea, allButtons),
-		);
-		allButtons.push(btnAddSystem);
+		const dropdownMenu = document.createElement("div");
+		dropdownMenu.id = "action-dropdown-menu";
+		dropdownMenu.classList.add("hidden");
 
-		const btnAddAssistant = createButton(
-			"btn-add-assistant",
-			"Add Assistant",
-			() => handleAddMessage(conversationId, "assistant", textarea, allButtons),
-		);
-		allButtons.push(btnAddAssistant);
-
-		const btnGenAssistant = createButton(
-			"btn-gen-assistant",
-			"Gen Assistant",
-			() => handleGenAssistant(conversationId, allButtons),
-		);
-		allButtons.push(btnGenAssistant);
-
-		buttonsDiv.appendChild(btnAddUser);
-		buttonsDiv.appendChild(btnAddSystem);
-		buttonsDiv.appendChild(btnAddAssistant);
-		buttonsDiv.appendChild(btnGenAssistant);
+		buttonsDiv.appendChild(primaryBtn);
+		buttonsDiv.appendChild(dropdownToggleBtn);
+		buttonsDiv.appendChild(dropdownMenu);
 
 		messageInputArea.appendChild(textarea);
 		messageInputArea.appendChild(buttonsDiv);
@@ -577,14 +581,94 @@ document.addEventListener("DOMContentLoaded", () => {
 		adjustTextareaHeightOnInput(textarea); // Initial height adjustment
 	}
 
-	// Helper to create main action buttons (Add User, System, etc.)
-	function createButton(id, text, onClick) {
-		const button = document.createElement("button");
-		button.id = id;
-		button.type = "button";
-		button.textContent = text;
-		button.addEventListener("click", onClick);
-		return button;
+	function updateSplitButtonState(conversationId) {
+		const primaryBtn = document.getElementById("primary-action-btn");
+		const dropdownToggleBtn = document.getElementById("dropdown-toggle-btn");
+		const dropdownMenu = document.getElementById("action-dropdown-menu");
+		const textarea = document.getElementById("new-message-content");
+		if (!primaryBtn || !dropdownToggleBtn || !dropdownMenu || !textarea) return;
+
+		const allButtons = [primaryBtn, dropdownToggleBtn]; // Dropdown buttons will be added.
+
+		const messages = document.querySelectorAll("#messages-container .message");
+		const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+		const lastMessageIsUser =
+			lastMessage && lastMessage.classList.contains("message-user");
+
+		const createActionHandler = (action) => {
+			if (action.gen) {
+				return () => handleGenAssistant(conversationId, allButtons);
+			}
+			return () =>
+				handleAddMessage(conversationId, action.role, textarea, allButtons);
+		};
+
+		const actions = {
+			addUser: {
+				text: "Add User",
+				role: "user",
+				styleClass: "btn-add-user",
+				gen: false,
+			},
+			addSystem: {
+				text: "Add System",
+				role: "system",
+				styleClass: "btn-add-system",
+				gen: false,
+			},
+			addAssistant: {
+				text: "Add Assistant",
+				role: "assistant",
+				styleClass: "btn-add-assistant",
+				gen: false,
+			},
+			genAssistant: {
+				text: "Gen Assistant",
+				role: null,
+				styleClass: "btn-gen-assistant",
+				gen: true,
+			},
+		};
+
+		let primaryAction, dropdownActions;
+
+		if (lastMessageIsUser) {
+			primaryAction = actions.genAssistant;
+			dropdownActions = [
+				actions.addUser,
+				actions.addSystem,
+				actions.addAssistant,
+			];
+		} else {
+			// No messages, or last message was from system/assistant
+			primaryAction = actions.addUser;
+			dropdownActions = [
+				actions.genAssistant,
+				actions.addSystem,
+				actions.addAssistant,
+			];
+		}
+
+		// Configure Primary Button
+		primaryBtn.textContent = primaryAction.text;
+		primaryBtn.className = primaryAction.styleClass; // Set class for styling
+
+		if (primaryBtn.clickHandler) {
+			primaryBtn.removeEventListener("click", primaryBtn.clickHandler);
+		}
+		primaryBtn.clickHandler = createActionHandler(primaryAction);
+		primaryBtn.addEventListener("click", primaryBtn.clickHandler);
+
+		// Populate Dropdown Menu
+		dropdownMenu.innerHTML = "";
+		dropdownActions.forEach((action) => {
+			const button = document.createElement("button");
+			button.textContent = action.text;
+			// Note: dropdown items don't get special color classes, styled as menu items
+			button.addEventListener("click", createActionHandler(action));
+			dropdownMenu.appendChild(button);
+			allButtons.push(button);
+		});
 	}
 
 	function setButtonsDisabledState(buttons, disabled) {
@@ -599,21 +683,9 @@ document.addEventListener("DOMContentLoaded", () => {
 			".message[data-editing='true']",
 		);
 
-		const btnAddUser = document.getElementById("btn-add-user");
-		const btnAddSystem = document.getElementById("btn-add-system");
-		const btnAddAssistant = document.getElementById("btn-add-assistant");
-		const btnGenAssistant = document.getElementById("btn-gen-assistant");
-
-		const buttonsToUpdate = [
-			btnAddUser,
-			btnAddSystem,
-			btnAddAssistant,
-			btnGenAssistant,
-		];
-
-		buttonsToUpdate.forEach((button) => {
+		const messageButtons = document.querySelectorAll("#message-buttons button");
+		messageButtons.forEach((button) => {
 			if (button) {
-				// Ensure button exists in the DOM
 				button.disabled = isAnyMessageEditing;
 			}
 		});
