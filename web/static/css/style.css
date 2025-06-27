@@ -387,9 +387,16 @@ li {
 
 #primary-action-btn.btn-add-user + #dropdown-toggle-btn {
 	background-color: #89709c; /* Darker purple, matches main button hover */
+	color: #1e1e1e; /* Match main button text color */
 }
 #primary-action-btn.btn-add-user + #dropdown-toggle-btn:hover {
 	background-color: #755f88; /* Even darker purple */
+}
+
+/* When the primary action button is disabled (e.g., during generation), style the an-ddjacent dropdown toggle to match. */
+#primary-action-btn:disabled + #dropdown-toggle-btn {
+	background-color: #4a4a4a;
+	color: #e0e0e0;
 }
 
 #action-dropdown-menu {
@@ -419,7 +426,7 @@ li {
 /* Disabled state for all buttons in this group */
 #message-buttons button:disabled {
 	background-color: #4a4a4a;
-	color: #888888;
+	color: #e0e0e0;
 	cursor: not-allowed;
 	border: none;
 }
