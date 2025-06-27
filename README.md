@@ -7,31 +7,27 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 </p>
 
 # quick tour
-### [`hnt-llm`](./llm/)
-basic LLM API in/out. significantly faster startup than openai-python
+
+### [`hnt-agent`](./agent)
+simple hnt-chat and headlesh wrapper for letting an LLM operate a persistent shell
+
 ```
-$ echo "hello! ❄️" | hnt-llm --model openrouter/anthropic/claude-3.5-sonnet
-Hi there! Nice snowflake emoji! How are you today? ☺️
-```
-
-### [`hnt-chat`](./chat/)
-chat history management using plaintext files and conversation directories
-```
-$ conversation=$(hnt-chat new)
-$ echo "please write a poem about the user's given theme" | hnt-chat add system
-$ echo "iteration" | hnt-chat add user
-
-$ ls $conversation
-1747512247695244498-system.md
-1747512250714528664-user.md
-
-$ hnt-chat generate --write --model deepseek/deepseek-chat
-**Iteration**  
-
-Again, the brushstroke on the page,  
-A line retraced, a word replayed.
+$ hnt-agent \
+	-m "please check the repo diff. then commit all changes with a meaningful message" \
+	--model "openrouter/anthropic/claude-opus-4" \
+	--no-confirm
+I'll check the repository diff first to see what changes have been made, then create a meaningful commit message.
 [...]
+
+$ git log --oneline | head -1
+40f034e style: Convert changelog dates to YYYY-MM-DD format
 ```
+
+the persistent shell is the only direct "tool" the model has access. all other
+possible functionality (e.g. browser navigation, file editing) is implemented as
+CLI utilities that the LLM can leverage. like `hnt-edit`
+
+not as aesthetic as Claude Code. UX is WIP
 
 ### [`hnt-edit`](./edit)
 simple hnt-chat wrapper for editing source code or other plaintext files
@@ -59,8 +55,38 @@ index badefee..5eb3e0d 100644
  	do { if (DEBUG) fprintf(stderr, "%-20s " fmt, \
 ```
 
-in my (inevitably biased) experience, hnt-edit's editing performance is higher
-than Aider's for my usual infra and web use cases, as of Apr 2025
+in my experience, hnt-edit's editing performance is higher than Aider's for my
+usual Gemini 2.5 Pro infra and web use cases, as of Apr 2025. (functional
+differences: system prompt and design of TARGET/REPLACE parser)
+
+### [`hnt-chat`](./chat/)
+simple `hnt-llm` wrapper, for chat history management using plaintext files and
+conversation directories
+```
+$ conversation=$(hnt-chat new)
+$ echo "please write a poem about the user's given theme" | hnt-chat add system
+$ echo "iteration" | hnt-chat add user
+
+$ ls $conversation
+1747512247695244498-system.md
+1747512250714528664-user.md
+
+$ hnt-chat generate --write --model deepseek/deepseek-chat
+**Iteration**  
+
+Again, the brushstroke on the page,  
+A line retraced, a word replayed.
+[...]
+```
+
+### [`hnt-llm`](./llm/)
+basic LLM API in/out. significantly faster startup than openai-python
+```
+$ echo "hello! ❄️" | hnt-llm --model openrouter/anthropic/claude-3.5-sonnet
+Hi there! Nice snowflake emoji! How are you today? ☺️
+```
+
+has optional ~encrypted credential management using `hnt-llm save-key`
 
 # build everything
 ```
@@ -94,6 +120,8 @@ sufficient for my own casual usage and mobile/{filesystem storage} requirement
 shell sessions and easily read/write to them
 - [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM to use
 a shell and receive output, in a feedback loop
+- [`browse`](./agent/browse): CLI for navigating your (not headless) GUI
+Chromium-based browser programmatically. intended for LLM web browsing
 
 # bugs / support
 feel free to @ me on X or make a GitHub issue, for literally any reason
