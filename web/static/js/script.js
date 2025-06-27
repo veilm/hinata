@@ -292,8 +292,17 @@ document.addEventListener("DOMContentLoaded", () => {
 					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
 					messageDiv.dataset.filename = msg.filename; // Store filename for actions
 
-					const headerDiv = document.createElement("div");
-					headerDiv.className = "message-header";
+					// Wrapper for content to allow easy replacement (text <-> textarea)
+					const contentWrapperDiv = document.createElement("div");
+					contentWrapperDiv.className = "message-content-wrapper";
+					contentWrapperDiv.textContent = msg.content; // Initial content display
+
+					// New compact footer
+					const footerDiv = document.createElement("div");
+					footerDiv.className = "message-footer";
+
+					const infoDiv = document.createElement("div");
+					infoDiv.className = "message-info";
 
 					const roleSpan = document.createElement("span");
 					roleSpan.className = "message-role";
@@ -303,15 +312,10 @@ document.addEventListener("DOMContentLoaded", () => {
 					filenameSpan.className = "message-filename";
 					filenameSpan.textContent = escapeHtml(msg.filename);
 
-					headerDiv.appendChild(roleSpan);
-					headerDiv.appendChild(filenameSpan);
+					infoDiv.appendChild(roleSpan);
+					infoDiv.appendChild(filenameSpan);
 
-					// Wrapper for content to allow easy replacement (text <-> textarea)
-					const contentWrapperDiv = document.createElement("div");
-					contentWrapperDiv.className = "message-content-wrapper";
-					contentWrapperDiv.textContent = msg.content; // Initial content display
-
-					// Actions (Edit, Archive)
+					// Actions (Edit, Archive) - this is now just a button container
 					const actionsDiv = document.createElement("div");
 					actionsDiv.className = "message-actions";
 
@@ -338,9 +342,11 @@ document.addEventListener("DOMContentLoaded", () => {
 					actionsDiv.appendChild(editButton);
 					actionsDiv.appendChild(archiveButton);
 
-					messageDiv.appendChild(headerDiv);
+					footerDiv.appendChild(infoDiv);
+					footerDiv.appendChild(actionsDiv);
+
 					messageDiv.appendChild(contentWrapperDiv);
-					messageDiv.appendChild(actionsDiv);
+					messageDiv.appendChild(footerDiv);
 					messagesContainer.appendChild(messageDiv);
 				});
 			} else {

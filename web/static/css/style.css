@@ -1,6 +1,6 @@
 body {
-	font-family: "Roboto Mono", "Consolas", "Menlo", "Courier New", Courier,
-		monospace; /* Monospace font */
+	font-family:
+		"Roboto Mono", "Consolas", "Menlo", "Courier New", Courier, monospace; /* Monospace font */
 	margin: 0;
 	/* Default padding for mobile, split for clarity: */
 	padding-left: 0;
@@ -14,7 +14,9 @@ body {
 /* Apply padding for desktop screens */
 @media (min-width: 768px) {
 	body {
-		padding: 20px; /* Sets top, left, right to 20px, bottom also 20px */
+		padding-top: 20px;
+		padding-left: 15%;
+		padding-right: 15%;
 		/* Override padding-bottom to ensure space for fixed input area + original 20px margin */
 		/* 300px for input area + 20px desired original bottom spacing for content */
 		padding-bottom: 320px;
@@ -63,15 +65,21 @@ li {
 	word-wrap: break-word;
 	white-space: pre-wrap; /* Preserve whitespace and newlines */
 }
-.message-header {
-	font-weight: normal;
-	margin-bottom: 8px;
-	font-size: 0.85em;
-	color: #aaaaaa;
+.message-footer {
 	display: flex;
 	justify-content: space-between;
-	border-bottom: 1px dashed #444444;
-	padding-bottom: 6px;
+	align-items: center;
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid #444444;
+}
+
+.message-info {
+	display: flex;
+	gap: 0.5em;
+	align-items: baseline;
+	font-size: 0.85em;
+	color: #aaaaaa;
 }
 .message-role {
 	text-transform: capitalize;
@@ -283,8 +291,8 @@ li {
 /* Adjust #message-input-area positioning on desktop to align with body padding */
 @media (min-width: 768px) {
 	#message-input-area {
-		left: 20px; /* Align with body's own padding */
-		right: 20px; /* Align with body's own padding */
+		left: 15%; /* Align with body's own padding */
+		right: 15%; /* Align with body's own padding */
 	}
 }
 
@@ -365,9 +373,7 @@ li {
 
 /* Styles for Edit/Archive buttons within messages */
 .message-actions {
-	margin-top: 10px;
-	padding-top: 8px;
-	border-top: 1px solid #444444; /* Separator from message content */
+	/* margin-top, padding-top, and border-top are now handled by .message-footer */
 	display: flex;
 	gap: 8px; /* Space between buttons */
 	align-items: center;
@@ -382,8 +388,10 @@ li {
 	/* border: none; Original, but overridden by theme color border below */
 	border-radius: 0;
 	cursor: pointer;
-	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s
-		ease;
+	transition:
+		background-color 0.2s ease,
+		color 0.2s ease,
+		border-color 0.2s ease;
 	/* font-family: inherit; -- Not essential for icon-only buttons */
 	/* filter: grayscale(100%); REMOVED */
 	display: inline-flex; /* Helps center SVG if it's the only child */
