@@ -86,10 +86,6 @@ li {
 	font-weight: bold; /* Role should remain distinguishable */
 	color: #c0c0c0;
 }
-.message-filename {
-	font-style: normal; /* Less emphasis */
-	color: #888888;
-}
 
 .message-system {
 	border-left: 4px solid #fcddf2; /* Light pink */
@@ -632,4 +628,47 @@ html {
 #new-message-content {
 	/* TextArea might show scrollbar if JS max-height is reached */
 	/* Firefox scrollbar styles should be inherited from html */
+}
+
+/* Modal styles for message info */
+.info-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 2000;
+}
+.info-modal-content {
+	background: #282828;
+	color: #e0e0e0;
+	padding: 25px;
+	border: 1px solid #444;
+	position: relative;
+	min-width: 300px;
+	max-width: 500px;
+	font-size: 1.1em;
+}
+.info-modal-content p {
+	margin: 0 0 10px 0;
+}
+.info-modal-content strong {
+	color: #6ec8ff;
+}
+.info-modal-close {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	background: transparent;
+	border: none;
+	color: #aaaaaa;
+	cursor: pointer;
+	padding: 5px;
+}
+.info-modal-close:hover {
+	color: #ffffff;
 }

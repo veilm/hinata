@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 	// Lucide Icon SVG Strings
 	const ICON_PIN = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pin-icon lucide-pin"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`;
+	const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info-icon lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 	const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pen-line-icon lucide-pen-line"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>`;
 	const ICON_ARCHIVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`;
 	const ICON_SAVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save-icon lucide-save"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>`;
@@ -308,16 +309,16 @@ document.addEventListener("DOMContentLoaded", () => {
 					roleSpan.className = "message-role";
 					roleSpan.textContent = escapeHtml(msg.role);
 
-					const filenameSpan = document.createElement("span");
-					filenameSpan.className = "message-filename";
-					filenameSpan.textContent = escapeHtml(msg.filename);
-
 					infoDiv.appendChild(roleSpan);
-					infoDiv.appendChild(filenameSpan);
 
 					// Actions (Edit, Archive) - this is now just a button container
 					const actionsDiv = document.createElement("div");
 					actionsDiv.className = "message-actions";
+
+					const infoButton = createActionButton(ICON_INFO, "btn-info", () =>
+						showMessageInfoModal(msg.filename, msg.content),
+					);
+					infoButton.title = "Info";
 
 					const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
 						toggleEditState(
@@ -339,6 +340,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					);
 					archiveButton.title = "Archive"; // Tooltip for accessibility
 
+					actionsDiv.appendChild(infoButton);
 					actionsDiv.appendChild(editButton);
 					actionsDiv.appendChild(archiveButton);
 
@@ -1121,6 +1123,43 @@ document.addEventListener("DOMContentLoaded", () => {
 			// Fallback if targetContainer is null for some reason
 			document.body.appendChild(errorP);
 		}
+	}
+
+	function showMessageInfoModal(filename, content) {
+		const lineCount = content.split("\n").length;
+		const charCount = content.length;
+
+		const overlay = document.createElement("div");
+		overlay.className = "info-modal-overlay";
+
+		const modalContent = document.createElement("div");
+		modalContent.className = "info-modal-content";
+
+		modalContent.innerHTML = `
+			<p><strong>File:</strong> ${escapeHtml(filename)}</p>
+			<p><strong>Lines:</strong> ${lineCount}</p>
+			<p><strong>Characters:</strong> ${charCount}</p>
+		`;
+
+		const closeButton = document.createElement("button");
+		closeButton.className = "info-modal-close";
+		closeButton.innerHTML = ICON_X;
+
+		const closeModal = () => {
+			overlay.remove();
+		};
+
+		closeButton.addEventListener("click", closeModal);
+		overlay.addEventListener("click", (e) => {
+			// Close if clicked on the overlay itself, not the content
+			if (e.target === overlay) {
+				closeModal();
+			}
+		});
+
+		modalContent.appendChild(closeButton);
+		overlay.appendChild(modalContent);
+		document.body.appendChild(overlay);
 	}
 
 	async function handlePinToggle(conversationId, buttonElement) {
