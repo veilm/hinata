@@ -465,6 +465,20 @@ document.addEventListener("DOMContentLoaded", () => {
 		textarea.style.overflowY = "hidden"; // Start with hidden scrollbar, JS will manage
 		textarea.style.resize = "none"; // Prevent manual resize conflicting with auto-resize
 
+		const storageKey = `hinata-draft-${conversationId}`;
+		const savedContent = localStorage.getItem(storageKey);
+		if (savedContent) {
+			textarea.value = savedContent;
+		}
+
+		let lastSavedContent = savedContent || "";
+		setInterval(() => {
+			if (textarea.value !== lastSavedContent) {
+				localStorage.setItem(storageKey, textarea.value);
+				lastSavedContent = textarea.value;
+			}
+		}, 2000);
+
 		// Function to adjust textarea height dynamically
 		function adjustTextareaHeightOnInput(ta) {
 			const computedStyle = getComputedStyle(ta);
@@ -853,6 +867,9 @@ document.addEventListener("DOMContentLoaded", () => {
 					.catch(() => ({ detail: "Failed to add message." }));
 				throw new Error(errorData.detail || `HTTP error ${response.status}`);
 			}
+
+			const storageKey = `hinata-draft-${conversationId}`;
+			localStorage.removeItem(storageKey);
 
 			textareaElement.value = ""; // Clear textarea on success
 			loadConversationDetails(conversationId); // Reload to show new message

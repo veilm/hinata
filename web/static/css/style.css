@@ -646,7 +646,7 @@ html {
 .info-modal-content {
 	background: #282828;
 	color: #e0e0e0;
-	padding: 25px;
+	padding: 25px 50px 25px 25px;
 	border: 1px solid #444;
 	position: relative;
 	min-width: 300px;
