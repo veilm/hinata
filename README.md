@@ -13,10 +13,11 @@ simple hnt-chat and headlesh wrapper for letting an LLM operate a persistent she
 
 ```
 $ hnt-agent \
-	-m "please check the repo diff. then commit all changes with a meaningful message" \
+	-m "please check the diff, then commit all changes with a meaningful message" \
 	--model "openrouter/anthropic/claude-opus-4" \
 	--no-confirm
-I'll check the repository diff first to see what changes have been made, then create a meaningful commit message.
+I'll check the repository diff first to see what changes have been made, then
+create a meaningful commit message.
 [...]
 
 $ git log --oneline | head -1
@@ -82,8 +83,8 @@ A line retraced, a word replayed.
 ### [`hnt-llm`](./llm/)
 basic LLM API in/out. significantly faster startup than openai-python
 ```
-$ echo "hello! ❄️" | hnt-llm --model openrouter/anthropic/claude-3.5-sonnet
-Hi there! Nice snowflake emoji! How are you today? ☺️
+$ echo "hello Claude! ❄️" | hnt-llm --model openrouter/anthropic/claude-3-opus
+Hello! It's great to meet you. I hope you're having a wonderful day! ❄️☃️
 ```
 
 has optional ~encrypted credential management using `hnt-llm save-key`
