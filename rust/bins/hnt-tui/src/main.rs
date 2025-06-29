@@ -1,6 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 use crossterm::{
-    cursor, execute,
+    cursor, execute, queue,
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
     },
@@ -332,39 +332,101 @@ fn vt100_color_to_crossterm(c: vt100::Color) -> Color {
 }
 
 fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -> io::Result<()> {
-    execute!(stdout, cursor::Hide)?;
+    queue!(stdout, cursor::Hide)?;
 
     let (rows, cols) = screen.size();
     for row_idx in 0..rows {
-        execute!(stdout, cursor::MoveTo(0, pane_start_row + 1 + row_idx))?;
+        queue!(stdout, cursor::MoveTo(0, pane_start_row + 1 + row_idx))?;
+
+        // Reset tracked styles for each row. The terminal state is reset by ResetColor
+        // at the end of the previous row, so we start fresh here.
+        let mut last_fg = Color::Reset;
+        let mut last_bg = Color::Reset;
+        let mut last_bold = false;
+        let mut last_underline = false;
+        let mut last_inverse = false;
 
         for col_idx in 0..cols {
-            if let Some(cell) = screen.cell(row_idx, col_idx) {
-                execute!(stdout, ResetColor)?;
+            let cell = screen.cell(row_idx, col_idx);
+            let (fg, bg, bold, underline, inverse, contents) = if let Some(c) = cell {
+                (
+                    vt100_color_to_crossterm(c.fgcolor()),
+                    vt100_color_to_crossterm(c.bgcolor()),
+                    c.bold(),
+                    c.underline(),
+                    c.inverse(),
+                    c.contents(),
+                )
+            } else {
+                // A `None` cell is a default cell.
+                (
+                    Color::Reset,
+                    Color::Reset,
+                    false,
+                    false,
+                    false,
+                    String::new(),
+                )
+            };
 
-                let fg = vt100_color_to_crossterm(cell.fgcolor());
-                let bg = vt100_color_to_crossterm(cell.bgcolor());
-                execute!(stdout, SetForegroundColor(fg), SetBackgroundColor(bg))?;
+            if fg != last_fg {
+                queue!(stdout, SetForegroundColor(fg))?;
+                last_fg = fg;
+            }
 
-                if cell.bold() {
-                    execute!(stdout, SetAttribute(Attribute::Bold))?;
-                }
-                if cell.underline() {
-                    execute!(stdout, SetAttribute(Attribute::Underlined))?;
-                }
-                if cell.inverse() {
-                    execute!(stdout, SetAttribute(Attribute::Reverse))?;
-                }
+            if bg != last_bg {
+                queue!(stdout, SetBackgroundColor(bg))?;
+                last_bg = bg;
+            }
 
-                execute!(stdout, Print(cell.contents()))?;
+            if bold != last_bold {
+                queue!(
+                    stdout,
+                    SetAttribute(if bold {
+                        Attribute::Bold
+                    } else {
+                        Attribute::NoBold
+                    })
+                )?;
+                last_bold = bold;
+            }
+
+            if underline != last_underline {
+                queue!(
+                    stdout,
+                    SetAttribute(if underline {
+                        Attribute::Underlined
+                    } else {
+                        Attribute::NoUnderline
+                    })
+                )?;
+                last_underline = underline;
+            }
+
+            if inverse != last_inverse {
+                queue!(
+                    stdout,
+                    SetAttribute(if inverse {
+                        Attribute::Reverse
+                    } else {
+                        Attribute::NoReverse
+                    })
+                )?;
+                last_inverse = inverse;
+            }
+
+            if contents.is_empty() {
+                queue!(stdout, Print(" "))?;
+            } else {
+                queue!(stdout, Print(contents))?;
             }
         }
+        // Reset colors at the end of the row to prevent styles leaking.
+        queue!(stdout, ResetColor)?;
     }
 
-    execute!(stdout, ResetColor)?;
-
     let (cursor_y, cursor_x) = screen.cursor_position();
-    execute!(
+    queue!(
         stdout,
         cursor::Show,
         cursor::MoveTo(cursor_x, pane_start_row + 1 + cursor_y)
