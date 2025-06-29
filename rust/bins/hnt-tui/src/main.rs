@@ -1,19 +1,31 @@
 use clap::{Args, Parser, Subcommand};
 use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-    execute,
+    cursor, execute,
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
     },
     terminal::{self, Clear, ClearType},
-    tty::IsTty,
 };
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use std::fs::{File, OpenOptions};
 use std::io::{self, stdout, BufRead, Read, Stdout, Write};
+use std::os::unix::io::AsRawFd;
+use termios::{self, Termios};
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use vt100::Parser as TuiParser;
+
+struct TtyWriter<'a>(&'a mut std::fs::File);
+
+impl<'a> std::io::Write for TtyWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
 
 /// Command-line arguments
 #[derive(Parser)]
@@ -63,19 +75,51 @@ fn map_color(c: u8) -> Color {
     }
 }
 
+struct Tty {
+    file: File,
+    original_termios: Termios,
+}
+
+impl Tty {
+    fn new() -> io::Result<Self> {
+        let file = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
+        let fd = file.as_raw_fd();
+        let original_termios = Termios::from_fd(fd)?;
+        Ok(Tty {
+            file,
+            original_termios,
+        })
+    }
+
+    fn enable_raw_mode(&mut self) -> io::Result<()> {
+        let fd = self.file.as_raw_fd();
+        let mut raw = self.original_termios;
+        termios::cfmakeraw(&mut raw);
+        termios::tcsetattr(fd, termios::TCSANOW, &raw)?;
+        Ok(())
+    }
+}
+
+impl Drop for Tty {
+    fn drop(&mut self) {
+        let fd = self.file.as_raw_fd();
+        let _ = termios::tcsetattr(fd, termios::TCSANOW, &self.original_termios);
+    }
+}
+
 struct TuiSelect {
     lines: Vec<String>,
     selected_index: usize,
     scroll_offset: usize,
     display_height: usize,
     color: Option<Color>,
-    stdout: Stdout,
-    should_cleanup: bool,
+    tty: Tty,
+    buf: [u8; 16],
     term_cols: u16,
 }
 
 impl TuiSelect {
-    fn new(lines: Vec<String>, args: &SelectArgs) -> io::Result<Self> {
+    fn new(lines: Vec<String>, args: &SelectArgs, tty: Tty) -> io::Result<Self> {
         let (term_cols, term_rows) = terminal::size()?;
         let num_lines = lines.len();
 
@@ -96,51 +140,100 @@ impl TuiSelect {
             scroll_offset: 0,
             display_height,
             color: args.color.map(map_color),
-            stdout: stdout(),
-            should_cleanup: false,
+            tty,
+            buf: [0; 16],
             term_cols,
         })
     }
 
     fn run(&mut self) -> io::Result<Option<String>> {
-        terminal::enable_raw_mode()?;
-        self.should_cleanup = true;
+        self.tty.enable_raw_mode()?;
 
         // Make space for the menu by printing newlines, then moving back up.
-        execute!(self.stdout, Print("\n".repeat(self.display_height)))?;
-        execute!(self.stdout, cursor::MoveUp(self.display_height as u16))?;
-        execute!(self.stdout, cursor::SavePosition, cursor::Hide)?;
+        execute!(
+            TtyWriter(&mut self.tty.file),
+            Print("\n".repeat(self.display_height))
+        )?;
+        execute!(
+            TtyWriter(&mut self.tty.file),
+            cursor::MoveUp(self.display_height as u16)
+        )?;
+        execute!(
+            TtyWriter(&mut self.tty.file),
+            cursor::SavePosition,
+            cursor::Hide
+        )?;
 
         self.draw_menu()?;
 
-        let result = self.handle_input_loop();
+        loop {
+            let n = self.tty.file.read(&mut self.buf)?;
+            if n == 0 {
+                continue;
+            }
+            let key_event = &self.buf[..n];
 
-        // `self` will be dropped after this function returns, and `Drop::drop` will clean up.
-        result
+            let mut moved = false;
+            match key_event {
+                b"\r" => return Ok(Some(self.lines[self.selected_index].clone())), // Enter
+                b"\x03" | b"\x04" => return Ok(None),                              // Ctrl-C, Ctrl-D
+
+                // Move up: Up Arrow, Shift-Tab, Ctrl-K, Alt-K
+                b"\x1b[A" | b"\x1b[Z" | b"\x0b" | b"\x1bk" => {
+                    if self.selected_index > 0 {
+                        self.selected_index -= 1;
+                        if self.selected_index < self.scroll_offset {
+                            self.scroll_offset = self.selected_index;
+                        }
+                        moved = true;
+                    }
+                }
+                // Move down: Down Arrow, Tab, Ctrl-J, Alt-J
+                b"\x1b[B" | b"\t" | b"\n" | b"\x1bj" => {
+                    if self.selected_index < self.lines.len() - 1 {
+                        self.selected_index += 1;
+                        if self.selected_index >= self.scroll_offset + self.display_height {
+                            self.scroll_offset = self.selected_index - self.display_height + 1;
+                        }
+                        moved = true;
+                    }
+                }
+                // Esc to quit
+                b"\x1b" => return Ok(None),
+                _ => {}
+            }
+            if moved {
+                self.draw_menu()?;
+            }
+        }
     }
 
     fn draw_menu(&mut self) -> io::Result<()> {
-        execute!(self.stdout, cursor::RestorePosition)?;
+        execute!(TtyWriter(&mut self.tty.file), cursor::RestorePosition)?;
 
         for i in 0..self.display_height {
-            execute!(self.stdout, Clear(ClearType::CurrentLine))?;
+            execute!(TtyWriter(&mut self.tty.file), Clear(ClearType::CurrentLine))?;
             let line_idx = self.scroll_offset + i;
 
             if line_idx < self.lines.len() {
                 if line_idx == self.selected_index {
                     if let Some(color) = self.color {
                         execute!(
-                            self.stdout,
+                            TtyWriter(&mut self.tty.file),
                             SetForegroundColor(color),
                             Print("▌ "),
                             SetBackgroundColor(color),
                             SetForegroundColor(Color::Black)
                         )?;
                     } else {
-                        execute!(self.stdout, Print("▌ "), SetAttribute(Attribute::Reverse))?;
+                        execute!(
+                            TtyWriter(&mut self.tty.file),
+                            Print("▌ "),
+                            SetAttribute(Attribute::Reverse)
+                        )?;
                     }
                 } else {
-                    execute!(self.stdout, Print("  "))?;
+                    execute!(TtyWriter(&mut self.tty.file), Print("  "))?;
                 }
 
                 let line = &self.lines[line_idx];
@@ -148,100 +241,55 @@ impl TuiSelect {
                 if line.len() > self.term_cols as usize - 2 {
                     truncated_line = &line[..self.term_cols as usize - 2];
                 }
-                execute!(self.stdout, Print(truncated_line))?;
+                execute!(TtyWriter(&mut self.tty.file), Print(truncated_line))?;
 
                 if line_idx == self.selected_index {
-                    execute!(self.stdout, ResetColor)?;
+                    execute!(TtyWriter(&mut self.tty.file), ResetColor)?;
                 }
             }
 
             if i < self.display_height - 1 {
-                execute!(self.stdout, Print("\n\r"))?;
+                execute!(TtyWriter(&mut self.tty.file), Print("\n\r"))?;
             }
         }
-        self.stdout.flush()
-    }
-
-    fn handle_input_loop(&mut self) -> io::Result<Option<String>> {
-        loop {
-            match event::read()? {
-                // Quit without selection
-                Event::Key(KeyEvent { code: KeyCode::Esc, .. })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('d'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                }) => {
-                    return Ok(None);
-                }
-
-                // Select and quit
-                Event::Key(KeyEvent { code: KeyCode::Enter, .. }) => {
-                    return Ok(Some(self.lines[self.selected_index].clone()));
-                }
-
-                // Move up
-                Event::Key(KeyEvent { code: KeyCode::Up, .. })
-                | Event::Key(KeyEvent { code: KeyCode::BackTab, .. }) // Shift-Tab
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('k'),
-                    modifiers: KeyModifiers::CONTROL, ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('k'),
-                    modifiers: KeyModifiers::ALT, ..
-                }) => {
-                    if self.selected_index > 0 {
-                        self.selected_index -= 1;
-                        if self.selected_index < self.scroll_offset {
-                            self.scroll_offset = self.selected_index;
-                        }
-                        self.draw_menu()?;
-                    }
-                }
-
-                // Move down
-                Event::Key(KeyEvent { code: KeyCode::Down, .. })
-                | Event::Key(KeyEvent { code: KeyCode::Tab, .. })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('j'),
-                    modifiers: KeyModifiers::CONTROL, ..
-                })
-                | Event::Key(KeyEvent {
-                    code: KeyCode::Char('j'),
-                    modifiers: KeyModifiers::ALT, ..
-                }) => {
-                    if self.selected_index < self.lines.len() - 1 {
-                        self.selected_index += 1;
-                        if self.selected_index >= self.scroll_offset + self.display_height {
-                            self.scroll_offset = self.selected_index - self.display_height + 1;
-                        }
-                        self.draw_menu()?;
-                    }
-                }
-                _ => {}
-            }
-        }
+        self.tty.file.flush()
     }
 }
 
 impl Drop for TuiSelect {
     fn drop(&mut self) {
-        if self.should_cleanup {
-            // It's good practice to not panic in drop, so we ignore errors.
-            let _ = execute!(
-                self.stdout,
-                cursor::RestorePosition,
-                Clear(ClearType::FromCursorDown),
-                cursor::Show
+        // It's good practice to not panic in drop, so we ignore errors.
+        // First, restore cursor to where we started drawing and show it.
+        let _ = write!(
+            TtyWriter(&mut self.tty.file),
+            "{}{}",
+            cursor::RestorePosition,
+            cursor::Show
+        );
+
+        // Clear each line of the menu one by one. This is more careful than
+        // Clear(ClearType::FromCursorDown), which can erase the shell prompt
+        // that will be drawn after the program exits.
+        for _ in 0..self.display_height {
+            // We use write! here to print a clear command followed by a newline.
+            // This is more robust than multiple execute! calls inside a loop.
+            let _ = write!(
+                TtyWriter(&mut self.tty.file),
+                "{}\n",
+                Clear(ClearType::CurrentLine)
             );
-            let _ = terminal::disable_raw_mode();
         }
+
+        // After clearing (which moved the cursor down), move it back up
+        // to the original starting line.
+        let _ = write!(
+            TtyWriter(&mut self.tty.file),
+            "{}",
+            cursor::MoveUp(self.display_height as u16)
+        );
+
+        // Flush the buffer to ensure all commands are sent to the terminal.
+        let _ = self.tty.file.flush();
     }
 }
 
@@ -375,7 +423,7 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
         .spawn_command(cmd)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("spawn failed: {}", e)))?;
 
-    let mut master = pair.master;
+    let master = pair.master;
     let mut pty_reader = master
         .try_clone_reader()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("clone reader failed: {}", e)))?;
@@ -448,23 +496,24 @@ async fn main() -> io::Result<()> {
                 return Ok(());
             }
 
-            if !stdout().is_tty() {
-                println!("{}", lines[0]);
-                return Ok(());
-            }
-
-            let mut tui = TuiSelect::new(lines, args)?;
-            let selected_line = match tui.run() {
-                Ok(line) => line,
-                Err(e) => {
-                    // `tui` is dropped here, cleaning up the terminal before we print the error.
-                    return Err(e);
+            let tty = match Tty::new() {
+                Ok(tty) => tty,
+                Err(_) => {
+                    // Not in an interactive session, so print the first line and exit.
+                    if !lines.is_empty() {
+                        println!("{}", lines[0]);
+                    }
+                    return Ok(());
                 }
             };
 
-            // `tui` is dropped here, `Drop` impl runs, terminal is restored.
+            let mut tui = TuiSelect::new(lines, args, tty)?;
+            let selected_line = tui.run()?;
+
+            // `tui` is dropped here, `Drop` impl runs, and the Tty's Drop impl restores
+            // the original terminal settings.
             if let Some(line) = selected_line {
-                // Now we can safely print the result.
+                // Now we can safely print the result to standard output.
                 println!("{}", line);
             }
         }
