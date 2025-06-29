@@ -279,7 +279,26 @@ struct TuiPane {
 impl TuiPane {
     fn new() -> io::Result<Self> {
         let (term_cols, term_rows) = terminal::size()?;
-        let pane_start_row = term_rows.saturating_sub(PANE_HEIGHT);
+        let (_, mut pane_start_row) = cursor::position()?;
+
+        // Check if there is enough space to draw the pane from the current cursor row.
+        // The cursor row is 0-indexed, while PANE_HEIGHT and term_rows are 1-based counts.
+        // We use u32 to prevent potential overflow on the addition during the check.
+        if pane_start_row as u32 + PANE_HEIGHT as u32 > term_rows as u32 {
+            // Not enough space. Calculate how many lines to scroll.
+            let scroll_count = (pane_start_row as u32 + PANE_HEIGHT as u32) - term_rows as u32;
+
+            // Move cursor to the bottom and print newlines to scroll up.
+            let mut stdout = stdout();
+            execute!(
+                stdout,
+                cursor::MoveTo(0, term_rows.saturating_sub(1)),
+                Print("\n".repeat(scroll_count as usize))
+            )?;
+
+            // After scrolling, update pane_start_row to be at the new bottom-most position.
+            pane_start_row = term_rows.saturating_sub(PANE_HEIGHT);
+        }
 
         let mut tui_pane = TuiPane {
             stdout: stdout(),
