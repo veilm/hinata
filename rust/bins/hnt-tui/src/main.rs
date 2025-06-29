@@ -348,6 +348,11 @@ fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -
 
         for col_idx in 0..cols {
             let cell = screen.cell(row_idx, col_idx);
+            if let Some(c) = cell.as_ref() {
+                if c.is_wide_continuation() {
+                    continue;
+                }
+            }
             let (fg, bg, bold, underline, inverse, contents) = if let Some(c) = cell {
                 (
                     vt100_color_to_crossterm(c.fgcolor()),
@@ -425,12 +430,16 @@ fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -
         queue!(stdout, ResetColor)?;
     }
 
-    let (cursor_y, cursor_x) = screen.cursor_position();
-    queue!(
-        stdout,
-        cursor::Show,
-        cursor::MoveTo(cursor_x, pane_start_row + 1 + cursor_y)
-    )?;
+    if !screen.hide_cursor() {
+        let (cursor_y, cursor_x) = screen.cursor_position();
+        queue!(
+            stdout,
+            cursor::Show,
+            cursor::MoveTo(cursor_x, pane_start_row + 1 + cursor_y)
+        )?;
+    } else {
+        queue!(stdout, cursor::Hide)?;
+    }
 
     stdout.flush()
 }
