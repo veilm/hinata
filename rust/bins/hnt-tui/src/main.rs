@@ -15,26 +15,6 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use vt100::Parser as TuiParser;
 
-fn log_message(message: &str) {
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/hnt-tui.log")
-    {
-        let now = std::time::SystemTime::now();
-        let timestamp = now
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        let _ = writeln!(
-            file,
-            "[{}.{:03}] {}",
-            timestamp.as_secs(),
-            timestamp.subsec_millis(),
-            message
-        );
-    }
-}
-
 struct TtyWriter<'a>(&'a mut std::fs::File);
 
 impl<'a> std::io::Write for TtyWriter<'a> {
@@ -458,10 +438,6 @@ fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -
 }
 
 async fn run_pane(args: &PaneArgs) -> io::Result<()> {
-    // Delete old log file and start logging.
-    let _ = std::fs::remove_file("/tmp/hnt-tui.log");
-    log_message("run_pane: started");
-
     let mut tui_pane = TuiPane::new()?;
 
     let pty_system = NativePtySystem::default();
@@ -499,7 +475,6 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
     // PTY reader task: reads from PTY and sends to the main event loop.
     let (tx, mut rx) = mpsc::channel::<Vec<u8>>(32);
     tokio::task::spawn_blocking(move || {
-        log_message("run_pane: PTY reader task started");
         let mut buf = [0u8; 8192];
         loop {
             match pty_reader.read(&mut buf) {
@@ -511,13 +486,11 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
                 }
             }
         }
-        log_message("run_pane: PTY reader task exited");
     });
 
     // Stdin reader task: reads from stdin and sends to the main event loop.
     let (stdin_tx, mut stdin_rx) = mpsc::channel(32);
     let stdin_task_handle = tokio::task::spawn_blocking(move || {
-        log_message("run_pane: stdin reader task started");
         let stdin = std::io::stdin();
         let mut handle = stdin.lock();
         let mut buf = [0u8; 1024];
@@ -532,14 +505,11 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
                 Err(_) => break,
             }
         }
-        log_message("run_pane: stdin reader task exited");
     });
 
     let (exit_tx, mut exit_rx) = mpsc::channel(1);
     tokio::task::spawn_blocking(move || {
-        log_message("run_pane: Child waiter task started");
         let _ = child.wait();
-        log_message("run_pane: Child waiter detected process exit");
         let _ = exit_tx.blocking_send(());
     });
 
@@ -560,7 +530,6 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
             input = stdin_rx.recv() => {
                 match input {
                     Some(data) => {
-                        log_message(&format!("run_pane: stdin event, {} bytes", data.len()));
                         pty_writer.write_all(&data)?;
                         pty_writer.flush()?;
                     }
@@ -571,18 +540,14 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
                 }
             },
             _ = exit_rx.recv() => {
-                log_message("run_pane: Received exit signal");
                 break;
             },
         }
     }
 
-    log_message("run_pane: event loop broken");
-    log_message("run_pane: Aborting stdin reader task");
     stdin_task_handle.abort();
-    log_message("run_pane: calling cleanup");
     tui_pane.cleanup()?;
-    log_message("run_pane: cleanup complete");
+    std::process::exit(0);
 
     Ok(())
 }
