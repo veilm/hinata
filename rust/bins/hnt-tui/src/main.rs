@@ -340,11 +340,7 @@ fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -
 
         // Reset tracked styles for each row. The terminal state is reset by ResetColor
         // at the end of the previous row, so we start fresh here.
-        let mut last_fg = Color::Reset;
-        let mut last_bg = Color::Reset;
-        let mut last_bold = false;
-        let mut last_underline = false;
-        let mut last_inverse = false;
+        let mut last_style = (Color::Reset, Color::Reset, false, false, false);
 
         for col_idx in 0..cols {
             let cell = screen.cell(row_idx, col_idx);
@@ -353,71 +349,39 @@ fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -
                     continue;
                 }
             }
-            let (fg, bg, bold, underline, inverse, contents) = if let Some(c) = cell {
+            let (current_style, contents) = if let Some(c) = cell {
                 (
-                    vt100_color_to_crossterm(c.fgcolor()),
-                    vt100_color_to_crossterm(c.bgcolor()),
-                    c.bold(),
-                    c.underline(),
-                    c.inverse(),
+                    (
+                        vt100_color_to_crossterm(c.fgcolor()),
+                        vt100_color_to_crossterm(c.bgcolor()),
+                        c.bold(),
+                        c.underline(),
+                        c.inverse(),
+                    ),
                     c.contents(),
                 )
             } else {
                 // A `None` cell is a default cell.
                 (
-                    Color::Reset,
-                    Color::Reset,
-                    false,
-                    false,
-                    false,
+                    (Color::Reset, Color::Reset, false, false, false),
                     String::new(),
                 )
             };
 
-            if fg != last_fg {
-                queue!(stdout, SetForegroundColor(fg))?;
-                last_fg = fg;
-            }
-
-            if bg != last_bg {
-                queue!(stdout, SetBackgroundColor(bg))?;
-                last_bg = bg;
-            }
-
-            if bold != last_bold {
-                queue!(
-                    stdout,
-                    SetAttribute(if bold {
-                        Attribute::Bold
-                    } else {
-                        Attribute::NoBold
-                    })
-                )?;
-                last_bold = bold;
-            }
-
-            if underline != last_underline {
-                queue!(
-                    stdout,
-                    SetAttribute(if underline {
-                        Attribute::Underlined
-                    } else {
-                        Attribute::NoUnderline
-                    })
-                )?;
-                last_underline = underline;
-            }
-
-            if inverse != last_inverse {
-                queue!(
-                    stdout,
-                    SetAttribute(if inverse {
-                        Attribute::Reverse
-                    } else {
-                        Attribute::NoReverse
-                    })
-                )?;
-                last_inverse = inverse;
+            if current_style != last_style {
+                queue!(stdout, ResetColor)?;
+                queue!(stdout, SetForegroundColor(current_style.0))?;
+                queue!(stdout, SetBackgroundColor(current_style.1))?;
+                if current_style.2 {
+                    queue!(stdout, SetAttribute(Attribute::Bold))?;
+                }
+                if current_style.3 {
+                    queue!(stdout, SetAttribute(Attribute::Underlined))?;
+                }
+                if current_style.4 {
+                    queue!(stdout, SetAttribute(Attribute::Reverse))?;
+                }
+                last_style = current_style;
             }
 
             if contents.is_empty() {
