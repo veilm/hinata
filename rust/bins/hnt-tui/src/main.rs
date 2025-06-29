@@ -11,7 +11,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, stdout, BufRead, Read, Stdout, Write};
 use std::os::unix::io::AsRawFd;
 use termios::{self, Termios};
-use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use vt100::Parser as TuiParser;
 
@@ -548,8 +547,6 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
     stdin_task_handle.abort();
     tui_pane.cleanup()?;
     std::process::exit(0);
-
-    Ok(())
 }
 
 #[tokio::main]
