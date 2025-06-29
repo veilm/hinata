@@ -259,37 +259,12 @@ impl TuiSelect {
 impl Drop for TuiSelect {
     fn drop(&mut self) {
         // It's good practice to not panic in drop, so we ignore errors.
-        // First, restore cursor to where we started drawing and show it.
-        let _ = write!(
+        let _ = execute!(
             TtyWriter(&mut self.tty.file),
-            "{}{}",
             cursor::RestorePosition,
+            Clear(ClearType::FromCursorDown),
             cursor::Show
         );
-
-        // Clear each line of the menu one by one. This is more careful than
-        // Clear(ClearType::FromCursorDown), which can erase the shell prompt
-        // that will be drawn after the program exits.
-        for _ in 0..self.display_height {
-            // We use write! here to print a clear command followed by a newline.
-            // This is more robust than multiple execute! calls inside a loop.
-            let _ = write!(
-                TtyWriter(&mut self.tty.file),
-                "{}\n",
-                Clear(ClearType::CurrentLine)
-            );
-        }
-
-        // After clearing (which moved the cursor down), move it back up
-        // to the original starting line.
-        let _ = write!(
-            TtyWriter(&mut self.tty.file),
-            "{}",
-            cursor::MoveUp(self.display_height as u16)
-        );
-
-        // Flush the buffer to ensure all commands are sent to the terminal.
-        let _ = self.tty.file.flush();
     }
 }
 
@@ -507,8 +482,10 @@ async fn main() -> io::Result<()> {
                 }
             };
 
-            let mut tui = TuiSelect::new(lines, args, tty)?;
-            let selected_line = tui.run()?;
+            let selected_line = {
+                let mut tui = TuiSelect::new(lines, args, tty)?;
+                tui.run()?
+            };
 
             // `tui` is dropped here, `Drop` impl runs, and the Tty's Drop impl restores
             // the original terminal settings.
