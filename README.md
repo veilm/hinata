@@ -9,9 +9,13 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 # quick tour
 
 ### [`hnt-agent`](./agent)
-simple hnt-chat and headlesh wrapper for letting an LLM operate a persistent shell
+simple [`hnt-chat`](./chat) and [`headlesh`](./agent/headlesh/) wrapper for
+letting an LLM operate a persistent shell
 
 ```
+$ git log --oneline | head -1
+b8b305b refactor: Handle recoil animations during enemy fade-out state
+
 $ hnt-agent \
 	-m "please check the diff, then commit all changes with a meaningful message" \
 	--model "openrouter/anthropic/claude-opus-4" \
@@ -20,18 +24,20 @@ I'll check the repository diff first to see what changes have been made, then
 create a meaningful commit message.
 [...]
 
-$ git log --oneline | head -1
+$ git log --oneline | head -2
 40f034e style: Convert changelog dates to YYYY-MM-DD format
+b8b305b refactor: Handle recoil animations during enemy fade-out state
 ```
 
-the persistent shell is the only direct "tool" the model has access. all other
-possible functionality (e.g. browser navigation, file editing) is implemented as
-CLI utilities that the LLM can leverage. like `hnt-edit`
+the persistent shell is the only direct "tool" the model has access to. all
+other possible functionality (e.g. browser navigation with
+[`browse`](./agent/browse/), file editing with [`hnt-edit`](./edit/)) is
+implemented as CLI utilities that the LLM can leverage
 
 not as aesthetic as Claude Code. UX is WIP
 
 ### [`hnt-edit`](./edit)
-simple hnt-chat wrapper for editing source code or other plaintext files
+simple [`hnt-chat`](./chat) wrapper for editing source code or other plaintext files
 
 ```
 $ hnt-edit \
@@ -61,23 +67,25 @@ usual Gemini 2.5 Pro infra and web use cases, as of Apr 2025. (functional
 differences: system prompt and design of TARGET/REPLACE parser)
 
 ### [`hnt-chat`](./chat/)
-simple `hnt-llm` wrapper, for chat history management using plaintext files and
-conversation directories
+simple [`hnt-llm`](./llm) wrapper, for chat history management using plaintext
+files and conversation directories
 ```
 $ conversation=$(hnt-chat new)
-$ echo "please write a poem about the user's given theme" | hnt-chat add system
+$ echo "please write a 2-line stanza about the user's given theme" | hnt-chat add system
 $ echo "iteration" | hnt-chat add user
 
 $ ls $conversation
-1747512247695244498-system.md
-1747512250714528664-user.md
+1751202665600525690-system.md
+1751202669679594679-user.md
 
 $ hnt-chat generate --write --model deepseek/deepseek-chat
-**Iteration**  
+Code repeats in loops so tight,
+Each pass refines till it's just right.
 
-Again, the brushstroke on the page,  
-A line retraced, a word replayed.
-[...]
+$ ls $conversation
+1751202665600525690-system.md
+1751202669679594679-user.md
+1751202692095544873-assistant.md
 ```
 
 ### [`hnt-llm`](./llm/)
