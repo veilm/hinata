@@ -15,6 +15,26 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use vt100::Parser as TuiParser;
 
+fn log_message(message: &str) {
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/hnt-tui.log")
+    {
+        let now = std::time::SystemTime::now();
+        let timestamp = now
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        let _ = writeln!(
+            file,
+            "[{}.{:03}] {}",
+            timestamp.as_secs(),
+            timestamp.subsec_millis(),
+            message
+        );
+    }
+}
+
 struct TtyWriter<'a>(&'a mut std::fs::File);
 
 impl<'a> std::io::Write for TtyWriter<'a> {
@@ -320,24 +340,34 @@ impl TuiPane {
 
         Ok(tui_pane)
     }
+
+    pub fn cleanup(&mut self) -> io::Result<()> {
+        if self.should_cleanup {
+            for i in 0..PANE_HEIGHT {
+                execute!(
+                    self.stdout,
+                    cursor::MoveTo(0, self.pane_start_row + i),
+                    Clear(ClearType::CurrentLine)
+                )?;
+            }
+            execute!(
+                self.stdout,
+                cursor::MoveTo(0, self.pane_start_row),
+                cursor::Show
+            )?;
+            terminal::disable_raw_mode()?;
+            self.should_cleanup = false;
+        }
+        Ok(())
+    }
 }
 
 impl Drop for TuiPane {
     fn drop(&mut self) {
         if self.should_cleanup {
-            for i in 0..PANE_HEIGHT {
-                let _ = execute!(
-                    self.stdout,
-                    cursor::MoveTo(0, self.pane_start_row + i),
-                    Clear(ClearType::CurrentLine)
-                );
-            }
-            let _ = execute!(
-                self.stdout,
-                cursor::MoveTo(0, self.pane_start_row),
-                cursor::Show
-            );
-            let _ = terminal::disable_raw_mode();
+            // We can't propagate errors from drop, so we ignore the result.
+            // The cleanup function will set should_cleanup to false on success.
+            let _ = self.cleanup();
         }
     }
 }
@@ -428,6 +458,10 @@ fn draw_pane(stdout: &mut Stdout, screen: &vt100::Screen, pane_start_row: u16) -
 }
 
 async fn run_pane(args: &PaneArgs) -> io::Result<()> {
+    // Delete old log file and start logging.
+    let _ = std::fs::remove_file("/tmp/hnt-tui.log");
+    log_message("run_pane: started");
+
     let mut tui_pane = TuiPane::new()?;
 
     let pty_system = NativePtySystem::default();
@@ -462,8 +496,10 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
 
     let mut parser = TuiParser::new(pty_size.rows, pty_size.cols, 0);
 
+    // PTY reader task: reads from PTY and sends to the main event loop.
     let (tx, mut rx) = mpsc::channel::<Vec<u8>>(32);
     tokio::task::spawn_blocking(move || {
+        log_message("run_pane: PTY reader task started");
         let mut buf = [0u8; 8192];
         loop {
             match pty_reader.read(&mut buf) {
@@ -475,35 +511,78 @@ async fn run_pane(args: &PaneArgs) -> io::Result<()> {
                 }
             }
         }
+        log_message("run_pane: PTY reader task exited");
     });
 
-    let mut stdin = tokio::io::stdin();
-    let mut input_buf = [0u8; 1024];
+    // Stdin reader task: reads from stdin and sends to the main event loop.
+    let (stdin_tx, mut stdin_rx) = mpsc::channel(32);
+    let stdin_task_handle = tokio::task::spawn_blocking(move || {
+        log_message("run_pane: stdin reader task started");
+        let stdin = std::io::stdin();
+        let mut handle = stdin.lock();
+        let mut buf = [0u8; 1024];
+        loop {
+            match handle.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if stdin_tx.blocking_send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        log_message("run_pane: stdin reader task exited");
+    });
 
-    let mut child_wait = tokio::task::spawn_blocking(move || child.wait());
+    let (exit_tx, mut exit_rx) = mpsc::channel(1);
+    tokio::task::spawn_blocking(move || {
+        log_message("run_pane: Child waiter task started");
+        let _ = child.wait();
+        log_message("run_pane: Child waiter detected process exit");
+        let _ = exit_tx.blocking_send(());
+    });
 
     loop {
         tokio::select! {
-            Some(output) = rx.recv() => {
-                parser.process(&output);
-                draw_pane(&mut tui_pane.stdout, parser.screen(), tui_pane.pane_start_row)?;
-            },
-            result = stdin.read(&mut input_buf) => {
-                match result {
-                    Ok(0) => break, // stdin closed
-                    Ok(n) => {
-                        pty_writer.write_all(&input_buf[..n])?;
-                        pty_writer.flush()?;
+            output = rx.recv() => {
+                match output {
+                    Some(data) => {
+                        parser.process(&data);
+                        draw_pane(&mut tui_pane.stdout, parser.screen(), tui_pane.pane_start_row)?;
                     }
-                    Err(e) if e.kind() == io::ErrorKind::BrokenPipe => break,
-                    Err(e) => return Err(e),
+                    None => {
+                        // PTY closed
+                        break;
+                    }
                 }
             },
-            _ = &mut child_wait => {
+            input = stdin_rx.recv() => {
+                match input {
+                    Some(data) => {
+                        log_message(&format!("run_pane: stdin event, {} bytes", data.len()));
+                        pty_writer.write_all(&data)?;
+                        pty_writer.flush()?;
+                    }
+                    None => {
+                        // Stdin closed
+                        break;
+                    }
+                }
+            },
+            _ = exit_rx.recv() => {
+                log_message("run_pane: Received exit signal");
                 break;
-            }
+            },
         }
     }
+
+    log_message("run_pane: event loop broken");
+    log_message("run_pane: Aborting stdin reader task");
+    stdin_task_handle.abort();
+    log_message("run_pane: calling cleanup");
+    tui_pane.cleanup()?;
+    log_message("run_pane: cleanup complete");
 
     Ok(())
 }
