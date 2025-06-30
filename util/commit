@@ -12,11 +12,13 @@ hnt-agent --no-confirm -m "please do the following
 		don't make any changes to what is staged and what is not
 
 3. view the diff *of the staged changes* only
-2. commit those staged changes with a meaningful message
+4. commit those staged changes with a meaningful message
 	include that it was committed by \"hnt-agent via util/commit\"
-4. push
 5. report to the user that you're finished
+please don't take any other action unless the user explicitly gives you further instructions
 
 $comment
 
 if there are any unstaged changes at this point, leave them as is"
+
+git push
