@@ -1,8 +1,12 @@
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use clap::Parser;
 use headlesh::Session;
 use hinata_core::chat;
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::process::Command as StdCommand;
 use tokio;
 
 /// Interact with hinata LLM agent to execute shell commands.
@@ -49,6 +53,38 @@ impl Drop for SessionGuard {
     }
 }
 
+fn get_user_instruction(message: Option<String>) -> Result<String> {
+    if let Some(message) = message {
+        return Ok(message);
+    }
+
+    let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
+
+    let temp_file_name = format!("hnt-agent-msg-{}.txt", Utc::now().timestamp_nanos_opt().unwrap());
+    let temp_file_path = env::temp_dir().join(temp_file_name);
+
+    fs::write(&temp_file_path, b"")?;
+
+    let status = StdCommand::new(&editor)
+        .arg(&temp_file_path)
+        .status()
+        .with_context(|| format!("Failed to open editor: {}", editor))?;
+
+    if !status.success() {
+        bail!("Editor exited with a non-zero status code");
+    }
+
+    let instruction = fs::read_to_string(&temp_file_path)
+        .context("Failed to read user instruction from temporary file")?;
+    fs::remove_file(temp_file_path).ok(); // Ignore error on cleanup
+
+    if instruction.trim().is_empty() {
+        bail!("User instruction is empty. Aborting.");
+    }
+
+    Ok(instruction)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // 1. Set up headless session
@@ -58,14 +94,39 @@ async fn main() -> Result<()> {
     let _session_guard = SessionGuard { session };
 
     let cli = Cli::parse();
-    println!("{:#?}", cli);
 
     // 2. Get system and user messages (from args, files, or $EDITOR)
+    let system_prompt = if let Some(system) = cli.system {
+        let path = Path::new(&system);
+        if path.is_file() {
+            Some(fs::read_to_string(path)?)
+        } else {
+            Some(system)
+        }
+    } else {
+        None
+    };
+    let user_instruction = get_user_instruction(cli.message)?;
 
     // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
+    let conversations_dir = chat::get_conversations_dir()?;
+    let conversation_dir = chat::create_new_conversation(&conversations_dir)?;
 
     // 4. Add system message and initial user instructions to the conversation.
     //    This may involve pre-canned steps like checking `pwd` and `os-release`.
+    if let Some(prompt) = system_prompt {
+        chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
+    }
+    chat::write_message_file(
+        &conversation_dir,
+        chat::Role::User,
+        &user_instruction,
+    )?;
+
+    eprintln!(
+        "Created conversation: {}",
+        conversation_dir.to_string_lossy()
+    );
 
     // 5. Start the main interaction loop:
     //    a. Generate LLM response (`hnt-chat gen`).
