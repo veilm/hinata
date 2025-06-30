@@ -35,3 +35,7 @@ Signal handling logic is cleaner. Retesting to confirm cleanup works.
 The test-cleanup directory wasn't deleted. The daemon might be taking too long to shut down, so I'm checking the logs to debug.
 Signal received, cleanup started, but directory deletion failed. Suspecting a lingering file lock on pid.lock, I'll explicitly drop the File object before attempting to remove the directory, ensuring the lock is released.
 Lock's now explicitly released. Retrying the test, confident the directory will be removed.
+User pointed out my error; cleanup is working. Now implementing the server-side 'exec' logic within the 'create' command: creating cmd.fifo, spawning the shell, and setting the main loop to read from the FIFO.
+New code added a lot of complexity. I'm adding a missing 'use' statement for 'nix::sys::stat'.
+The agent was right, nix::sys::stat was already there. My mistake. The consolidation is a good cleanup. Now, before I can test this new server logic, I need a client that can send a message. I will implement the client-side logic of the 'exec' command. My plan for the 'exec' command is to: read the command script from stdin, construct the path to the session's 'cmd.fifo', open the FIFO for writing, write the script to the FIFO, and for now, I will ignore the response FIFOs and just send the command.
+With the basic 'exec' command ready, I'll test the full communication flow: create 'test-exec', send it a command, check the logs for reception, and then exit to clean up.

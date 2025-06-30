@@ -4,14 +4,15 @@ use dirs;
 use fs2::FileExt;
 use log::{error, info, LevelFilter};
 use nix::errno::Errno;
-use nix::sys::signal::kill;
-use nix::unistd::Pid;
+use nix::sys::{signal::kill, stat};
+use nix::unistd::{mkfifo, Pid};
 use signal_hook::{consts::SIGTERM, iterator::Signals};
 use simplelog::{Config, WriteLogger};
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::io::AsRawFd;
 use std::path::Path;
-use std::process::exit;
+use std::process::{exit, Command, Stdio};
 
 const SESSION_DIR: &str = "/tmp/headlesh_sessions";
 
@@ -135,9 +136,48 @@ fn main() {
                     }
                     info!("PID {} written to lock file.", pid);
 
-                    // 7. Add a placeholder comment for where the FIFO creation and shell spawning logic will go.
-                    // TODO: Create FIFOs for stdin, stdout, and stderr.
-                    // TODO: Spawn the shell process and connect it to the FIFOs.
+                    let cmd_fifo_path = Path::new("cmd.fifo");
+                    match mkfifo(cmd_fifo_path, stat::Mode::S_IRWXU) {
+                        Ok(_) => info!("Command FIFO created."),
+                        Err(e) => {
+                            error!("Failed to create command FIFO: {}", e);
+                            exit(1);
+                        }
+                    }
+
+                    let shell_to_spawn = shell.as_deref().unwrap_or("bash");
+                    info!("Spawning shell: {}", shell_to_spawn);
+
+                    let log_stdout = match File::options().append(true).open(&log_file_path) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            error!("Could not reopen log file for shell stdout: {}", e);
+                            exit(1);
+                        }
+                    };
+                    let log_stderr = match log_stdout.try_clone() {
+                        Ok(f) => f,
+                        Err(e) => {
+                            error!("Could not clone file handle for shell stderr: {}", e);
+                            exit(1);
+                        }
+                    };
+
+                    let mut child = match Command::new(shell_to_spawn)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::from(log_stdout))
+                        .stderr(Stdio::from(log_stderr))
+                        .spawn()
+                    {
+                        Ok(child) => child,
+                        Err(e) => {
+                            error!("Failed to spawn shell: {}", e);
+                            exit(1);
+                        }
+                    };
+
+                    let _shell_stdin = child.stdin.take().expect("Failed to open shell's stdin");
+                    info!("Shell process spawned with PID: {}", child.id());
 
                     // Set up signal handling for graceful shutdown.
                     let mut signals = match Signals::new(&[SIGTERM]) {
@@ -148,13 +188,42 @@ fn main() {
                         }
                     };
 
-                    // The lock is held as long as `file` is in scope.
-                    // The daemon process will now wait for commands.
-                    // Block until a termination signal is received.
-                    for signal in signals.forever() {
-                        if signal == SIGTERM {
-                            info!("Received SIGTERM, shutting down.");
-                            break;
+                    info!("Entering main loop to listen on command FIFO.");
+                    'main_loop: loop {
+                        // This loop will block on File::open, making it unable to receive signals until a client connects.
+                        // This is a known issue to be addressed later.
+                        let fifo_file = match File::open(cmd_fifo_path) {
+                            Ok(file) => file,
+                            Err(e) => {
+                                error!(
+                                    "Failed to open command FIFO for reading, shutting down: {}",
+                                    e
+                                );
+                                break 'main_loop;
+                            }
+                        };
+
+                        let mut reader = BufReader::new(fifo_file);
+                        let mut buffer = String::new();
+                        match reader.read_line(&mut buffer) {
+                            Ok(0) => {
+                                // EOF, another client can connect.
+                            }
+                            Ok(_) => {
+                                info!("Received from FIFO: {}", buffer.trim());
+                                // In the future, this command will be processed.
+                            }
+                            Err(e) => {
+                                error!("Error reading from FIFO: {}", e);
+                            }
+                        }
+
+                        // Check for shutdown signal after each command or connection attempt.
+                        for signal in signals.pending() {
+                            if signal == SIGTERM {
+                                info!("Received SIGTERM, shutting down.");
+                                break 'main_loop;
+                            }
                         }
                     }
 
@@ -175,7 +244,33 @@ fn main() {
             }
         }
         Commands::Exec { session_id } => {
-            println!("'exec' command called for session_id: {}", session_id);
+            // 1. Read everything from stdin into a string.
+            let mut command = String::new();
+            if let Err(e) = std::io::stdin().read_to_string(&mut command) {
+                eprintln!("Error reading command from stdin: {}", e);
+                exit(1);
+            }
+
+            // 2. Construct the path to the target session's 'cmd.fifo'.
+            let fifo_path = Path::new(SESSION_DIR).join(session_id).join("cmd.fifo");
+
+            // 3. Open the FIFO for writing. If it doesn't exist, print a helpful error message.
+            match File::options().write(true).open(&fifo_path) {
+                Ok(mut fifo_file) => {
+                    // 4. Write the string read from stdin to the FIFO.
+                    if let Err(e) = fifo_file.write_all(command.as_bytes()) {
+                        eprintln!("Error sending command to session '{}': {}", session_id, e);
+                        exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Error connecting to session '{}': {}. Is the session running?",
+                        session_id, e
+                    );
+                    exit(1);
+                }
+            }
         }
         Commands::Exit { session_id } => {
             let lock_path = Path::new(SESSION_DIR).join(session_id).join("pid.lock");
