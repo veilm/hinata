@@ -11,10 +11,29 @@ use simplelog::{Config, WriteLogger};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
+use std::thread;
+use tempfile::NamedTempFile;
 
 const SESSION_DIR: &str = "/tmp/headlesh_sessions";
+const HEADLESH_EXIT_CMD_PAYLOAD: &str = "__HEADLESH_INTERNAL_EXIT_CMD__";
+
+struct FifoCleaner {
+    paths: Vec<PathBuf>,
+}
+
+impl Drop for FifoCleaner {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            if path.exists() {
+                if let Err(e) = fs::remove_file(path) {
+                    eprintln!("Warning: failed to remove FIFO at {:?}: {}", path, e);
+                }
+            }
+        }
+    }
+}
 
 /// A simple remote shell daemon.
 #[derive(Parser, Debug)]
@@ -176,7 +195,7 @@ fn main() {
                         }
                     };
 
-                    let _shell_stdin = child.stdin.take().expect("Failed to open shell's stdin");
+                    let mut shell_stdin = child.stdin.take().expect("Failed to open shell's stdin");
                     info!("Shell process spawned with PID: {}", child.id());
 
                     // Set up signal handling for graceful shutdown.
@@ -204,26 +223,104 @@ fn main() {
                         };
 
                         let mut reader = BufReader::new(fifo_file);
-                        let mut buffer = String::new();
-                        match reader.read_line(&mut buffer) {
+                        let mut out_fifo_path = String::new();
+                        let mut err_fifo_path = String::new();
+                        let mut status_fifo_path = String::new();
+
+                        match reader.read_line(&mut out_fifo_path) {
                             Ok(0) => {
-                                // EOF, another client can connect.
+                                info!("Client disconnected without sending a command.");
+                                continue 'main_loop;
                             }
-                            Ok(_) => {
-                                info!("Received from FIFO: {}", buffer.trim());
-                                // In the future, this command will be processed.
-                            }
+                            Ok(_) => (),
                             Err(e) => {
                                 error!("Error reading from FIFO: {}", e);
+                                break 'main_loop;
                             }
                         }
 
+                        match reader.read_line(&mut err_fifo_path) {
+                            Ok(0) => {
+                                error!("Incomplete command from client.");
+                                continue 'main_loop;
+                            }
+                            Ok(_) => (),
+                            Err(e) => {
+                                error!("Error reading from FIFO: {}", e);
+                                break 'main_loop;
+                            }
+                        }
+
+                        match reader.read_line(&mut status_fifo_path) {
+                            Ok(0) => {
+                                error!("Incomplete command from client.");
+                                continue 'main_loop;
+                            }
+                            Ok(_) => (),
+                            Err(e) => {
+                                error!("Error reading from FIFO: {}", e);
+                                break 'main_loop;
+                            }
+                        }
+
+                        let mut command_script = String::new();
+                        if let Err(e) = reader.read_to_string(&mut command_script) {
+                            error!("Error reading command script from FIFO: {}", e);
+                            break 'main_loop;
+                        }
+
+                        let out_fifo_path = out_fifo_path.trim();
+                        let err_fifo_path = err_fifo_path.trim();
+                        let status_fifo_path = status_fifo_path.trim();
+
+                        if command_script == HEADLESH_EXIT_CMD_PAYLOAD {
+                            info!("Exit command received, shutting down.");
+                            break 'main_loop;
+                        }
+
+                        info!("Received command, executing...");
+
+                        let mut temp_script_file = match NamedTempFile::new() {
+                            Ok(file) => file,
+                            Err(e) => {
+                                error!("Failed to create temp file for script: {}", e);
+                                continue 'main_loop;
+                            }
+                        };
+
+                        if let Err(e) = temp_script_file.write_all(command_script.as_bytes()) {
+                            error!("Failed to write script to temp file: {}", e);
+                            continue 'main_loop;
+                        }
+
+                        let temp_script_path = temp_script_file.path().to_string_lossy();
+                        let shell_command = format!(
+                            "{{ . {script_path}; EXIT_STATUS=$?; }} >{out_fifo} 2>{err_fifo}; echo $EXIT_STATUS >{status_fifo}; rm -f {script_path}\n",
+                            script_path = temp_script_path,
+                            out_fifo = out_fifo_path,
+                            err_fifo = err_fifo_path,
+                            status_fifo = status_fifo_path
+                        );
+
+                        if let Err(e) = shell_stdin.write_all(shell_command.as_bytes()) {
+                            error!(
+                                "Failed to write command to shell's stdin: {}. Shutting down.",
+                                e
+                            );
+                            break 'main_loop;
+                        }
+
                         // Check for shutdown signal after each command or connection attempt.
+                        let mut shutdown_signal_received = false;
                         for signal in signals.pending() {
                             if signal == SIGTERM {
                                 info!("Received SIGTERM, shutting down.");
-                                break 'main_loop;
+                                shutdown_signal_received = true;
+                                break;
                             }
+                        }
+                        if shutdown_signal_received {
+                            break 'main_loop;
                         }
                     }
 
@@ -244,21 +341,57 @@ fn main() {
             }
         }
         Commands::Exec { session_id } => {
-            // 1. Read everything from stdin into a string.
+            // Generate unique paths for client FIFOs.
+            let pid = std::process::id();
+            let out_fifo_path = Path::new("/tmp").join(format!("headlesh_out_{}", pid));
+            let err_fifo_path = Path::new("/tmp").join(format!("headlesh_err_{}", pid));
+            let status_fifo_path = Path::new("/tmp").join(format!("headlesh_status_{}", pid));
+
+            // Set up a cleaner to remove the FIFOs on exit.
+            let _cleaner = FifoCleaner {
+                paths: vec![
+                    out_fifo_path.clone(),
+                    err_fifo_path.clone(),
+                    status_fifo_path.clone(),
+                ],
+            };
+
+            // Create the client-side FIFOs.
+            let fifo_mode = stat::Mode::S_IRWXU;
+            if let Err(e) = mkfifo(&out_fifo_path, fifo_mode) {
+                eprintln!("Error creating out FIFO: {}", e);
+                exit(1);
+            }
+            if let Err(e) = mkfifo(&err_fifo_path, fifo_mode) {
+                eprintln!("Error creating err FIFO: {}", e);
+                exit(1);
+            }
+            if let Err(e) = mkfifo(&status_fifo_path, fifo_mode) {
+                eprintln!("Error creating status FIFO: {}", e);
+                exit(1);
+            }
+
+            // Read command from stdin.
             let mut command = String::new();
             if let Err(e) = std::io::stdin().read_to_string(&mut command) {
                 eprintln!("Error reading command from stdin: {}", e);
                 exit(1);
             }
 
-            // 2. Construct the path to the target session's 'cmd.fifo'.
-            let fifo_path = Path::new(SESSION_DIR).join(session_id).join("cmd.fifo");
+            // Construct the payload with FIFO paths and the command.
+            let payload = format!(
+                "{}\n{}\n{}\n{}",
+                out_fifo_path.display(),
+                err_fifo_path.display(),
+                status_fifo_path.display(),
+                command
+            );
 
-            // 3. Open the FIFO for writing. If it doesn't exist, print a helpful error message.
+            // Send the payload to the session's command FIFO.
+            let fifo_path = Path::new(SESSION_DIR).join(session_id).join("cmd.fifo");
             match File::options().write(true).open(&fifo_path) {
                 Ok(mut fifo_file) => {
-                    // 4. Write the string read from stdin to the FIFO.
-                    if let Err(e) = fifo_file.write_all(command.as_bytes()) {
+                    if let Err(e) = fifo_file.write_all(payload.as_bytes()) {
                         eprintln!("Error sending command to session '{}': {}", session_id, e);
                         exit(1);
                     }
@@ -271,44 +404,80 @@ fn main() {
                     exit(1);
                 }
             }
+
+            // Spawn threads to listen on out/err FIFOs and pipe to stdout/stderr.
+            let out_fifo_reader = match File::open(&out_fifo_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open output FIFO for reading: {}", e);
+                    exit(1);
+                }
+            };
+            let err_fifo_reader = match File::open(&err_fifo_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open error FIFO for reading: {}", e);
+                    exit(1);
+                }
+            };
+
+            let out_handle = thread::spawn(move || {
+                let mut reader = BufReader::new(out_fifo_reader);
+                if let Err(e) = std::io::copy(&mut reader, &mut std::io::stdout()) {
+                    eprintln!("Error streaming output: {}", e);
+                }
+            });
+
+            let err_handle = thread::spawn(move || {
+                let mut reader = BufReader::new(err_fifo_reader);
+                if let Err(e) = std::io::copy(&mut reader, &mut std::io::stderr()) {
+                    eprintln!("Error streaming error output: {}", e);
+                }
+            });
+
+            out_handle.join().expect("stdout thread panicked");
+            err_handle.join().expect("stderr thread panicked");
+
+            // Read the exit status from the status FIFO.
+            let mut status_str = String::new();
+            let mut status_fifo_file = match File::open(&status_fifo_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open status FIFO for reading: {}", e);
+                    exit(1);
+                }
+            };
+            if let Err(e) = status_fifo_file.read_to_string(&mut status_str) {
+                eprintln!("Failed to read exit status: {}", e);
+                exit(1);
+            }
+
+            let exit_code = status_str.trim().parse::<i32>().unwrap_or(1);
+            exit(exit_code);
         }
         Commands::Exit { session_id } => {
-            let lock_path = Path::new(SESSION_DIR).join(session_id).join("pid.lock");
+            let payload = format!(
+                "/dev/null\n/dev/null\n/dev/null\n{}",
+                HEADLESH_EXIT_CMD_PAYLOAD
+            );
 
-            let pid_str = match fs::read_to_string(&lock_path) {
-                Ok(s) => s,
-                Err(_) => {
-                    eprintln!("Error: session '{}' not found.", session_id);
-                    exit(1);
-                }
-            };
-
-            let pid_val = match pid_str.trim().parse::<i32>() {
-                Ok(p) => p,
-                Err(_) => {
-                    eprintln!(
-                        "Error: malformed PID in lock file for session '{}'.",
-                        session_id
-                    );
-                    exit(1);
-                }
-            };
-
-            let pid = Pid::from_raw(pid_val);
-
-            match kill(pid, nix::sys::signal::Signal::SIGTERM) {
-                Ok(_) => {
+            let fifo_path = Path::new(SESSION_DIR).join(session_id).join("cmd.fifo");
+            match File::options().write(true).open(&fifo_path) {
+                Ok(mut fifo_file) => {
+                    if let Err(e) = fifo_file.write_all(payload.as_bytes()) {
+                        eprintln!(
+                            "Error sending exit command to session '{}': {}",
+                            session_id, e
+                        );
+                        exit(1);
+                    }
                     println!("Session '{}' terminated.", session_id);
                 }
-                Err(Errno::ESRCH) => {
-                    eprintln!(
-                        "Error: session '{}' not found (stale lock file).",
-                        session_id
-                    );
-                    exit(1);
-                }
                 Err(e) => {
-                    eprintln!("Error terminating session '{}': {}", session_id, e);
+                    eprintln!(
+                        "Error connecting to session '{}': {}. Is the session running?",
+                        session_id, e
+                    );
                     exit(1);
                 }
             }
@@ -345,43 +514,151 @@ fn main() {
 
                 let session_id = entry.file_name();
                 let session_id_str = session_id.to_string_lossy();
-                let pid_path = entry.path().join("pid.lock");
+                let session_path = entry.path();
+                let lock_path = session_path.join("pid.lock");
 
-                let pid_str = match fs::read_to_string(&pid_path) {
-                    Ok(s) => s,
+                // Open lock file for writing. This will not truncate the file.
+                let lock_file = match File::options().write(true).open(&lock_path) {
+                    Ok(f) => f,
                     Err(_) => {
-                        eprintln!(
-                            "Warning: unreadable 'pid.lock' for session '{}'. Skipping.",
-                            session_id_str
-                        );
+                        // If we can't open the lock file (e.g., doesn't exist, permissions),
+                        // we can't determine session status. Treat as stale/invalid and skip.
                         continue;
                     }
                 };
 
-                let pid_val = match pid_str.trim().parse::<i32>() {
-                    Ok(p) => p,
-                    Err(_) => {
-                        eprintln!(
-                            "Warning: malformed PID in 'pid.lock' for session '{}'. Skipping.",
-                            session_id_str
-                        );
-                        continue;
-                    }
-                };
-
-                let pid = Pid::from_raw(pid_val);
-                match kill(pid, None) {
+                match lock_file.try_lock_exclusive() {
                     Ok(_) => {
-                        println!("Session: {}, PID: {}", session_id_str, pid);
-                    }
-                    Err(Errno::ESRCH) => {
-                        // Stale session, process is dead. Do nothing.
+                        // Lock acquired, so the session is stale.
+                        drop(lock_file); // Explicitly release lock before cleanup.
+
+                        if session_id_str.starts_with("test-") {
+                            println!("Cleaning up stale test session '{}'", session_id_str);
+                            if let Err(e) = fs::remove_dir_all(&session_path) {
+                                eprintln!(
+                                    "Warning: failed to remove stale session directory {}: {}",
+                                    session_path.display(),
+                                    e
+                                );
+                            }
+                            if let Some(data_dir) = dirs::data_dir() {
+                                let log_dir = data_dir.join("hinata/headlesh").join(session_id);
+                                if log_dir.exists() {
+                                    if let Err(e) = fs::remove_dir_all(&log_dir) {
+                                        eprintln!(
+                                            "Warning: failed to remove stale session log directory {}: {}",
+                                            log_dir.display(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "Error checking status of session '{}': {}",
-                            session_id_str, e
-                        );
+                        if e.raw_os_error() == Some(11) {
+                            // EWOULDBLOCK
+                            // Failed to acquire lock, session MIGHT be active.
+                            // Read PID and verify process exists.
+                            let pid_str = match fs::read_to_string(&lock_path) {
+                                Ok(s) => s,
+                                Err(_) => {
+                                    // This could happen in a race condition where the session terminates
+                                    // after we fail to lock but before we read.
+                                    eprintln!(
+                                        "Warning: session '{}' seems active but could not read pid.lock.",
+                                        session_id_str
+                                    );
+                                    continue;
+                                }
+                            };
+
+                            let pid_val = match pid_str.trim().parse::<i32>() {
+                                Ok(p) => p,
+                                Err(_) => {
+                                    eprintln!(
+                                        "Warning: malformed PID in 'pid.lock' for session '{}'.",
+                                        session_id_str
+                                    );
+                                    continue;
+                                }
+                            };
+                            let pid = Pid::from_raw(pid_val);
+
+                            match kill(pid, None) {
+                                Ok(_) => {
+                                    // Process exists, session is active.
+                                    println!("Session: {}, PID: {}", session_id_str, pid);
+                                }
+                                Err(Errno::ESRCH) => {
+                                    // Process doesn't exist, session is stale.
+                                    drop(lock_file); // Explicitly release lock before cleanup.
+
+                                    if session_id_str.starts_with("test-") {
+                                        println!(
+                                            "Cleaning up stale test session '{}'",
+                                            session_id_str
+                                        );
+                                        if let Err(e) = fs::remove_dir_all(&session_path) {
+                                            eprintln!(
+                                                "Warning: failed to remove stale session directory {}: {}",
+                                                session_path.display(),
+                                                e
+                                            );
+                                        }
+                                        if let Some(data_dir) = dirs::data_dir() {
+                                            let log_dir =
+                                                data_dir.join("hinata/headlesh").join(session_id);
+                                            if log_dir.exists() {
+                                                if let Err(e) = fs::remove_dir_all(&log_dir) {
+                                                    eprintln!(
+                                                        "Warning: failed to remove stale session log directory {}: {}",
+                                                        log_dir.display(),
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(kill_error) => {
+                                    // Another error from kill, assume active to be safe.
+                                    eprintln!("Warning: could not verify process status for session '{}', assuming active: {}", session_id_str, kill_error);
+                                    println!("Session: {}, PID: {}", session_id_str, pid);
+                                }
+                            }
+                        } else {
+                            // Any other error means we can't determine lock status,
+                            // but we should assume it's stale and try to clean up.
+                            eprintln!(
+                                "Warning: An error occurred while trying to lock pid.lock for session '{}', assuming stale: {}",
+                                session_id_str, e
+                            );
+                            drop(lock_file); // Explicitly release lock before cleanup.
+
+                            if session_id_str.starts_with("test-") {
+                                println!("Cleaning up stale test session '{}'", session_id_str);
+                                if let Err(e) = fs::remove_dir_all(&session_path) {
+                                    eprintln!(
+                                        "Warning: failed to remove stale session directory {}: {}",
+                                        session_path.display(),
+                                        e
+                                    );
+                                }
+                                if let Some(data_dir) = dirs::data_dir() {
+                                    let log_dir = data_dir.join("hinata/headlesh").join(session_id);
+                                    if log_dir.exists() {
+                                        if let Err(e) = fs::remove_dir_all(&log_dir) {
+                                            eprintln!(
+                                                "Warning: failed to remove stale session log directory {}: {}",
+                                                log_dir.display(),
+                                                e
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
