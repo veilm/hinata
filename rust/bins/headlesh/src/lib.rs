@@ -11,6 +11,7 @@ use simplelog::{Config, LevelFilter, WriteLogger};
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
+use std::mem;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -184,16 +185,8 @@ fn run_daemon(
     shell: Option<String>,
     initial_cwd: PathBuf,
 ) -> Result<(), Error> {
-    use std::fs::OpenOptions;
-    use std::io::{Read, Write};
-    use std::thread;
-
-    let mut f = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/headlesh_debug.log")
-        .unwrap();
-    writeln!(f, "Daemon started for session: {}", session_id).unwrap();
+    use std::io::Read;
+    use std::process::Stdio;
     if let Some(data_dir) = dirs::data_dir() {
         let log_dir = data_dir.join("hinata").join("headlesh").join(&session_id);
         fs::create_dir_all(&log_dir)?;
@@ -230,6 +223,12 @@ fn run_daemon(
     }
     mkfifo(&fifo_path, stat::Mode::S_IRWXU)?;
 
+    let shell_to_use = shell.unwrap_or_else(|| "sh".to_string());
+    let mut child = std::process::Command::new(&shell_to_use)
+        .stdin(Stdio::piped())
+        .spawn()?;
+    let mut shell_stdin = child.stdin.take().unwrap();
+
     loop {
         // This is a blocking read on a named pipe. It will wait until a writer connects.
         let mut cmd_fifo_file = File::open(&fifo_path)?;
@@ -250,54 +249,44 @@ fn run_daemon(
             break;
         }
 
-        let shell_to_use = shell.clone().unwrap_or_else(|| "sh".to_string());
+        let res: Result<(), std::io::Error> = (|| {
+            let mut tmp_script = NamedTempFile::new()?;
+            tmp_script.write_all(command.as_bytes())?;
 
-        thread::spawn(move || {
-            let res: Result<(), std::io::Error> = (|| {
-                let mut tmp_script = NamedTempFile::new()?;
-                tmp_script.write_all(command.as_bytes())?;
+            let script_path = tmp_script.path();
+            let shell_cmd = format!(
+                // Execute the script, redirecting stdout/stderr. Then, capture its
+                // exit code, write it to the status FIFO, and finally remove the script.
+                "{{ . \"{}\"; }} > \"{}\" 2> \"{}\"; ec=$?; echo $ec > \"{}\"; rm -f \"{}\"\n",
+                script_path.display(),
+                out_fifo_path.display(),
+                err_fifo_path.display(),
+                status_fifo_path.display(),
+                script_path.display()
+            );
 
-                let shell_cmd = format!(
-                    // Execute the script, redirecting stdout/stderr. Then, capture its
-                    // exit code and write it to the status FIFO.
-                    "{{ . \"{}\"; }} > \"{}\" 2> \"{}\"; ec=$?; echo $ec > \"{}\"",
-                    tmp_script.path().display(),
-                    out_fifo_path.display(),
-                    err_fifo_path.display(),
-                    status_fifo_path.display()
-                );
+            shell_stdin.write_all(shell_cmd.as_bytes())?;
+            shell_stdin.flush()?;
 
-                let mut child = std::process::Command::new(shell_to_use)
-                    .arg("-c")
-                    .arg(shell_cmd)
-                    .spawn()?;
+            // Persist the temp file by consuming the `NamedTempFile` object without
+            // deleting the file. The shell command is now responsible for cleanup.
+            let temp_path_guard = tmp_script.into_temp_path();
+            mem::forget(temp_path_guard);
+            Ok(())
+        })();
 
-                let status = child.wait()?;
-                if !status.success() {
+        if let Err(e) = res {
+            eprintln!("[headlesh daemon] Error executing command: {}", e);
+            // Attempt to write an error code to the status fifo to unblock the client.
+            if let Ok(mut status_fifo) = File::options().write(true).open(&status_fifo_path) {
+                if let Err(write_err) = status_fifo.write_all(b"127") {
                     eprintln!(
-                        "[headlesh daemon] Shell command execution failed with status: {}",
-                        status
+                        "[headlesh daemon] Failed to write error code to status fifo: {}",
+                        write_err
                     );
                 }
-
-                // The temp file is automatically removed when `tmp_script` is dropped.
-                Ok(())
-            })();
-
-            if let Err(e) = res {
-                eprintln!("[headlesh daemon] Error executing command: {}", e);
-                // Attempt to write an error code to the status fifo to unblock the client.
-                if let Ok(mut status_fifo) = OpenOptions::new().write(true).open(&status_fifo_path)
-                {
-                    if let Err(write_err) = status_fifo.write_all(b"127") {
-                        eprintln!(
-                            "[headlesh daemon] Failed to write error code to status fifo: {}",
-                            write_err
-                        );
-                    }
-                }
             }
-        });
+        }
     }
 
     let _ = fs::remove_file(&fifo_path);
