@@ -3,6 +3,14 @@ name = "headlesh"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "headlesh"
+path = "src/lib.rs"
+
+[[bin]]
+name = "headlesh"
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
@@ -19,3 +27,5 @@ dirs = "5.0.1"
 log = "0.4"
 signal-hook = "0.3"
 tempfile = "3"
+thiserror = "1.0"
+async-trait = "0.1.79"
