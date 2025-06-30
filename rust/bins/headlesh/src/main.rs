@@ -10,7 +10,6 @@ use signal_hook::{consts::SIGTERM, iterator::Signals};
 use simplelog::{Config, WriteLogger};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 use std::thread;
@@ -102,6 +101,14 @@ fn main() {
                 exit(1);
             }
 
+            let initial_cwd = match std::env::current_dir() {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!("Error: could not get current working directory: {}", e);
+                    exit(1);
+                }
+            };
+
             // 5. Using the 'daemonize' crate to fork the process into the background.
             let daemonize = Daemonize::new().working_directory(&session_path);
 
@@ -125,11 +132,19 @@ fn main() {
                         exit(1);
                     };
 
+                    if let Err(e) = std::env::set_current_dir(&initial_cwd) {
+                        error!(
+                            "Failed to change working directory to {:?}: {}",
+                            initial_cwd, e
+                        );
+                        exit(1);
+                    }
+
                     info!("Daemon for session '{}' started.", session_id);
                     let _ = shell; // This will be used when spawning the shell
 
                     // 3. Creating and locking a 'pid.lock' file within the session directory. Exit if the lock is already held.
-                    let lock_path = Path::new("pid.lock"); // we are in session_path
+                    let lock_path = session_path.join("pid.lock");
                     let mut file = match File::create(&lock_path) {
                         Ok(file) => file,
                         Err(e) => {
@@ -155,8 +170,8 @@ fn main() {
                     }
                     info!("PID {} written to lock file.", pid);
 
-                    let cmd_fifo_path = Path::new("cmd.fifo");
-                    match mkfifo(cmd_fifo_path, stat::Mode::S_IRWXU) {
+                    let cmd_fifo_path = session_path.join("cmd.fifo");
+                    match mkfifo(&cmd_fifo_path, stat::Mode::S_IRWXU) {
                         Ok(_) => info!("Command FIFO created."),
                         Err(e) => {
                             error!("Failed to create command FIFO: {}", e);
@@ -167,25 +182,10 @@ fn main() {
                     let shell_to_spawn = shell.as_deref().unwrap_or("bash");
                     info!("Spawning shell: {}", shell_to_spawn);
 
-                    let log_stdout = match File::options().append(true).open(&log_file_path) {
-                        Ok(f) => f,
-                        Err(e) => {
-                            error!("Could not reopen log file for shell stdout: {}", e);
-                            exit(1);
-                        }
-                    };
-                    let log_stderr = match log_stdout.try_clone() {
-                        Ok(f) => f,
-                        Err(e) => {
-                            error!("Could not clone file handle for shell stderr: {}", e);
-                            exit(1);
-                        }
-                    };
-
                     let mut child = match Command::new(shell_to_spawn)
                         .stdin(Stdio::piped())
-                        .stdout(Stdio::from(log_stdout))
-                        .stderr(Stdio::from(log_stderr))
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
                         .spawn()
                     {
                         Ok(child) => child,
@@ -211,7 +211,7 @@ fn main() {
                     'main_loop: loop {
                         // This loop will block on File::open, making it unable to receive signals until a client connects.
                         // This is a known issue to be addressed later.
-                        let fifo_file = match File::open(cmd_fifo_path) {
+                        let fifo_file = match File::open(&cmd_fifo_path) {
                             Ok(file) => file,
                             Err(e) => {
                                 error!(
@@ -293,7 +293,12 @@ fn main() {
                             continue 'main_loop;
                         }
 
-                        let temp_script_path = temp_script_file.path().to_string_lossy();
+                        let temp_script_path =
+                            temp_script_file.path().to_string_lossy().to_string();
+                        if let Err(e) = temp_script_file.keep() {
+                            error!("Failed to persist temp script file: {}", e);
+                            continue 'main_loop;
+                        }
                         let shell_command = format!(
                             "{{ . {script_path}; EXIT_STATUS=$?; }} >{out_fifo} 2>{err_fifo}; echo $EXIT_STATUS >{status_fifo}; rm -f {script_path}\n",
                             script_path = temp_script_path,
