@@ -10,3 +10,8 @@ Package name fixed. Now, I'm updating 'main.rs' to make 'session_id' a required 
 CLI arguments are fixed. Now, I'll add the 'headlesh' crate to the workspace and compile to verify the setup.
 Adding 'bins/headlesh' to the workspace members in the root Cargo.toml.
 Added 'headlesh' to the workspace. Compiling the project now to check for errors and to cache the new dependencies.
+Starting implementation of the 'list' subcommand. I will add logic to read session directories, parse PID files, and check for active processes. This will establish the foundation for session management.
+hnt-edit failed due to an incorrect path. I was in the 'rust' directory but provided a path from the project root. I will now re-run the command with the correct relative path.
+Testing the newly implemented 'list' command. I expect it to run without error and produce no output, as there are no active sessions yet.
+Compilation failed because of missing 'nix' features. I'm adding the 'signal' and 'process' features to the 'headlesh' crate's Cargo.toml to resolve this.
+Enabled necessary 'nix' features. Retrying the compile and run of the 'list' command.
