@@ -7,5 +7,6 @@ members = [
     "bins/hnt-llm",
     "bins/hnt-web",
     "bins/hnt-tui",
+    "bins/headlesh",
     "crates/hinata-core",
 ]
