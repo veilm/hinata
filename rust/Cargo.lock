@@ -615,6 +615,7 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
+ "signal-hook",
  "simplelog",
  "tokio",
  "tracing",

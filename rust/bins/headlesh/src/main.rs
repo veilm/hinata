@@ -6,6 +6,7 @@ use log::{error, info, LevelFilter};
 use nix::errno::Errno;
 use nix::sys::signal::kill;
 use nix::unistd::Pid;
+use signal_hook::{consts::SIGTERM, iterator::Signals};
 use simplelog::{Config, WriteLogger};
 use std::fs::{self, File};
 use std::io::Write;
@@ -138,11 +139,33 @@ fn main() {
                     // TODO: Create FIFOs for stdin, stdout, and stderr.
                     // TODO: Spawn the shell process and connect it to the FIFOs.
 
-                    // The lock is held as long as `lockfile` is in scope.
+                    // Set up signal handling for graceful shutdown.
+                    let mut signals = match Signals::new(&[SIGTERM]) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("Failed to register signal handler: {}", e);
+                            exit(1);
+                        }
+                    };
+
+                    // The lock is held as long as `file` is in scope.
                     // The daemon process will now wait for commands.
-                    // For now, just loop forever to keep the daemon alive.
-                    loop {
-                        std::thread::sleep(std::time::Duration::from_secs(3600));
+                    // Block until a termination signal is received.
+                    for signal in signals.forever() {
+                        if signal == SIGTERM {
+                            info!("Received SIGTERM, shutting down.");
+                            break;
+                        }
+                    }
+
+                    drop(file);
+                    info!("Cleaning up session directory.");
+                    if let Err(e) = fs::remove_dir_all(&session_path) {
+                        error!(
+                            "Failed to remove session directory {}: {}",
+                            session_path.display(),
+                            e
+                        );
                     }
                 }
                 Err(e) => {
@@ -155,7 +178,45 @@ fn main() {
             println!("'exec' command called for session_id: {}", session_id);
         }
         Commands::Exit { session_id } => {
-            println!("'exit' command called for session_id: {}", session_id);
+            let lock_path = Path::new(SESSION_DIR).join(session_id).join("pid.lock");
+
+            let pid_str = match fs::read_to_string(&lock_path) {
+                Ok(s) => s,
+                Err(_) => {
+                    eprintln!("Error: session '{}' not found.", session_id);
+                    exit(1);
+                }
+            };
+
+            let pid_val = match pid_str.trim().parse::<i32>() {
+                Ok(p) => p,
+                Err(_) => {
+                    eprintln!(
+                        "Error: malformed PID in lock file for session '{}'.",
+                        session_id
+                    );
+                    exit(1);
+                }
+            };
+
+            let pid = Pid::from_raw(pid_val);
+
+            match kill(pid, nix::sys::signal::Signal::SIGTERM) {
+                Ok(_) => {
+                    println!("Session '{}' terminated.", session_id);
+                }
+                Err(Errno::ESRCH) => {
+                    eprintln!(
+                        "Error: session '{}' not found (stale lock file).",
+                        session_id
+                    );
+                    exit(1);
+                }
+                Err(e) => {
+                    eprintln!("Error terminating session '{}': {}", session_id, e);
+                    exit(1);
+                }
+            }
         }
         Commands::List => {
             let session_dir = Path::new(SESSION_DIR);

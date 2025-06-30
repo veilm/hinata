@@ -25,3 +25,13 @@ Code corrected. I'm now compiling and running the 'create' command, expecting it
 Switching from 'fslock' to 'fs2' for file locking to allow writing to the locked PID file. I will update Cargo.toml and main.rs to implement this change.
 Replaced 'fslock' with 'fs2'. Now compiling and testing the 'create' command again.
 Session 'test-session' is up and running. Now, I'm checking the logs to verify everything's working as expected.
+Log file confirmed. Implementing 'exit' command now to stop test sessions. I'll read the PID from the lock file and send a SIGTERM signal.
+Testing the newly implemented 'exit' command on 'test-session'. I will use 'list' to verify termination and confirm the session directory is gone.
+The 'exit' command works, but it's not cleaning up the session directory. I'll add a SIGTERM handler to the daemon to remove the directory and pid.lock file upon exit, using the 'signal-hook' crate. First step is to add the new dependency to Cargo.toml.
+With 'signal-hook' added, I'm implementing signal handling for the 'create' command. I'll import from `signal_hook`, register a SIGTERM handler to log shutdown and remove the session directory, and then modify the daemon's loop to use an atomic boolean flag controlled by the signal handler for a clean exit.
+Testing the full create-exit-cleanup lifecycle. I'll create 'test-cleanup', confirm it's running, exit it, and then verify its session directory is gone.
+The test-cleanup directory wasn't removed because my signal handler was blocked. I'll switch the main loop to use signals.forever() to fix this.
+Signal handling logic is cleaner. Retesting to confirm cleanup works.
+The test-cleanup directory wasn't deleted. The daemon might be taking too long to shut down, so I'm checking the logs to debug.
+Signal received, cleanup started, but directory deletion failed. Suspecting a lingering file lock on pid.lock, I'll explicitly drop the File object before attempting to remove the directory, ensuring the lock is released.
+Lock's now explicitly released. Retrying the test, confident the directory will be removed.
