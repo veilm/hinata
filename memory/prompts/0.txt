@@ -1,0 +1,7 @@
+at the start of each turn, please save a current, minimal snapshot of your mind
+and local intentions to a memory log, using `memory save`
+<example>
+memory save "Test failed due to incorrect argument '--path'. Checking help output for correct usage."
+</example>
+
+this will be a reference of your exploration and attempts

@@ -1,0 +1,4 @@
+#!/bin/sh
+
+shift
+echo "$@" >> /home/oboro/src/hinata/memory/MEMORY.md
