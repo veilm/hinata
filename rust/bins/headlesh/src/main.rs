@@ -1,9 +1,16 @@
 use clap::{Parser, Subcommand};
+use daemonize::Daemonize;
+use dirs;
+use fs2::FileExt;
+use log::{error, info, LevelFilter};
 use nix::errno::Errno;
 use nix::sys::signal::kill;
 use nix::unistd::Pid;
-use std::fs;
+use simplelog::{Config, WriteLogger};
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::Path;
+use std::process::exit;
 
 const SESSION_DIR: &str = "/tmp/headlesh_sessions";
 
@@ -43,16 +50,107 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Create { session_id, shell } => match shell {
-            Some(s) => println!(
-                "'create' command called for session_id: {} with shell: {}",
-                session_id, s
-            ),
-            None => println!(
-                "'create' command called for session_id: {} with default shell",
-                session_id
-            ),
-        },
+        Commands::Create { session_id, shell } => {
+            // 1. Validating the session_id to prevent path traversal.
+            if session_id.contains('/') || session_id.contains("..") {
+                eprintln!("Error: session_id cannot contain '/' or '..'");
+                exit(1);
+            }
+
+            // 2. Creating the session directory under '/tmp/headlesh_sessions/'.
+            let session_path = Path::new(SESSION_DIR).join(session_id);
+            if let Err(e) = fs::create_dir_all(&session_path) {
+                eprintln!(
+                    "Error creating session directory {}: {}",
+                    session_path.display(),
+                    e
+                );
+                exit(1);
+            }
+
+            // Prepare log directory path
+            let log_dir = match dirs::data_dir() {
+                Some(path) => path.join("hinata/headlesh").join(session_id),
+                None => {
+                    eprintln!("Error: could not determine data directory for logs.");
+                    exit(1);
+                }
+            };
+            if let Err(e) = fs::create_dir_all(&log_dir) {
+                eprintln!("Error creating log directory {}: {}", log_dir.display(), e);
+                exit(1);
+            }
+
+            // 5. Using the 'daemonize' crate to fork the process into the background.
+            let daemonize = Daemonize::new().working_directory(&session_path);
+
+            println!("Starting session '{}'...", session_id);
+
+            match daemonize.start() {
+                Ok(_) => {
+                    // In daemon process
+
+                    // 4. Setting up logging to a file like '~/.local/share/hinata/headlesh/<session_id>/server.log'.
+                    let log_file_path = log_dir.join("server.log");
+                    let log_file = match File::create(&log_file_path) {
+                        Ok(file) => file,
+                        Err(_) => {
+                            // Can't log, can't print, just exit.
+                            exit(1);
+                        }
+                    };
+                    if WriteLogger::init(LevelFilter::Info, Config::default(), log_file).is_err() {
+                        // same problem here
+                        exit(1);
+                    };
+
+                    info!("Daemon for session '{}' started.", session_id);
+                    let _ = shell; // This will be used when spawning the shell
+
+                    // 3. Creating and locking a 'pid.lock' file within the session directory. Exit if the lock is already held.
+                    let lock_path = Path::new("pid.lock"); // we are in session_path
+                    let mut file = match File::create(&lock_path) {
+                        Ok(file) => file,
+                        Err(e) => {
+                            error!("Failed to create lock file: {}", e);
+                            exit(1);
+                        }
+                    };
+
+                    if file.try_lock_exclusive().is_err() {
+                        error!("Session already running or cannot lock file. Exiting.");
+                        exit(1);
+                    }
+
+                    // 6. In the daemon, writing the new PID to the 'pid.lock' file.
+                    let pid = std::process::id().to_string();
+                    if let Err(e) = file.write_all(pid.as_bytes()) {
+                        error!("Failed to write PID to lock file: {}", e);
+                        exit(1);
+                    }
+                    if let Err(e) = file.flush() {
+                        error!("Failed to flush PID to lock file: {}", e);
+                        exit(1);
+                    }
+                    info!("PID {} written to lock file.", pid);
+
+                    // 7. Add a placeholder comment for where the FIFO creation and shell spawning logic will go.
+                    // TODO: Create FIFOs for stdin, stdout, and stderr.
+                    // TODO: Spawn the shell process and connect it to the FIFOs.
+
+                    // The lock is held as long as `lockfile` is in scope.
+                    // The daemon process will now wait for commands.
+                    // For now, just loop forever to keep the daemon alive.
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(3600));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: failed to start daemon: {}", e);
+                    exit(1);
+                }
+            }
+        }
         Commands::Exec { session_id } => {
             println!("'exec' command called for session_id: {}", session_id);
         }
