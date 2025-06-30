@@ -43,3 +43,15 @@ The `tokio::main` conflict should now be resolved. I'll compile `headlesh` and r
 The `headlesh` daemon is still failing due to a Tokio runtime issue in the forked process. The fix is to make the daemon's logic fully synchronous. I will use `hnt-edit` to refactor `run_daemon` to use `std` threads and blocking I/O, removing all Tokio dependencies from the forked code.
 After extensive debugging, `headlesh` daemon logic is now fully synchronous. I am confident this is the correct approach. Now running the full `headlesh` integration test.
 The `headlesh` integration test passed. The refactoring is complete. I will now remove the unused import from `headlesh/src/lib.rs`.
+With the `headlesh` crate now stable, I'm resuming the `hnt-agent` implementation. I'll use `hnt-edit` to integrate `headlesh` session creation and a `Drop` guard for cleanup into `main.rs`.
+User found a critical `headlesh` regression: shell state isn't persisting. My `run_daemon` refactor incorrectly spawns a new shell for each command. I will now refactor `run_daemon` to spawn a single, long-lived shell and pipe commands to its stdin, restoring state persistence.
+The `headlesh` stateful functionality is restored. I'll remove the debug cruft, then run the full integration test to confirm the fix.
+Debug code removed. Running final integration test to validate `headlesh` stability and correctness.
+User correctly pointed out my proposed `headlesh` fix introduces a shell injection vulnerability. The temp file approach is correct for robustness; the bug is a race condition. I will stop and analyze the original C implementation of `headlesh` to understand the correct, safe way to execute commands before attempting another fix.
+Understood the correct `headlesh` execution logic from the C implementation. The shell, not the server, must delete the temporary script. I will modify `run_daemon` in Rust to use `NamedTempFile::into_path()` and construct a one-liner command that sources the script, performs redirections, and then calls `rm -f` on the script path.
+Understood the task. The 'headlesh' library has been refactored but is unstable. My first step is to attempt compilation of the headlesh crate, as instructed, and analyze any errors. I will not test manually.
+Understood that headlesh is unstable after its refactor into a library. My immediate task is to get it to compile. Correcting the path to its source code and then proceeding with a build.
+Compilation of headlesh failed due to an incorrect method name for NamedTempFile. Using hnt-edit to change `into_path()` to the correct `into_temp_path()`.
+hnt-edit failed due to an incorrect relative path. I'm already in the 'rust' directory. Retrying the edit with the correct path 'bins/headlesh/src/lib.rs'.
+User reports race condition in headlesh where temp script is deleted before execution. My previous fix was wrong. The correct fix is to use `std::mem::forget` on the TempPath guard to prevent Rust from deleting the file, leaving cleanup to the shell.
+Applied the std::mem::forget fix for the headlesh race condition. Now recompiling and waiting for user to re-test.

@@ -1,0 +1,9 @@
+<memory_info>
+Your context is about to filtered, for organization and clarity! This will help you think clearer, with less information to attend to at once
+
+Most of the back-and-forth turns won't be visible, but all of the memory entries you saved will be included in your new context.
+
+Additionally, right now, you can make some final touches to your new memory
+1. Please provide a list of files (if any) you wish to have included in your context again
+2. Please provide a brief report on what you've been doing and what your next steps are
+</memory_info>
