@@ -670,7 +670,9 @@ name = "hnt-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
+ "headlesh",
  "hinata-core",
  "tokio",
 ]

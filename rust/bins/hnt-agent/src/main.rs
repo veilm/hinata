@@ -1,5 +1,7 @@
 use anyhow::Result;
+use chrono::Utc;
 use clap::Parser;
+use headlesh::Session;
 use hinata_core::chat;
 use tokio;
 
@@ -28,12 +30,35 @@ struct Cli {
     no_confirm: bool,
 }
 
+struct SessionGuard {
+    session: Session,
+}
+
+impl Drop for SessionGuard {
+    fn drop(&mut self) {
+        println!("Cleaning up session...");
+        // Since `drop` can't be async, we must block on a new runtime to call async functions.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            self.session.exit().await.ok();
+        });
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    // 1. Set up headless session
+    let session_id = format!("hnt-agent-{}", Utc::now().timestamp_nanos_opt().unwrap());
+    let session = Session::create(session_id.clone()).await?;
+    session.spawn(None).await?;
+    let _session_guard = SessionGuard { session };
+
     let cli = Cli::parse();
     println!("{:#?}", cli);
-
-    // 1. Set up headless session (e.g., `headlesh create`)
 
     // 2. Get system and user messages (from args, files, or $EDITOR)
 
@@ -50,7 +75,7 @@ async fn main() -> Result<()> {
     //    e. If no commands, or after execution, prompt for next steps (e.g., new instructions, quit).
     //    f. Loop until completion or user abort.
 
-    // 6. Clean up headless session on exit (`headlesh exit`)
+    // 6. Clean up headless session on exit is handled by SessionGuard.
 
     Ok(())
 }
