@@ -3,7 +3,7 @@
 f="/home/oboro/src/hinata/memory/MEMORY.md"
 
 case "$1" in
-	add)
+	add|save)
 		shift
 		echo "$@" >> "$f" ;;
 
