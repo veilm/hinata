@@ -1,4 +1,15 @@
 #!/bin/sh
 
-shift
-echo "$@" >> /home/oboro/src/hinata/memory/MEMORY.md
+f="/home/oboro/src/hinata/memory/MEMORY.md"
+
+case "$1" in
+	add)
+		shift
+		echo "$@" >> "$f" ;;
+
+	read)
+		echo "<memory>"
+		cat "$f"
+		echo "</memory>"
+		;;
+esac
