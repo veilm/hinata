@@ -1,12 +1,11 @@
 pub mod error;
 
 use crate::error::Error;
-use daemonize::Daemonize;
 use dirs;
 use fs2::FileExt;
 use log::info;
 use nix::sys::stat;
-use nix::unistd::mkfifo;
+use nix::unistd::{fork, mkfifo, setsid, ForkResult};
 use simplelog::{Config, LevelFilter, WriteLogger};
 use std::env;
 use std::fs::{self, File};
@@ -35,6 +34,13 @@ impl Drop for FifoCleaner {
         }
     }
 }
+pub struct ExecOutput {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_status: std::process::ExitStatus,
+}
+
+#[derive(Clone)]
 pub struct Session {
     pub session_id: String,
 }
@@ -135,6 +141,79 @@ impl Session {
         Ok(std::process::ExitStatus::from_raw(exit_code))
     }
 
+    /// Executes a command in the session, capturing its output.
+    pub async fn exec_captured(&self, command: &str) -> Result<ExecOutput, Error> {
+        let session_path = Path::new(SESSION_DIR).join(&self.session_id);
+        if !session_path.exists() {
+            return Err(Error::SessionNotFound);
+        }
+
+        let pid = std::process::id();
+        let out_fifo_path = Path::new("/tmp").join(format!("headlesh_out_{}", pid));
+        let err_fifo_path = Path::new("/tmp").join(format!("headlesh_err_{}", pid));
+        let status_fifo_path = Path::new("/tmp").join(format!("headlesh_status_{}", pid));
+
+        let _cleaner = FifoCleaner {
+            paths: vec![
+                out_fifo_path.clone(),
+                err_fifo_path.clone(),
+                status_fifo_path.clone(),
+            ],
+        };
+
+        mkfifo(&out_fifo_path, stat::Mode::S_IRWXU)?;
+        mkfifo(&err_fifo_path, stat::Mode::S_IRWXU)?;
+        mkfifo(&status_fifo_path, stat::Mode::S_IRWXU)?;
+
+        let payload = format!(
+            "{}\n{}\n{}\n{}",
+            out_fifo_path.display(),
+            err_fifo_path.display(),
+            status_fifo_path.display(),
+            command
+        );
+
+        let fifo_path = session_path.join("cmd.fifo");
+        match File::options().write(true).open(&fifo_path) {
+            Ok(mut fifo_file) => {
+                fifo_file.write_all(payload.as_bytes())?;
+            }
+            Err(e) => return Err(Error::Io(e)),
+        }
+
+        let out_handle = tokio::spawn(async move {
+            let mut stdout = String::new();
+            if let Ok(mut file) = tokio::fs::File::open(&out_fifo_path).await {
+                let _ = file.read_to_string(&mut stdout).await;
+            }
+            stdout
+        });
+
+        let err_handle = tokio::spawn(async move {
+            let mut stderr = String::new();
+            if let Ok(mut file) = tokio::fs::File::open(&err_fifo_path).await {
+                let _ = file.read_to_string(&mut stderr).await;
+            }
+            stderr
+        });
+
+        let stdout = out_handle.await.unwrap();
+        let stderr = err_handle.await.unwrap();
+
+        let mut status_str = String::new();
+        let mut status_fifo_file = tokio::fs::File::open(&status_fifo_path).await?;
+        status_fifo_file.read_to_string(&mut status_str).await?;
+
+        let exit_code = status_str.trim().parse::<i32>().unwrap_or(1);
+        let exit_status = std::process::ExitStatus::from_raw(exit_code);
+
+        Ok(ExecOutput {
+            stdout,
+            stderr,
+            exit_status,
+        })
+    }
+
     /// Sends a termination signal to the session.
     pub async fn exit(&self) -> Result<(), Error> {
         let payload = format!(
@@ -160,23 +239,57 @@ impl Session {
     }
 
     /// Spawns the daemon process for the session.
-    pub async fn spawn(&self, shell: Option<String>) -> Result<(), error::Error> {
+    pub fn spawn(&self, shell: Option<String>) -> Result<(), error::Error> {
         let initial_cwd = env::current_dir()?;
 
-        let session_path = Path::new(SESSION_DIR).join(&self.session_id);
+        match unsafe { fork() } {
+            Ok(ForkResult::Parent { .. }) => {
+                // The parent process returns successfully. The child continues in the background.
+                return Ok(());
+            }
+            Ok(ForkResult::Child) => {
+                // This is the first child. It will become the session leader.
+            }
+            Err(e) => {
+                return Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("First fork failed: {}", e),
+                )));
+            }
+        }
 
-        let daemonize = Daemonize::new().working_directory(session_path);
-        match daemonize.start() {
-            Ok(_) => {
-                // In child, run the daemon.
-                if let Err(e) = run_daemon(self.session_id.clone(), shell, initial_cwd) {
-                    eprintln!("[headlesh daemon] exiting with error: {}", e);
-                    std::process::exit(1);
-                }
+        // In the first child. Create a new session.
+        if let Err(e) = setsid() {
+            // We are in a detached process. We can't return an error.
+            // Log to stderr and exit.
+            eprintln!("[headlesh daemon] failed to create new session: {}", e);
+            std::process::exit(1);
+        }
+
+        // Fork a second time.
+        match unsafe { fork() } {
+            Ok(ForkResult::Parent { .. }) => {
+                // The first child exits, leaving the grandchild to be the daemon.
+                // This ensures the daemon is not a session leader and can't acquire a
+                // controlling terminal.
                 std::process::exit(0);
             }
-            Err(e) => Err(Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e))),
+            Ok(ForkResult::Child) => {
+                // This is the grandchild. It is now the daemon.
+            }
+            Err(e) => {
+                eprintln!("[headlesh daemon] Second fork failed: {}", e);
+                std::process::exit(1);
+            }
         }
+
+        // Run the daemon's main logic.
+        // If it returns, the daemon's work is done, so we exit.
+        if let Err(e) = run_daemon(self.session_id.clone(), shell, initial_cwd) {
+            eprintln!("[headlesh daemon] exiting with error: {}", e);
+            std::process::exit(1);
+        }
+        std::process::exit(0);
     }
 }
 

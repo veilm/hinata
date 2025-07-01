@@ -43,7 +43,7 @@ fn main() {
         Commands::Create { session_id, shell } => {
             let result = rt.block_on(async {
                 let session = Session::create(session_id.clone()).await?;
-                session.spawn(shell.clone()).await
+                session.spawn(shell.clone())
             });
             match result {
                 Ok(()) => {
