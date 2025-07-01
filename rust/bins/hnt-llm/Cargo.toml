@@ -12,7 +12,7 @@ anyhow = "1.0.82"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 hinata-core = { path = "../../crates/hinata-core" }
 tokio = { version = "1.37.0", features = ["full"] }
-env_logger = "0.11.3"
+simplelog = "0.12.2"
 log = "0.4.21"
 futures-util = "0.3.30"
 serde = { version = "1.0.200", features = ["derive"] }

@@ -10,3 +10,5 @@ anyhow = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 headlesh = { path = "../headlesh" }
 chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+regex = "1"
