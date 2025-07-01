@@ -5,7 +5,9 @@ use futures_util::StreamExt;
 use headlesh::Session;
 use hinata_core::chat;
 use hinata_core::llm::LlmConfig;
+use log::debug;
 use regex::Regex;
+use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use std::env;
 use std::fs;
 use std::io::Cursor;
@@ -36,6 +38,10 @@ struct Cli {
     /// Skip confirmation steps before executing commands or adding messages.
     #[arg(long)]
     no_confirm: bool,
+
+    /// Enable verbose logging.
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 struct SessionGuard {
@@ -93,24 +99,35 @@ fn get_user_instruction(message: Option<String>) -> Result<String> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    eprintln!("TRACE: Right after Cli::parse().");
+
+    if cli.verbose {
+        TermLogger::init(
+            LevelFilter::Debug,
+            Config::default(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        )
+        .context("Failed to initialize logger")?;
+    }
+
+    debug!("Right after Cli::parse().");
 
     // 1. Set up headless session
-    eprintln!("TRACE: Before creating the session ID.");
+    debug!("Before creating the session ID.");
     let session_id = format!("hnt-agent-{}", Utc::now().timestamp_nanos_opt().unwrap());
-    eprintln!("TRACE: After creating the session ID: {}", &session_id);
-    eprintln!("TRACE: Before Session::create.");
+    debug!("After creating the session ID: {}", &session_id);
+    debug!("Before Session::create.");
     let session = Session::create(session_id.clone()).await?;
-    eprintln!("TRACE: After Session::create.");
-    eprintln!("TRACE: Before session.spawn.");
+    debug!("After Session::create.");
+    debug!("Before session.spawn.");
     session.spawn(None)?;
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    eprintln!("TRACE: After session.spawn.");
+    debug!("After session.spawn.");
     let _session_guard = SessionGuard { session };
-    eprintln!("TRACE: After instantiating SessionGuard.");
+    debug!("After instantiating SessionGuard.");
 
     // 2. Get system and user messages (from args, files, or $EDITOR)
-    eprintln!("TRACE: Before getting the system prompt.");
+    debug!("Before getting the system prompt.");
     let system_prompt = if let Some(system) = cli.system {
         let path = Path::new(&system);
         if path.is_file() {
@@ -121,26 +138,26 @@ async fn main() -> Result<()> {
     } else {
         None
     };
-    eprintln!("TRACE: After getting the system prompt.");
-    eprintln!("TRACE: Before getting the user instruction.");
+    debug!("After getting the system prompt.");
+    debug!("Before getting the user instruction.");
     let user_instruction = get_user_instruction(cli.message)?;
-    eprintln!("TRACE: After getting the user instruction.");
+    debug!("After getting the user instruction.");
 
     // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
-    eprintln!("TRACE: Before creating the conversation directory.");
+    debug!("Before creating the conversation directory.");
     let conversations_dir = chat::get_conversations_dir()?;
     let conversation_dir = chat::create_new_conversation(&conversations_dir)?;
-    eprintln!("TRACE: After creating the conversation directory.");
+    debug!("After creating the conversation directory.");
 
     // 4. Add system message and start priming sequence.
     if let Some(ref prompt) = system_prompt {
-        eprintln!("TRACE: Before writing system message file.");
+        debug!("Before writing system message file.");
         chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
-        eprintln!("TRACE: After writing system message file.");
+        debug!("After writing system message file.");
     }
 
     // Priming sequence
-    eprintln!("TRACE: Starting priming sequence.");
+    debug!("Starting priming sequence.");
     let priming_user_message =
         "Could you please check the current directory and some basic OS info?";
     chat::write_message_file(&conversation_dir, chat::Role::User, priming_user_message)?;
@@ -169,12 +186,12 @@ async fn main() -> Result<()> {
         captured_output.exit_status.code().unwrap_or(1)
     );
     chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
-    eprintln!("TRACE: Priming sequence finished.");
+    debug!("Priming sequence finished.");
 
     // Add the real user instruction
-    eprintln!("TRACE: Before writing user message file.");
+    debug!("Before writing user message file.");
     chat::write_message_file(&conversation_dir, chat::Role::User, &user_instruction)?;
-    eprintln!("TRACE: After writing user message file.");
+    debug!("After writing user message file.");
 
     eprintln!(
         "Created conversation: {}",
@@ -182,7 +199,7 @@ async fn main() -> Result<()> {
     );
 
     // 5. Start the main interaction loop:
-    eprintln!("TRACE: Right before the main loop starts.");
+    debug!("Right before the main loop starts.");
     loop {
         // a. Pack conversation and generate LLM response
         let mut buffer = Cursor::new(Vec::new());
