@@ -33,7 +33,7 @@ pub async fn handle_save_key(args: &SaveKeyArgs) -> Result<()> {
     let data_dir = get_hinata_dir("data").await?;
     ensure_local_key(&data_dir).await?;
 
-    let keys_path = config_dir.join("keys");
+    let keys_path = config_dir.join("keys.rust");
 
     let api_key = rpassword::prompt_password(format!("Enter API key for '{}': ", canonical_name))
         .with_context(|| "Failed to read API key from prompt")?;
@@ -74,7 +74,7 @@ pub async fn handle_save_key(args: &SaveKeyArgs) -> Result<()> {
 /// Handles the 'list-keys' subcommand.
 pub async fn handle_list_keys(_args: &ListKeysArgs) -> Result<()> {
     let config_dir = get_hinata_dir("config").await?;
-    let keys_path = config_dir.join("keys");
+    let keys_path = config_dir.join("keys.rust");
 
     if !fs::try_exists(&keys_path).await? {
         println!("No keys saved.");
@@ -103,7 +103,7 @@ pub async fn handle_list_keys(_args: &ListKeysArgs) -> Result<()> {
 /// Handles the 'delete-key' subcommand.
 pub async fn handle_delete_key(args: &DeleteKeyArgs) -> Result<()> {
     let config_dir = get_hinata_dir("config").await?;
-    let keys_path = config_dir.join("keys");
+    let keys_path = config_dir.join("keys.rust");
 
     if !fs::try_exists(&keys_path).await? {
         println!("Key '{}' not found.", args.name);
@@ -145,7 +145,7 @@ pub async fn handle_delete_key(args: &DeleteKeyArgs) -> Result<()> {
 
 pub async fn get_api_key_from_store(key_name: &str) -> anyhow::Result<Option<String>> {
     let config_dir = get_hinata_dir("config").await?;
-    let keys_path = config_dir.join("keys");
+    let keys_path = config_dir.join("keys.rust");
 
     if !fs::try_exists(&keys_path).await? {
         return Ok(None);
@@ -191,7 +191,7 @@ async fn get_hinata_dir(dir_type: &str) -> anyhow::Result<PathBuf> {
 }
 
 async fn ensure_local_key(data_dir: &Path) -> anyhow::Result<()> {
-    let key_path = data_dir.join(".local_key");
+    let key_path = data_dir.join(".local_key.rust");
     if !fs::try_exists(&key_path).await? {
         let mut key = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut key);
@@ -204,7 +204,7 @@ async fn ensure_local_key(data_dir: &Path) -> anyhow::Result<()> {
 }
 
 async fn read_local_key(data_dir: &Path) -> anyhow::Result<Vec<u8>> {
-    let key_path = data_dir.join(".local_key");
+    let key_path = data_dir.join(".local_key.rust");
     fs::read(&key_path)
         .await
         .with_context(|| "Failed to read local key")

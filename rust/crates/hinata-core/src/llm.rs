@@ -290,18 +290,43 @@ pub fn stream_llm_response(
         let mut done = false;
 
         while let Some(item) = stream.next().await {
-            buffer.extend_from_slice(&item?);
+            log::trace!("Raw chunk: {:?}", item);
+            match item {
+                Ok(bytes) => buffer.extend_from_slice(&bytes),
+                Err(e) => {
+                    log::error!("Error receiving chunk from LLM stream: {}", e);
+                    yield Err(e.into());
+                    break;
+                }
+            }
 
             while let Some((pos, len)) = find_sse_terminator(&buffer) {
-                let message_bytes = buffer.drain(..pos + len).collect::<Vec<u8>>();
-                let message = String::from_utf8_lossy(&message_bytes);
+                let message_block_bytes = &buffer[..pos];
 
-                for line in message.lines() {
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data.trim() == "[DONE]" {
+                for line_bytes in message_block_bytes.split(|&b| b == b'\n') {
+                    // Each line might have a trailing `\r` if the line ending was `\r\n`
+                    let line_bytes = line_bytes.strip_suffix(b"\r").unwrap_or(line_bytes);
+
+                    if let Some(data_bytes) = line_bytes.strip_prefix(b"data: ") {
+                        let data_str = match std::str::from_utf8(data_bytes) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log::warn!("Failed to decode SSE data as UTF-8: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let data = data_str.trim();
+
+                        if data.is_empty() {
+                            continue;
+                        }
+
+                        if data == "[DONE]" {
                             done = true;
                             break;
                         }
+
                         match serde_json::from_str::<ApiResponseChunk>(data) {
                             Ok(api_chunk) => {
                                 if let Some(choice) = api_chunk.choices.first() {
@@ -325,6 +350,10 @@ pub fn stream_llm_response(
                         }
                     }
                 }
+
+                // Drain the processed block and its terminator.
+                buffer.drain(..pos + len);
+
                 if done {
                     break;
                 }
