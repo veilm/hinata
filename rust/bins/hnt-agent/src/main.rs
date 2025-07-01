@@ -5,6 +5,7 @@ use futures_util::StreamExt;
 use headlesh::Session;
 use hinata_core::chat;
 use hinata_core::llm::LlmConfig;
+use hnt_tui::{SelectArgs, Tty, TuiSelect};
 use log::debug;
 use regex::Regex;
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
@@ -61,11 +62,7 @@ impl Drop for SessionGuard {
     }
 }
 
-fn get_user_instruction(message: Option<String>) -> Result<String> {
-    if let Some(message) = message {
-        return Ok(message);
-    }
-
+fn get_input_from_editor(initial_text: &str) -> Result<String> {
     let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
 
     let temp_file_name = format!(
@@ -74,7 +71,7 @@ fn get_user_instruction(message: Option<String>) -> Result<String> {
     );
     let temp_file_path = env::temp_dir().join(temp_file_name);
 
-    fs::write(&temp_file_path, b"")?;
+    fs::write(&temp_file_path, initial_text)?;
 
     let status = StdCommand::new(&editor)
         .arg(&temp_file_path)
@@ -88,6 +85,16 @@ fn get_user_instruction(message: Option<String>) -> Result<String> {
     let instruction = fs::read_to_string(&temp_file_path)
         .context("Failed to read user instruction from temporary file")?;
     fs::remove_file(temp_file_path).ok(); // Ignore error on cleanup
+
+    Ok(instruction)
+}
+
+fn get_user_instruction(message: Option<String>) -> Result<String> {
+    let instruction = if let Some(message) = message {
+        message
+    } else {
+        get_input_from_editor("")?
+    };
 
     if instruction.trim().is_empty() {
         bail!("User instruction is empty. Aborting.");
@@ -242,6 +249,47 @@ async fn main() -> Result<()> {
         if let Some(captures) = re.captures_iter(&llm_response).last() {
             if let Some(command_match) = captures.get(1) {
                 let command_text = command_match.as_str().trim();
+
+                if !cli.no_confirm {
+                    eprintln!(
+                        "\nHinata has provided the following command. What would you like to do?"
+                    );
+                    let options = vec![
+                        "Yes. Proceed to execute Hinata's shell commands.".to_string(),
+                        "No, and provide new instructions instead.".to_string(),
+                        "No. Abort execution.".to_string(),
+                    ];
+
+                    let args = SelectArgs {
+                        height: 10,
+                        color: Some(4),
+                    };
+                    let tty = Tty::new()?;
+                    let mut select = TuiSelect::new(options, &args, tty)?;
+                    let selection = select.run()?;
+
+                    match selection.as_deref() {
+                        Some("Yes. Proceed to execute Hinata's shell commands.") => {
+                            // User said yes, proceed.
+                        }
+                        Some("No, and provide new instructions instead.") => {
+                            // New instructions
+                            let new_instructions = get_input_from_editor("")?;
+                            chat::write_message_file(
+                                &conversation_dir,
+                                chat::Role::User,
+                                &new_instructions,
+                            )?;
+                            continue;
+                        }
+                        _ => {
+                            // Some("No. Abort execution.") or None
+                            eprintln!("Aborting execution.");
+                            break;
+                        }
+                    }
+                }
+
                 eprintln!("\n> Executing command:\n---\n{}\n---", command_text);
 
                 let captured_output = _session_guard.session.exec_captured(command_text).await?;
