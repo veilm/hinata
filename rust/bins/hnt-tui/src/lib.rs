@@ -1,6 +1,6 @@
 use clap::Args;
 use crossterm::{
-    cursor, execute, queue,
+    cursor, execute,
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
     },
