@@ -11,5 +11,7 @@ case "$1" in
 		echo "<memory>"
 		cat "$f"
 		echo "</memory>"
+
+		echo "Memory read on $(date +%s)." >> "$f"
 		;;
 esac
