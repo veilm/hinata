@@ -305,8 +305,36 @@ async fn main() -> Result<()> {
                 chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
             }
         } else {
-            eprintln!("LLM provided no action. Exiting.");
-            break;
+            eprintln!("LLM provided no <hnt-shell> command. What would you like to do?");
+            let options = vec![
+                "Provide new instructions for the LLM.".to_string(),
+                "Quit. Terminate the agent.".to_string(),
+            ];
+
+            let args = SelectArgs {
+                height: 10,
+                color: Some(4),
+            };
+            let tty = Tty::new()?;
+            let mut select = TuiSelect::new(options, &args, tty)?;
+            let selection = select.run()?;
+
+            match selection.as_deref() {
+                Some("Provide new instructions for the LLM.") => {
+                    let new_instructions = get_input_from_editor("")?;
+                    chat::write_message_file(
+                        &conversation_dir,
+                        chat::Role::User,
+                        &new_instructions,
+                    )?;
+                    continue;
+                }
+                _ => {
+                    // Some("Quit. Terminate the agent.") or None
+                    eprintln!("Aborting");
+                    break;
+                }
+            }
         }
     }
 

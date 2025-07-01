@@ -37,3 +37,5 @@ Fixing compilation error in hnt-agent caused by incorrect usage of the hnt-tui A
 Fixing a compiler error in hnt-agent where a temporary Tty value is moved. I will bind Tty to a variable before passing it to TuiSelect.
 Compiling the workspace to verify the latest fix to the TUI implementation.
 Confirmation prompt implemented. Updating TODO list to reflect completion of this feature.
+Implementing the 'No Action' flow. I'll modify the agent to use hnt-tui to prompt the user for new instructions or to quit when the LLM provides no shell command.
+Compiling workspace to verify the new 'No Action' flow implementation before updating the TODO list.
