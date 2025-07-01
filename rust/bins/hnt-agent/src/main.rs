@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use clap::Parser;
+use dirs;
 use futures_util::StreamExt;
 use headlesh::Session;
 use hinata_core::chat;
@@ -143,7 +144,11 @@ async fn main() -> Result<()> {
             Some(system)
         }
     } else {
-        None
+        // Try to load from default config path
+        dirs::config_dir().and_then(|config_dir| {
+            let prompt_path = config_dir.join("hinata/prompts/main-shell_agent.md");
+            fs::read_to_string(prompt_path).ok()
+        })
     };
     debug!("After getting the system prompt.");
     debug!("Before getting the user instruction.");
@@ -161,6 +166,18 @@ async fn main() -> Result<()> {
         debug!("Before writing system message file.");
         chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
         debug!("After writing system message file.");
+    }
+
+    // Inject context from HINATA.md if it exists
+    if let Some(config_dir) = dirs::config_dir() {
+        let hinata_md_path = config_dir.join("hinata/agent/HINATA.md");
+        if let Ok(content) = fs::read_to_string(hinata_md_path) {
+            if !content.trim().is_empty() {
+                let message = format!("<info>\n{}\n</info>", content);
+                chat::write_message_file(&conversation_dir, chat::Role::User, &message)?;
+                debug!("Injected HINATA.md context.");
+            }
+        }
     }
 
     // Priming sequence

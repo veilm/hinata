@@ -649,6 +649,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "dirs",
  "futures-util",
  "headlesh",
  "hinata-core",

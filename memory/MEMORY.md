@@ -39,3 +39,12 @@ Compiling the workspace to verify the latest fix to the TUI implementation.
 Confirmation prompt implemented. Updating TODO list to reflect completion of this feature.
 Implementing the 'No Action' flow. I'll modify the agent to use hnt-tui to prompt the user for new instructions or to quit when the LLM provides no shell command.
 Compiling workspace to verify the new 'No Action' flow implementation before updating the TODO list.
+Updating TODO list to mark the 'No Action' flow as complete.
+Starting implementation of HINATA.md context injection. First, adding the 'dirs' crate dependency to find the user's config directory.
+User reminded me about default system prompt injection. Updating TODO to include both default prompt loading and HINATA.md injection before implementation.
+Implementing context injection: adding logic to load the default system prompt and inject HINATA.md content into the conversation.
+Compiling workspace to verify context injection implementation before updating TODO list.
+Updating TODO list to mark context injection feature as complete.
+User found a bug: HINATA.md context is injected before the system message. Re-opening the TODO task to fix the message ordering.
+Fixing message ordering bug: Moving HINATA.md injection to occur after the system message is written.
+Compiling workspace to verify the message ordering bug fix before updating the TODO list.
