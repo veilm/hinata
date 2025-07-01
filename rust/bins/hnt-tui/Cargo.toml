@@ -16,3 +16,11 @@ version = "0.9.0"
 [dependencies.tokio]
 version = "1"
 features = ["full"]
+
+[lib]
+name = "hnt_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hnt-tui"
+path = "src/main.rs"

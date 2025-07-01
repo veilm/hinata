@@ -652,7 +652,9 @@ dependencies = [
  "futures-util",
  "headlesh",
  "hinata-core",
+ "log",
  "regex",
+ "simplelog",
  "tokio",
 ]
 

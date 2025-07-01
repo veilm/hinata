@@ -12,3 +12,6 @@ headlesh = { path = "../headlesh" }
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
 regex = "1"
+log = "0.4.27"
+simplelog = "0.12.2"
+hnt-tui = { path = "../hnt-tui" }

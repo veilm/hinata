@@ -40,3 +40,14 @@
 	even if headlesh has to get reset, no big deal
 - maybe always include a <pwd>
 	in each user turn, just for good reference
+	
+	idk right now it's fairly often it forgets
+	but maybe we should just be more explicit on cds
+	
+	like by default no pwd mention, except for the start
+	but if we ever detect that pwd changes, then we do
+	<pwd>
+	<before>foo</before>
+	<after>bar</before>
+	</pwd>
+	or something
