@@ -1,6 +1,10 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use clap::Parser;
+use crossterm::{
+    execute,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+};
 use dirs;
 use futures_util::StreamExt;
 use headlesh::Session;
@@ -12,6 +16,7 @@ use regex::Regex;
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use std::env;
 use std::fs;
+use std::io::stdout;
 use std::io::Cursor;
 use std::path::Path;
 use std::process::Command as StdCommand;
@@ -61,6 +66,19 @@ impl Drop for SessionGuard {
             }
         });
     }
+}
+
+fn print_styled_block(title: &str, content: &str, color: Color) -> Result<()> {
+    execute!(
+        stdout(),
+        SetForegroundColor(color),
+        Print(format!("--- [ {} ] ---\n", title)),
+        Print(content),
+        Print("\n---\n"),
+        ResetColor
+    )
+    .context("Failed to write styled output to stdout")?;
+    Ok(())
 }
 
 fn get_input_from_editor(initial_text: &str) -> Result<String> {
@@ -194,10 +212,8 @@ async fn main() -> Result<()> {
         &priming_assistant_response,
     )?;
 
-    eprintln!(
-        "\n> Executing priming command:\n---\n{}\n---",
-        priming_command
-    );
+    println!();
+    print_styled_block("Executing Priming Command", priming_command, Color::Cyan)?;
     let captured_output = _session_guard
         .session
         .exec_captured(priming_command)
@@ -259,7 +275,7 @@ async fn main() -> Result<()> {
         // Add assistants response to the conversation
         chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
 
-        println!("{}", llm_response);
+        print_styled_block("LLM Response", &llm_response, Color::Green)?;
 
         // Parse LLM response for the last <hnt-shell> command and execute it.
         let re = Regex::new(r"(?s)<hnt-shell>(.*?)</hnt-shell>")?;
@@ -307,7 +323,8 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                eprintln!("\n> Executing command:\n---\n{}\n---", command_text);
+                println!();
+                print_styled_block("Executing Command", command_text, Color::Cyan)?;
 
                 let captured_output = _session_guard.session.exec_captured(command_text).await?;
 

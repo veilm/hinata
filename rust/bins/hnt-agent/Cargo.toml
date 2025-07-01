@@ -16,3 +16,4 @@ log = "0.4.27"
 simplelog = "0.12.2"
 hnt-tui = { path = "../hnt-tui" }
 dirs = "5.0"
+crossterm = "0.27.0"
