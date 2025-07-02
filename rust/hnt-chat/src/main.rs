@@ -64,6 +64,10 @@ enum Commands {
         #[arg(long, action = ArgAction::SetTrue)]
         output_filename: bool,
 
+        /// Include reasoning in the output, wrapped in <think> tags.
+        #[arg(long, action = ArgAction::SetTrue)]
+        include_reasoning: bool,
+
         /// Implies --write and --include-reasoning. Saves leading <think> block to a separate file.
         #[arg(long, action = ArgAction::SetTrue)]
         separate_reasoning: bool,
@@ -98,6 +102,7 @@ async fn main() -> Result<()> {
             merge,
             write,
             output_filename,
+            include_reasoning,
             separate_reasoning,
         } => {
             handle_gen_command(
@@ -106,6 +111,7 @@ async fn main() -> Result<()> {
                 merge,
                 write,
                 output_filename,
+                include_reasoning,
                 separate_reasoning,
             )
             .await?
@@ -185,6 +191,7 @@ async fn handle_gen_command(
     merge: bool,
     write: bool,
     output_filename: bool,
+    include_reasoning: bool,
     separate_reasoning: bool,
 ) -> Result<()> {
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
@@ -197,7 +204,7 @@ async fn handle_gen_command(
     let config = LlmConfig {
         model: shared.model,
         system_prompt: None,
-        include_reasoning: shared.debug_unsafe || separate_reasoning,
+        include_reasoning: shared.debug_unsafe || separate_reasoning || include_reasoning,
     };
 
     let mut writer = Vec::new();
@@ -214,9 +221,17 @@ async fn handle_gen_command(
     let mut stdout = tokio::io::stdout();
     tokio::pin!(stream);
 
+    let mut has_printed_think_tag = false;
     while let Some(event) = stream.next().await {
         match event.context("Error from LLM stream")? {
             LlmStreamEvent::Content(text) => {
+                if has_printed_think_tag {
+                    stdout
+                        .write_all(b"</think>")
+                        .await
+                        .context("Failed to write to stdout")?;
+                    has_printed_think_tag = false;
+                }
                 stdout
                     .write_all(text.as_bytes())
                     .await
@@ -225,14 +240,31 @@ async fn handle_gen_command(
                 content_buffer.push_str(&text);
             }
             LlmStreamEvent::Reasoning(text) => {
-                stdout
-                    .write_all(text.as_bytes())
-                    .await
-                    .context("Failed to write to stdout")?;
-                stdout.flush().await.context("Failed to flush stdout")?;
-                reasoning_buffer.push_str(&text);
+                if include_reasoning || separate_reasoning || shared.debug_unsafe {
+                    if !has_printed_think_tag {
+                        stdout
+                            .write_all(b"<think>")
+                            .await
+                            .context("Failed to write to stdout")?;
+                        has_printed_think_tag = true;
+                    }
+                    stdout
+                        .write_all(text.as_bytes())
+                        .await
+                        .context("Failed to write to stdout")?;
+                    stdout.flush().await.context("Failed to flush stdout")?;
+                    reasoning_buffer.push_str(&text);
+                }
             }
         }
+    }
+
+    if has_printed_think_tag {
+        stdout
+            .write_all(b"</think>")
+            .await
+            .context("Failed to write to stdout")?;
+        stdout.flush().await.context("Failed to flush stdout")?;
     }
 
     let mut assistant_file_path: Option<PathBuf> = None;
@@ -240,14 +272,23 @@ async fn handle_gen_command(
     if should_write {
         if separate_reasoning {
             if !reasoning_buffer.is_empty() {
-                chat::write_message_file(&conv_dir, Role::AssistantReasoning, &reasoning_buffer)
-                    .context("Failed to write reasoning file")?;
+                chat::write_message_file(
+                    &conv_dir,
+                    Role::AssistantReasoning,
+                    &format!("<think>{}</think>", reasoning_buffer),
+                )
+                .context("Failed to write reasoning file")?;
             }
             let path = chat::write_message_file(&conv_dir, Role::Assistant, &content_buffer)
                 .context("Failed to write assistant message file")?;
             assistant_file_path = Some(path);
         } else {
-            let full_response = format!("{}{}", reasoning_buffer, content_buffer);
+            let full_response = if !reasoning_buffer.is_empty() {
+                format!("<think>{}</think>{}", reasoning_buffer, content_buffer)
+            } else {
+                content_buffer
+            };
+
             if !full_response.is_empty() {
                 let path = chat::write_message_file(&conv_dir, Role::Assistant, &full_response)
                     .context("Failed to write assistant message file")?;
