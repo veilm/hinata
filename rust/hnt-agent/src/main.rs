@@ -49,6 +49,10 @@ struct Cli {
     /// Use hnt-tui pane to open the editor.
     #[arg(long, env = "HINATA_USE_PANE")]
     use_pane: bool,
+
+    /// Do not escape backticks in shell commands.
+    #[arg(long)]
+    no_escape_backticks: bool,
 }
 
 struct SessionGuard {
@@ -253,7 +257,15 @@ async fn main() -> Result<()> {
         let re = Regex::new(r"(?s)<hnt-shell>(.*?)</hnt-shell>")?;
         if let Some(captures) = re.captures_iter(&llm_response).last() {
             if let Some(command_match) = captures.get(1) {
-                let command_text = command_match.as_str().trim();
+                let mut command_text = command_match.as_str().trim().to_string();
+
+                if !cli.no_escape_backticks {
+                    // Escape backticks not preceded by a backslash
+                    // The original regex `(?<!\\)` uses a negative lookbehind, which is not supported by the default `regex` engine.
+                    // We replace it by matching a character that is not a backslash, or the beginning of the string, before a backtick.
+                    let re_escape = Regex::new(r"(^|[^\\])`")?;
+                    command_text = re_escape.replace_all(&command_text, r"$1\`").to_string();
+                }
 
                 if !cli.no_confirm {
                     eprintln!(
@@ -296,7 +308,7 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                let captured_output = _session_guard.session.exec_captured(command_text).await?;
+                let captured_output = _session_guard.session.exec_captured(&command_text).await?;
 
                 let result_message = format!(
                     "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
