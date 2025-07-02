@@ -44,6 +44,10 @@ struct Cli {
     /// Enable verbose logging.
     #[arg(short, long)]
     verbose: bool,
+
+    /// Use hnt-tui pane to open the editor.
+    #[arg(long, env = "HINATA_USE_PANE")]
+    use_pane: bool,
 }
 
 struct SessionGuard {
@@ -76,7 +80,7 @@ fn print_styled_block(title: &str, content: &str, color: Color) -> Result<()> {
     Ok(())
 }
 
-fn get_input_from_editor(initial_text: &str) -> Result<String> {
+fn get_input_from_editor(initial_text: &str, use_pane: bool) -> Result<String> {
     let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
 
     let temp_file_name = format!(
@@ -87,10 +91,19 @@ fn get_input_from_editor(initial_text: &str) -> Result<String> {
 
     fs::write(&temp_file_path, initial_text)?;
 
-    let status = StdCommand::new(&editor)
-        .arg(&temp_file_path)
-        .status()
-        .with_context(|| format!("Failed to open editor: {}", editor))?;
+    let status = if use_pane {
+        StdCommand::new("hnt-tui")
+            .arg("pane")
+            .arg(&editor)
+            .arg(&temp_file_path)
+            .status()
+            .with_context(|| format!("Failed to open editor in pane: {}", editor))?
+    } else {
+        StdCommand::new(&editor)
+            .arg(&temp_file_path)
+            .status()
+            .with_context(|| format!("Failed to open editor: {}", editor))?
+    };
 
     if !status.success() {
         bail!("Editor exited with a non-zero status code");
@@ -103,11 +116,11 @@ fn get_input_from_editor(initial_text: &str) -> Result<String> {
     Ok(instruction)
 }
 
-fn get_user_instruction(message: Option<String>) -> Result<String> {
+fn get_user_instruction(message: Option<String>, use_pane: bool) -> Result<String> {
     let instruction = if let Some(message) = message {
         message
     } else {
-        get_input_from_editor("")?
+        get_input_from_editor("", use_pane)?
     };
 
     if instruction.trim().is_empty() {
@@ -165,7 +178,7 @@ async fn main() -> Result<()> {
     };
     debug!("After getting the system prompt.");
     debug!("Before getting the user instruction.");
-    let user_instruction = get_user_instruction(cli.message)?;
+    let user_instruction = get_user_instruction(cli.message, cli.use_pane)?;
     debug!("After getting the user instruction.");
 
     // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
@@ -299,7 +312,7 @@ async fn main() -> Result<()> {
                         }
                         Some("No, and provide new instructions instead.") => {
                             // New instructions
-                            let new_instructions = get_input_from_editor("")?;
+                            let new_instructions = get_input_from_editor("", cli.use_pane)?;
                             chat::write_message_file(
                                 &conversation_dir,
                                 chat::Role::User,
@@ -347,7 +360,7 @@ async fn main() -> Result<()> {
 
             match selection.as_deref() {
                 Some("Provide new instructions for the LLM.") => {
-                    let new_instructions = get_input_from_editor("")?;
+                    let new_instructions = get_input_from_editor("", cli.use_pane)?;
                     chat::write_message_file(
                         &conversation_dir,
                         chat::Role::User,
