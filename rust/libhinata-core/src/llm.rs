@@ -101,8 +101,8 @@ pub static PROVIDERS: &[Provider] = &[
         api_url: "https://openrouter.ai/api/v1/chat/completions",
         env_var: "OPENROUTER_API_KEY",
         extra_headers: &[
-            ("HTTP-Referer", "https://github.com/hinata-team/hinata-lang"),
-            ("X-Title", "Hinata-LLM"),
+            ("HTTP-Referer", "https://hnt-agent.org/"),
+            ("X-Title", "hinata"),
         ],
     },
     Provider {
