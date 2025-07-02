@@ -27,3 +27,6 @@ User needs <think> tags in the output files, not just the console. I will use hn
 The file-writing logic has been updated to include <think> tags. I'm running `cargo check` to verify the final changes.
 User reports that reasoning is not being discarded correctly. I will now add a condition to the `LlmStreamEvent::Reasoning` match arm to completely ignore the event if no reasoning flags are active.
 The reasoning event handler is now correctly conditional. Running `cargo check` to verify the final state of the code.
+User wants to change the temp file format in `hnt-agent`. I will now inspect `get_input_from_editor` in `hnt-agent/src/main.rs` to find the current filename generation logic.
+Identified the temp file naming logic in `hnt-agent`. I will now use hnt-edit to change the file extension from .txt to .md and remove the '-msg' part of the name.
+The temp file format for hnt-agent has been updated. Running `cargo check` for verification.

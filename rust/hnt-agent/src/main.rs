@@ -83,10 +83,7 @@ fn print_styled_block(title: &str, content: &str, color: Color) -> Result<()> {
 fn get_input_from_editor(initial_text: &str, use_pane: bool) -> Result<String> {
     let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
 
-    let temp_file_name = format!(
-        "hnt-agent-msg-{}.txt",
-        Utc::now().timestamp_nanos_opt().unwrap()
-    );
+    let temp_file_name = format!("hnt-agent-{}.md", Utc::now().timestamp_nanos_opt().unwrap());
     let temp_file_path = env::temp_dir().join(temp_file_name);
 
     fs::write(&temp_file_path, initial_text)?;
