@@ -18,6 +18,7 @@ use std::env;
 use std::fs;
 use std::io::stdout;
 use std::io::Cursor;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command as StdCommand;
 use tokio;
@@ -263,10 +264,19 @@ async fn main() -> Result<()> {
 
         let mut llm_response = String::new();
         tokio::pin!(stream);
+
+        execute!(
+            stdout(),
+            SetForegroundColor(Color::Green),
+            Print(format!("--- [ {} ] ---\n", "LLM Response")),
+        )?;
+
         while let Some(event) = stream.next().await {
             match event? {
                 hinata_core::llm::LlmStreamEvent::Content(content) => {
                     llm_response.push_str(&content);
+                    print!("{}", content);
+                    stdout().flush()?;
                 }
                 hinata_core::llm::LlmStreamEvent::Reasoning(_) => {
                     // For now, well just ignore reasoning events.
@@ -274,10 +284,10 @@ async fn main() -> Result<()> {
             }
         }
 
+        execute!(stdout(), Print("\n---\n"), ResetColor)?;
+
         // Add assistants response to the conversation
         chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
-
-        print_styled_block("LLM Response", &llm_response, Color::Green)?;
 
         // Parse LLM response for the last <hnt-shell> command and execute it.
         let re = Regex::new(r"(?s)<hnt-shell>(.*?)</hnt-shell>")?;
@@ -324,9 +334,6 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-
-                println!();
-                print_styled_block("Executing Command", command_text, Color::Cyan)?;
 
                 let captured_output = _session_guard.session.exec_captured(command_text).await?;
 
