@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.82"
 clap = { version = "4.5.4", features = ["derive", "env"] }
-hinata-core = { path = "../../crates/hinata-core" }
+hinata-core = { path = "../libhinata-core" }
 tokio = { version = "1.37.0", features = ["full"] }
 simplelog = "0.12.2"
 log = "0.4.21"
