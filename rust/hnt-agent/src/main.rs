@@ -282,8 +282,10 @@ async fn main() -> Result<()> {
                         color: Some(4),
                     };
                     let tty = Tty::new()?;
-                    let mut select = TuiSelect::new(options, &args, tty)?;
-                    let selection = select.run()?;
+                    let selection = {
+                        let mut select = TuiSelect::new(options, &args, tty)?;
+                        select.run()?
+                    };
 
                     match selection.as_deref() {
                         Some("Yes. Proceed to execute Hinata's shell commands.") => {
@@ -333,8 +335,10 @@ async fn main() -> Result<()> {
                 color: Some(4),
             };
             let tty = Tty::new()?;
-            let mut select = TuiSelect::new(options, &args, tty)?;
-            let selection = select.run()?;
+            let selection = {
+                let mut select = TuiSelect::new(options, &args, tty)?;
+                select.run()?
+            };
 
             match selection.as_deref() {
                 Some("Provide new instructions for the LLM.") => {
