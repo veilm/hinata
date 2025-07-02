@@ -68,19 +68,6 @@ impl Drop for SessionGuard {
     }
 }
 
-fn print_styled_block(title: &str, content: &str, color: Color) -> Result<()> {
-    execute!(
-        stdout(),
-        SetForegroundColor(color),
-        Print(format!("--- [ {} ] ---\n", title)),
-        Print(content),
-        Print("\n---\n"),
-        ResetColor
-    )
-    .context("Failed to write styled output to stdout")?;
-    Ok(())
-}
-
 fn get_input_from_editor(initial_text: &str, use_pane: bool) -> Result<String> {
     let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
 
@@ -204,37 +191,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Priming sequence
-    debug!("Starting priming sequence.");
-    let priming_user_message =
-        "Could you please check the current directory and some basic OS info?";
-    chat::write_message_file(&conversation_dir, chat::Role::User, priming_user_message)?;
-
-    let priming_command = "pwd\ncat /etc/os-release";
-    let priming_assistant_response = format!("<hnt-shell>\n{}\n</hnt-shell>", priming_command);
-    chat::write_message_file(
-        &conversation_dir,
-        chat::Role::Assistant,
-        &priming_assistant_response,
-    )?;
-
-    println!();
-    print_styled_block("Executing Priming Command", priming_command, Color::Cyan)?;
-    let captured_output = _session_guard
-        .session
-        .exec_captured(priming_command)
-        .await?;
-
-    let result_message = format!(
-        "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
-        captured_output.stdout,
-        captured_output.stderr,
-        captured_output.exit_status.code().unwrap_or(1)
-    );
-    chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
-    debug!("Priming sequence finished.");
-
-    // Add the real user instruction
+    // Add the user instruction
     debug!("Before writing user message file.");
     chat::write_message_file(&conversation_dir, chat::Role::User, &user_instruction)?;
     debug!("After writing user message file.");
@@ -246,6 +203,7 @@ async fn main() -> Result<()> {
 
     // 5. Start the main interaction loop:
     debug!("Right before the main loop starts.");
+    let mut turn_counter = 1;
     loop {
         // a. Pack conversation and generate LLM response
         let mut buffer = Cursor::new(Vec::new());
@@ -265,10 +223,11 @@ async fn main() -> Result<()> {
         let mut llm_response = String::new();
         tokio::pin!(stream);
 
+        let header = format!("╭───[ hinata turn {} ]", turn_counter);
         execute!(
             stdout(),
             SetForegroundColor(Color::Green),
-            Print(format!("--- [ {} ] ---\n", "LLM Response")),
+            Print(format!("{}\n", &header)),
         )?;
 
         while let Some(event) = stream.next().await {
@@ -284,7 +243,8 @@ async fn main() -> Result<()> {
             }
         }
 
-        execute!(stdout(), Print("\n---\n"), ResetColor)?;
+        let footer = "─".repeat(header.chars().count());
+        execute!(stdout(), Print(format!("\n{}\n", footer)), ResetColor)?;
 
         // Add assistants response to the conversation
         chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
@@ -325,6 +285,7 @@ async fn main() -> Result<()> {
                                 chat::Role::User,
                                 &new_instructions,
                             )?;
+                            turn_counter += 1;
                             continue;
                         }
                         _ => {
@@ -346,6 +307,7 @@ async fn main() -> Result<()> {
 
                 // Add command output as a new user message to continue the conversation
                 chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
+                turn_counter += 1;
             }
         } else {
             eprintln!("LLM provided no <hnt-shell> command. What would you like to do?");
@@ -370,6 +332,7 @@ async fn main() -> Result<()> {
                         chat::Role::User,
                         &new_instructions,
                     )?;
+                    turn_counter += 1;
                     continue;
                 }
                 _ => {
