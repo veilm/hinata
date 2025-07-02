@@ -53,17 +53,25 @@ pub struct Delta {
     reasoning_content: Option<String>,
 }
 
-/// Arguments for the LLM generation task.
 #[derive(Parser, Debug, Clone)]
-pub struct GenArgs {
+pub struct SharedArgs {
     /// The model to use for the LLM.
     #[arg(
-        short,
         long,
-        env = "HINATA_LLM_MODEL",
+        env = "HINATA_MODEL",
         default_value = "openrouter/deepseek/deepseek-chat-v3-0324:free"
     )]
     pub model: String,
+    /// Enable unsafe debugging options.
+    #[arg(long, help = "Enable unsafe debugging options.")]
+    pub debug_unsafe: bool,
+}
+
+/// Arguments for the LLM generation task.
+#[derive(Parser, Debug, Clone)]
+pub struct GenArgs {
+    #[command(flatten)]
+    pub shared: SharedArgs,
 
     /// The system prompt to use.
     #[arg(short, long)]
@@ -371,7 +379,7 @@ pub async fn generate(args: &GenArgs) -> Result<()> {
     std::io::stdin().read_to_string(&mut stdin_content)?;
 
     let config = LlmConfig {
-        model: args.model.clone(),
+        model: args.shared.model.clone(),
         system_prompt: args.system.clone(),
         include_reasoning: args.include_reasoning,
     };

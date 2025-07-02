@@ -13,9 +13,6 @@ use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[arg(long, hide = true)]
-    pub debug_unsafe: bool,
-
     #[command(subcommand)]
     command: Option<Commands>,
 
@@ -39,7 +36,7 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    if cli.debug_unsafe {
+    if cli.gen_args.shared.debug_unsafe {
         TermLogger::init(
             LevelFilter::Trace,
             Config::default(),

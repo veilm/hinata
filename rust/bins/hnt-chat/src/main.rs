@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::{ArgAction, Parser, Subcommand};
 use futures_util::StreamExt;
 use hinata_core::chat::{self, Role};
-use hinata_core::llm::{stream_llm_response, GenArgs, LlmConfig, LlmStreamEvent};
+use hinata_core::llm::{stream_llm_response, LlmConfig, LlmStreamEvent, SharedArgs};
 use std::env;
 use std::fs;
 use std::io::{self, Read};
@@ -73,7 +73,7 @@ enum Commands {
         merge: bool,
 
         #[command(flatten)]
-        args: GenArgs,
+        shared: SharedArgs,
     },
 }
 
@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
             merge,
         } => handle_pack_command(conversation, merge)?,
         Commands::Gen {
-            args,
+            shared,
             conversation,
             merge,
             write,
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
             separate_reasoning,
         } => {
             handle_gen_command(
-                args,
+                shared,
                 conversation,
                 merge,
                 write,
@@ -180,7 +180,7 @@ fn handle_pack_command(conversation_path: Option<PathBuf>, merge: bool) -> Resul
 
 /// Handles the 'gen' command by generating a new message from a model.
 async fn handle_gen_command(
-    args: GenArgs,
+    shared: SharedArgs,
     conversation_path: Option<PathBuf>,
     merge: bool,
     write: bool,
@@ -192,12 +192,12 @@ async fn handle_gen_command(
 
     let should_write = write || output_filename || separate_reasoning;
 
-    fs::write(conv_dir.join("model.txt"), &args.model).context("Failed to write model file")?;
+    fs::write(conv_dir.join("model.txt"), &shared.model).context("Failed to write model file")?;
 
     let config = LlmConfig {
-        model: args.model,
-        system_prompt: args.system,
-        include_reasoning: args.include_reasoning || separate_reasoning,
+        model: shared.model,
+        system_prompt: None,
+        include_reasoning: shared.debug_unsafe || separate_reasoning,
     };
 
     let mut writer = Vec::new();

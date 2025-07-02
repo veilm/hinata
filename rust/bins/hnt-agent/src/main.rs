@@ -9,7 +9,7 @@ use dirs;
 use futures_util::StreamExt;
 use headlesh::Session;
 use hinata_core::chat;
-use hinata_core::llm::LlmConfig;
+use hinata_core::llm::{LlmConfig, SharedArgs};
 use hnt_tui::{SelectArgs, Tty, TuiSelect};
 use log::debug;
 use regex::Regex;
@@ -34,13 +34,8 @@ struct Cli {
     #[arg(short, long)]
     message: Option<String>,
 
-    /// Model to use (passed through to hnt-chat gen).
-    #[arg(long)]
-    model: Option<String>,
-
-    /// Enable unsafe debugging options in hinata tools.
-    #[arg(long)]
-    debug_unsafe: bool,
+    #[command(flatten)]
+    shared: SharedArgs,
 
     /// Skip confirmation steps before executing commands or adding messages.
     #[arg(long)]
@@ -249,12 +244,9 @@ async fn main() -> Result<()> {
             .context("Failed to convert packed conversation to string")?;
 
         let config = LlmConfig {
-            model: cli
-                .model
-                .clone()
-                .unwrap_or_else(|| "openrouter/deepseek/deepseek-chat-v3-0324:free".to_string()),
-            system_prompt: system_prompt.clone(),
-            include_reasoning: cli.debug_unsafe,
+            model: cli.shared.model.clone(),
+            system_prompt: None,
+            include_reasoning: cli.shared.debug_unsafe,
         };
 
         let stream = hinata_core::llm::stream_llm_response(config, prompt);
