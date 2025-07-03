@@ -76,9 +76,19 @@ fn parse_one_block(input: &str) -> Result<(ChangeBlock, &str)> {
 
     let after_target_marker = after_path.strip_prefix('\n').unwrap_or(after_path);
 
-    let (target, after_target) = after_target_marker
-        .split_once("\n=======\n")
-        .with_context(|| format!("Unterminated TARGET section for path: {}", path))?;
+    let (target, after_target) =
+        if let Some(after_equals) = after_target_marker.strip_prefix("=======\n") {
+            // This handles the case of an empty target, where the marker is immediately
+            // followed by a newline.
+            // `after_target_marker` would be `=======\n<replace content>...`
+            ("", after_equals)
+        } else {
+            // This handles a target with content.
+            // `after_target_marker` would be `<target content>\n=======\n<replace content>...`
+            after_target_marker
+                .split_once("\n=======\n")
+                .with_context(|| format!("Unterminated TARGET section for path: {}", path))?
+        };
 
     let (replace, after_replace) = after_target
         .split_once("\n>>>>>>> REPLACE")
@@ -137,11 +147,24 @@ fn apply_change_block(
             .with_context(|| format!("Failed to read file: {}", full_path.display()))?;
 
         if block.target.is_empty() {
-            println!(
-                "FAILED: {} - empty target for existing file is not allowed.",
-                block.relative_path
-            );
-            return Ok(());
+            if content.is_empty() {
+                // This is a file creation scenario on an existing empty file.
+                // Overwrite with new content.
+                std::fs::write(&full_path, &block.replace).with_context(|| {
+                    format!(
+                        "Failed to create and write to file: {}",
+                        full_path.display()
+                    )
+                })?;
+                println!("CREATED: {}", block.relative_path);
+                return Ok(());
+            } else {
+                // The file exists and is not empty, but the target is empty. This is an error.
+                bail!(
+                    "FAILED: empty target for existing, non-empty file: {}",
+                    block.relative_path
+                );
+            }
         }
 
         let count = content.matches(&block.target).count();
