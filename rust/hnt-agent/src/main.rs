@@ -4,6 +4,7 @@ use clap::Parser;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal,
 };
 use dirs;
 use futures_util::StreamExt;
@@ -22,6 +23,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Command as StdCommand;
 use tokio;
+use unicode_width::UnicodeWidthStr;
 
 /// Interact with hinata LLM agent to execute shell commands.
 #[derive(Parser, Debug)]
@@ -119,9 +121,77 @@ fn get_user_instruction(message: Option<String>, use_pane: bool) -> Result<Strin
     Ok(instruction)
 }
 
+fn print_turn_header(role: &str, turn: usize) -> Result<()> {
+    let (width, _) = terminal::size()?;
+    let width = width as usize;
+    let mut stdout = stdout();
+
+    let (icon, line_color) = match role {
+        "hinata" => ("❄️", Color::Blue),
+        // "human" => ("🕯️", Color::Green),
+        // "human" => ("⚜️", Color::Green),
+        // "human" => ("🌙", Color::Green), // gets slightly cut off at the bottom, at least in my terminal 1751500510
+        // "human" => ("🩸", Color::Green),
+        "human" => ("🗝️", Color::Green),
+        _ => bail!("Unknown role for turn header: {}", role),
+    };
+
+    let role_text = format!("{} {}", icon, role);
+    let turn_text = format!("turn {}", turn);
+    let prefix = "─── ";
+
+    let total_text_len = prefix.width()
+        + role_text.width()
+        + " • ".width()
+        + turn_text.chars().count()
+        + " ".chars().count();
+    let line_len = if width > total_text_len {
+        width - total_text_len
+    } else {
+        0
+    };
+    let line = "─".repeat(line_len);
+
+    execute!(
+        stdout,
+        SetForegroundColor(line_color),
+        Print(prefix),
+        SetForegroundColor(Color::White),
+        Print(&role_text),
+        SetForegroundColor(line_color),
+        Print(" • "),
+        SetForegroundColor(Color::Magenta),
+        Print(&turn_text),
+        Print(" "),
+        SetForegroundColor(line_color),
+        Print(&line),
+        Print("\n"),
+    )?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn print_turn_footer(color: Color) -> Result<()> {
+    let (width, _) = terminal::size()?;
+    let width = width as usize;
+    let mut stdout = stdout();
+    let line = "─".repeat(width);
+
+    execute!(
+        stdout,
+        SetForegroundColor(color),
+        Print(&line),
+        ResetColor,
+        Print("\n"),
+    )?;
+    stdout.flush()?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let mut human_turn_counter = 1;
 
     if cli.verbose {
         TermLogger::init(
@@ -168,6 +238,13 @@ async fn main() -> Result<()> {
     debug!("After getting the system prompt.");
     debug!("Before getting the user instruction.");
     let user_instruction = get_user_instruction(cli.message, cli.use_pane)?;
+    print_turn_header("human", human_turn_counter)?;
+    human_turn_counter += 1;
+    // Print the human's message with reset color
+    execute!(stdout(), ResetColor, Print(&user_instruction))?;
+    // Add a blank line for spacing, then the footer
+    println!();
+    print_turn_footer(Color::Green)?;
     debug!("After getting the user instruction.");
 
     // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
@@ -227,12 +304,8 @@ async fn main() -> Result<()> {
         let mut llm_response = String::new();
         tokio::pin!(stream);
 
-        let header = format!("╭───[ hinata turn {} ]", turn_counter);
-        execute!(
-            stdout(),
-            SetForegroundColor(Color::Green),
-            Print(format!("{}\n", &header)),
-        )?;
+        print_turn_header("hinata", turn_counter)?;
+        execute!(stdout(), ResetColor)?;
 
         while let Some(event) = stream.next().await {
             match event? {
@@ -247,8 +320,8 @@ async fn main() -> Result<()> {
             }
         }
 
-        let footer = "─".repeat(header.chars().count());
-        execute!(stdout(), Print(format!("\n{}\n", footer)), ResetColor)?;
+        println!();
+        print_turn_footer(Color::Blue)?;
 
         // Add assistants response to the conversation
         chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
@@ -294,6 +367,13 @@ async fn main() -> Result<()> {
                         Some("No, and provide new instructions instead.") => {
                             // New instructions
                             let new_instructions = get_input_from_editor("", cli.use_pane)?;
+                            print_turn_header("human", human_turn_counter)?;
+                            human_turn_counter += 1;
+                            // Print the human's message with reset color
+                            execute!(stdout(), ResetColor, Print(&new_instructions))?;
+                            // Add a blank line for spacing, then the footer
+                            println!();
+                            print_turn_footer(Color::Green)?;
                             chat::write_message_file(
                                 &conversation_dir,
                                 chat::Role::User,
@@ -343,6 +423,13 @@ async fn main() -> Result<()> {
             match selection.as_deref() {
                 Some("Provide new instructions for the LLM.") => {
                     let new_instructions = get_input_from_editor("", cli.use_pane)?;
+                    print_turn_header("human", human_turn_counter)?;
+                    human_turn_counter += 1;
+                    // Print the human's message with reset color
+                    execute!(stdout(), ResetColor, Print(&new_instructions))?;
+                    // Add a blank line for spacing, then the footer
+                    println!();
+                    print_turn_footer(Color::Green)?;
                     chat::write_message_file(
                         &conversation_dir,
                         chat::Role::User,

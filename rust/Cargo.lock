@@ -659,6 +659,7 @@ dependencies = [
  "regex",
  "simplelog",
  "tokio",
+ "unicode-width",
 ]
 
 [[package]]
