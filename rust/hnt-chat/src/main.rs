@@ -220,7 +220,7 @@ async fn handle_gen_command(
             LlmStreamEvent::Content(text) => {
                 if has_printed_think_tag {
                     stdout
-                        .write_all(b"</think>")
+                        .write_all(b"</think>\n")
                         .await
                         .context("Failed to write to stdout")?;
                     has_printed_think_tag = false;
@@ -254,7 +254,7 @@ async fn handle_gen_command(
 
     if has_printed_think_tag {
         stdout
-            .write_all(b"</think>")
+            .write_all(b"</think>\n")
             .await
             .context("Failed to write to stdout")?;
         stdout.flush().await.context("Failed to flush stdout")?;
