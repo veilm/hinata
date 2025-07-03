@@ -132,7 +132,7 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
         // "querent" => ("⚜️", Color::Green),
         // "querent" => ("🌙", Color::Green), // gets slightly cut off at the bottom, at least in my terminal 1751500510
         // "querent" => ("🩸", Color::Green),
-        "querent" => ("🗝️", Color::Green),
+        "querent" => ("🗝️", Color::Magenta),
         _ => bail!("Unknown role for turn header: {}", role),
     };
 
@@ -160,7 +160,7 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
         Print(&role_text),
         SetForegroundColor(line_color),
         Print(" • "),
-        SetForegroundColor(Color::Magenta),
+        SetForegroundColor(Color::Green),
         Print(&turn_text),
         Print(" "),
         SetForegroundColor(line_color),
@@ -244,7 +244,7 @@ async fn main() -> Result<()> {
     execute!(stdout(), ResetColor, Print(&user_instruction))?;
     // Add a blank line for spacing, then the footer
     println!();
-    print_turn_footer(Color::Green)?;
+    print_turn_footer(Color::Magenta)?;
     debug!("After getting the user instruction.");
 
     // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
@@ -373,7 +373,7 @@ async fn main() -> Result<()> {
                             execute!(stdout(), ResetColor, Print(&new_instructions))?;
                             // Add a blank line for spacing, then the footer
                             println!();
-                            print_turn_footer(Color::Green)?;
+                            print_turn_footer(Color::Magenta)?;
                             chat::write_message_file(
                                 &conversation_dir,
                                 chat::Role::User,
@@ -429,7 +429,7 @@ async fn main() -> Result<()> {
                     execute!(stdout(), ResetColor, Print(&new_instructions))?;
                     // Add a blank line for spacing, then the footer
                     println!();
-                    print_turn_footer(Color::Green)?;
+                    print_turn_footer(Color::Magenta)?;
                     chat::write_message_file(
                         &conversation_dir,
                         chat::Role::User,
