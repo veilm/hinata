@@ -128,11 +128,11 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
 
     let (icon, line_color) = match role {
         "hinata" => ("❄️", Color::Blue),
-        // "human" => ("🕯️", Color::Green),
-        // "human" => ("⚜️", Color::Green),
-        // "human" => ("🌙", Color::Green), // gets slightly cut off at the bottom, at least in my terminal 1751500510
-        // "human" => ("🩸", Color::Green),
-        "human" => ("🗝️", Color::Green),
+        // "querent" => ("🕯️", Color::Green),
+        // "querent" => ("⚜️", Color::Green),
+        // "querent" => ("🌙", Color::Green), // gets slightly cut off at the bottom, at least in my terminal 1751500510
+        // "querent" => ("🩸", Color::Green),
+        "querent" => ("🗝️", Color::Green),
         _ => bail!("Unknown role for turn header: {}", role),
     };
 
@@ -238,7 +238,7 @@ async fn main() -> Result<()> {
     debug!("After getting the system prompt.");
     debug!("Before getting the user instruction.");
     let user_instruction = get_user_instruction(cli.message, cli.use_pane)?;
-    print_turn_header("human", human_turn_counter)?;
+    print_turn_header("querent", human_turn_counter)?;
     human_turn_counter += 1;
     // Print the human's message with reset color
     execute!(stdout(), ResetColor, Print(&user_instruction))?;
@@ -367,7 +367,7 @@ async fn main() -> Result<()> {
                         Some("No, and provide new instructions instead.") => {
                             // New instructions
                             let new_instructions = get_input_from_editor("", cli.use_pane)?;
-                            print_turn_header("human", human_turn_counter)?;
+                            print_turn_header("querent", human_turn_counter)?;
                             human_turn_counter += 1;
                             // Print the human's message with reset color
                             execute!(stdout(), ResetColor, Print(&new_instructions))?;
@@ -423,7 +423,7 @@ async fn main() -> Result<()> {
             match selection.as_deref() {
                 Some("Provide new instructions for the LLM.") => {
                     let new_instructions = get_input_from_editor("", cli.use_pane)?;
-                    print_turn_header("human", human_turn_counter)?;
+                    print_turn_header("querent", human_turn_counter)?;
                     human_turn_counter += 1;
                     // Print the human's message with reset color
                     execute!(stdout(), ResetColor, Print(&new_instructions))?;
