@@ -32,6 +32,10 @@ pub struct SelectArgs {
     /// The color of the selected line (0-7: Black, Red, Green, Yellow, Blue, Magenta, Cyan, White)
     #[arg(long)]
     pub color: Option<u8>,
+
+    /// The prefix for the selected line
+    #[arg(long)]
+    pub prefix: Option<String>,
 }
 
 fn map_color(c: u8) -> Color {
@@ -89,6 +93,7 @@ pub struct TuiSelect {
     tty: Tty,
     buf: [u8; 16],
     term_cols: u16,
+    prefix: String,
 }
 
 impl TuiSelect {
@@ -116,6 +121,9 @@ impl TuiSelect {
             tty,
             buf: [0; 16],
             term_cols,
+            // prefix: args.prefix.clone().unwrap_or_else(|| "▌ ".to_string()),
+            // prefix: args.prefix.clone().unwrap_or_else(|| "🯫🭋".to_string()),
+            prefix: args.prefix.clone().unwrap_or_else(|| "🯖🭋".to_string()),
         })
     }
 
@@ -184,6 +192,9 @@ impl TuiSelect {
     fn draw_menu(&mut self) -> io::Result<()> {
         execute!(TtyWriter(&mut self.tty.file), cursor::RestorePosition)?;
 
+        let prefix_width = self.prefix.chars().count();
+        let unselected_prefix = " ".repeat(prefix_width);
+
         for i in 0..self.display_height {
             execute!(TtyWriter(&mut self.tty.file), Clear(ClearType::CurrentLine))?;
             let line_idx = self.scroll_offset + i;
@@ -194,26 +205,29 @@ impl TuiSelect {
                         execute!(
                             TtyWriter(&mut self.tty.file),
                             SetForegroundColor(color),
-                            Print("▌ "),
+                            Print(&self.prefix),
                             SetBackgroundColor(color),
                             SetForegroundColor(Color::Black)
                         )?;
                     } else {
                         execute!(
                             TtyWriter(&mut self.tty.file),
-                            Print("▌ "),
+                            Print(&self.prefix),
                             SetAttribute(Attribute::Reverse)
                         )?;
                     }
                 } else {
-                    execute!(TtyWriter(&mut self.tty.file), Print("  "))?;
+                    execute!(TtyWriter(&mut self.tty.file), Print(&unselected_prefix))?;
                 }
 
                 let line = &self.lines[line_idx];
-                let mut truncated_line = line.as_str();
-                if line.len() > self.term_cols as usize - 2 {
-                    truncated_line = &line[..self.term_cols as usize - 2];
-                }
+                let max_line_width = (self.term_cols as usize).saturating_sub(prefix_width);
+                let truncated_line =
+                    if let Some((end_byte_idx, _)) = line.char_indices().nth(max_line_width) {
+                        &line[..end_byte_idx]
+                    } else {
+                        line.as_str()
+                    };
                 execute!(TtyWriter(&mut self.tty.file), Print(truncated_line))?;
 
                 if line_idx == self.selected_index {

@@ -341,6 +341,7 @@ async fn main() -> Result<()> {
             let args = SelectArgs {
                 height: 10,
                 color: Some(4),
+                prefix: None,
             };
             let tty = Tty::new()?;
             let selection = {
@@ -393,6 +394,7 @@ async fn main() -> Result<()> {
                     let args = SelectArgs {
                         height: 10,
                         color: Some(4),
+                        prefix: None,
                     };
                     let tty = Tty::new()?;
                     let selection = {
@@ -468,6 +470,7 @@ async fn main() -> Result<()> {
             let args = SelectArgs {
                 height: 10,
                 color: Some(4),
+                prefix: None,
             };
             let tty = Tty::new()?;
             let selection = {

@@ -60,3 +60,6 @@
 	thing actually helped a lot
 	
 	see if you can get a general prompt that helps
+	
+	1751543183 okay the specific util/commit was using the wrong env but keep
+	testing for overall perf
