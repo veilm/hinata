@@ -1,0 +1,14 @@
+[package]
+name = "hnt-apply"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+# I'll also add hnt-pack as a dependency to reuse its path logic
+hnt-pack = { path = "../hnt-pack" }
+
+[[bin]]
+name = "hnt-apply"
+path = "src/main.rs"

@@ -675,6 +675,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hnt-apply"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hnt-pack",
+]
+
+[[package]]
 name = "hnt-chat"
 version = "0.1.0"
 dependencies = [

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "headlesh",
     "hnt-agent",
+    "hnt-apply",
     "hnt-chat",
     "hnt-edit",
     "hnt-llm",
