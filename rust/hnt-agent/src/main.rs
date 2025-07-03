@@ -434,6 +434,13 @@ async fn main() -> Result<()> {
 
                 let captured_output = _session_guard.session.exec_captured(&command_text).await?;
 
+                let result_message = format!(
+                    "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
+                    captured_output.stdout,
+                    captured_output.stderr,
+                    captured_output.exit_status.code().unwrap_or(1)
+                );
+
                 // Display shell output to the user
                 print_turn_footer(Color::DarkCyan)?;
                 execute!(
@@ -442,22 +449,10 @@ async fn main() -> Result<()> {
                     Print("Shell Output\n"),
                     ResetColor
                 )?;
-                if !captured_output.stdout.is_empty() {
-                    print!("{}", &captured_output.stdout);
-                }
-                if !captured_output.stderr.is_empty() {
-                    eprint!("{}", &captured_output.stderr);
-                }
+                println!("{}", &result_message);
                 // The output may or may not have a newline. The footer will draw a line
                 // and add a newline, so we are guaranteed to be on a new line after this.
                 print_turn_footer(Color::DarkCyan)?;
-
-                let result_message = format!(
-                    "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
-                    captured_output.stdout,
-                    captured_output.stderr,
-                    captured_output.exit_status.code().unwrap_or(1)
-                );
 
                 // Add command output as a new user message to continue the conversation
                 chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;

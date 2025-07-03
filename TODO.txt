@@ -51,3 +51,12 @@
 	<after>bar</before>
 	</pwd>
 	or something
+
+- fix degraded performance? 1751510431
+	like util/commit worked better on commit 29e7717621de2467e4ab688008a2a7914e1b0b29
+	on average
+	
+	this might be some subtle ordering or prompting or maybe the /etc/os-release
+	thing actually helped a lot
+	
+	see if you can get a general prompt that helps
