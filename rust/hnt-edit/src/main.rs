@@ -392,9 +392,23 @@ async fn main() -> Result<()> {
 
     let mut reasoning_buffer = String::new();
     let mut content_buffer = String::new();
+    let mut in_reasoning_block = false;
     while let Some(event) = stream.next().await {
         match event {
             Ok(LlmStreamEvent::Content(content)) => {
+                if in_reasoning_block {
+                    execute!(io::stdout(), ResetColor)?;
+                    let trailing_newlines = reasoning_buffer
+                        .chars()
+                        .rev()
+                        .take_while(|&c| c == '\n')
+                        .count();
+                    let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
+                    for _ in 0..newlines_to_add {
+                        println!();
+                    }
+                    in_reasoning_block = false;
+                }
                 content_buffer.push_str(&content);
                 if let Some(stdin) = highlighter_stdin.as_mut() {
                     stdin.write_all(content.as_bytes()).await?;
@@ -405,17 +419,31 @@ async fn main() -> Result<()> {
             }
             Ok(LlmStreamEvent::Reasoning(reasoning)) => {
                 if !cli.ignore_reasoning {
+                    in_reasoning_block = true;
                     reasoning_buffer.push_str(&reasoning);
                     let mut stdout = io::stdout();
                     execute!(stdout, SetForegroundColor(Color::Yellow))?;
                     print!("{}", reasoning);
-                    execute!(stdout, ResetColor)?;
-                    stdout.flush()?;
+                    io::stdout().flush()?;
                 }
             }
             Err(e) => bail!("LLM stream error: {}", e),
         }
     }
+
+    if in_reasoning_block {
+        execute!(io::stdout(), ResetColor)?;
+        let trailing_newlines = reasoning_buffer
+            .chars()
+            .rev()
+            .take_while(|&c| c == '\n')
+            .count();
+        let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
+        for _ in 0..newlines_to_add {
+            println!();
+        }
+    }
+
     if let Some(mut stdin) = highlighter_stdin.take() {
         stdin.flush().await?;
     }

@@ -319,10 +319,24 @@ async fn main() -> Result<()> {
         print_turn_header("hinata", turn_counter)?;
         execute!(stdout(), ResetColor)?;
 
+        let mut in_reasoning_block = false;
         let mut llm_error: Option<anyhow::Error> = None;
         while let Some(event) = stream.next().await {
             match event {
                 Ok(hinata_core::llm::LlmStreamEvent::Content(content)) => {
+                    if in_reasoning_block {
+                        execute!(stdout(), ResetColor)?;
+                        let trailing_newlines = reasoning_buffer
+                            .chars()
+                            .rev()
+                            .take_while(|&c| c == '\n')
+                            .count();
+                        let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
+                        for _ in 0..newlines_to_add {
+                            println!();
+                        }
+                        in_reasoning_block = false;
+                    }
                     llm_response.push_str(&content);
                     print!("{}", content);
                     stdout().flush()?;
@@ -330,12 +344,11 @@ async fn main() -> Result<()> {
                 Ok(hinata_core::llm::LlmStreamEvent::Reasoning(reasoning)) => {
                     if !cli.ignore_reasoning {
                         reasoning_buffer.push_str(&reasoning);
-                        execute!(
-                            stdout(),
-                            SetForegroundColor(Color::Yellow),
-                            Print(&reasoning),
-                            ResetColor
-                        )?;
+                        if !in_reasoning_block {
+                            execute!(stdout(), SetForegroundColor(Color::Yellow))?;
+                        }
+                        in_reasoning_block = true;
+                        execute!(stdout(), Print(&reasoning))?;
                         stdout().flush()?;
                     }
                 }
@@ -343,6 +356,19 @@ async fn main() -> Result<()> {
                     llm_error = Some(e.into());
                     break;
                 }
+            }
+        }
+
+        if in_reasoning_block {
+            execute!(stdout(), ResetColor)?;
+            let trailing_newlines = reasoning_buffer
+                .chars()
+                .rev()
+                .take_while(|&c| c == '\n')
+                .count();
+            let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
+            for _ in 0..newlines_to_add {
+                println!();
             }
         }
 
