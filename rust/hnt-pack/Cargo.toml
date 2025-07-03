@@ -8,6 +8,8 @@ anyhow = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 common-path = "1.0.0"
 
+[lib]
+
 [[bin]]
 name = "llm-pack"
 path = "src/main.rs"
