@@ -1,12 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
+    "headlesh",
     "hnt-agent",
     "hnt-chat",
     "hnt-edit",
     "hnt-llm",
-    "hnt-web",
+    "hnt-pack",
     "hnt-tui",
-    "headlesh",
+    "hnt-web",
     "libhinata-core",
 ]
