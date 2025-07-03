@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+which alert && alert "TODO rust rewrite" || true
+
 cd "$(dirname "$0")"
 
 if ! which uv > /dev/null 2>&1

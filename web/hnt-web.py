@@ -641,14 +641,15 @@ async def api_gen_assistant_message_stream(conversation_id: str):
         "hnt-chat",
         "gen",
         "--merge",  # Merge context before sending to LLM
-        "--separate-reasoning",  # Write reasoning to a file, implies --write
+        "--write",
+        "--include-reasoning",
         "--model",
         model_to_use,
         "--conversation",
         str(conv_path.resolve()),
         # DO NOT use --output-filename here, as it prints filename to stdout,
         # which would be mixed with the LLM stream.
-        # --separate-reasoning (or --write) is sufficient for file saving.
+        # --write is sufficient for file saving.
     ]
 
     async def stream_generator():
