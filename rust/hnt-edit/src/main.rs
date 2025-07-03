@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use crossterm::{
     execute,
-    style::{Color, ResetColor, SetForegroundColor},
+    style::{Color, Print, ResetColor, SetForegroundColor},
 };
 use dirs;
 use futures_util::StreamExt;
@@ -83,6 +83,10 @@ struct Cli {
     #[arg(long)]
     continue_dir: Option<PathBuf>,
 
+    /// Use `hnt-tui pane` for editing the user instruction message.
+    #[arg(long, env = "HINATA_USE_PANE")]
+    use_pane: bool,
+
     /// Do not ask the LLM for reasoning.
     #[arg(long, env = "HINATA_EDIT_IGNORE_REASONING")]
     ignore_reasoning: bool,
@@ -93,9 +97,9 @@ struct Cli {
 }
 
 /// Gets user instruction from CLI arg or by launching $EDITOR.
-fn get_user_instruction(message: Option<String>) -> Result<String> {
+fn get_user_instruction(message: Option<String>, use_pane: bool) -> Result<(String, bool)> {
     if let Some(message) = message {
-        return Ok(message);
+        return Ok((message, false));
     }
 
     let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
@@ -107,14 +111,24 @@ fn get_user_instruction(message: Option<String>) -> Result<String> {
 
     let path = file.into_temp_path();
 
-    let mut editor_parts = shlex::split(&editor).context("Failed to parse EDITOR variable")?;
-    let editor_cmd = editor_parts.remove(0);
+    let status;
+    if use_pane {
+        status = std::process::Command::new("hnt-tui")
+            .arg("pane")
+            .arg(&editor)
+            .arg(&path)
+            .status()
+            .with_context(|| format!("Failed to run hnt-tui pane with editor: {}", editor))?;
+    } else {
+        let mut editor_parts = shlex::split(&editor).context("Failed to parse EDITOR variable")?;
+        let editor_cmd = editor_parts.remove(0);
 
-    let status = std::process::Command::new(&editor_cmd)
-        .args(editor_parts)
-        .arg(&path)
-        .status()
-        .with_context(|| format!("Failed to open editor: {}", editor))?;
+        status = std::process::Command::new(&editor_cmd)
+            .args(editor_parts)
+            .arg(&path)
+            .status()
+            .with_context(|| format!("Failed to open editor: {}", editor))?;
+    }
 
     if !status.success() {
         bail!("Editor exited with a non-zero status code");
@@ -132,7 +146,7 @@ fn get_user_instruction(message: Option<String>) -> Result<String> {
         bail!("Aborted: No changes were made.");
     }
 
-    Ok(instruction)
+    Ok((instruction, true))
 }
 
 /// Gets system message from CLI arg, file path, or default path.
@@ -254,7 +268,25 @@ async fn main() -> Result<()> {
         }
         None => {
             let system_message = get_system_message(cli.system)?;
-            let instruction = get_user_instruction(cli.message)?;
+            let (instruction, from_editor) = get_user_instruction(cli.message, cli.use_pane)?;
+
+            if from_editor {
+                let mut stdout = io::stdout();
+                execute!(
+                    stdout,
+                    SetForegroundColor(Color::Cyan),
+                    Print("\n--- User Instructions ---\n"),
+                    ResetColor
+                )?;
+                println!("{}", instruction);
+                execute!(
+                    stdout,
+                    SetForegroundColor(Color::Cyan),
+                    Print("--- End User Instructions ---\n"),
+                    ResetColor
+                )?;
+                stdout.flush()?;
+            }
 
             for file_path in &cli.source_files {
                 let path = Path::new(file_path);
