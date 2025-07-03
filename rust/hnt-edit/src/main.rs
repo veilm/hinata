@@ -3,6 +3,7 @@ use clap::Parser;
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal,
 };
 use dirs;
 use futures_util::StreamExt;
@@ -18,7 +19,6 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 use tokio::{self, process::Command};
@@ -103,7 +103,10 @@ fn get_user_instruction(message: Option<String>, use_pane: bool) -> Result<(Stri
     }
 
     let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
-    let mut file = NamedTempFile::new_in(env::temp_dir())
+    let mut file = tempfile::Builder::new()
+        .prefix("hnt-edit-")
+        .suffix(".md")
+        .tempfile_in(env::temp_dir())
         .context("Failed to create temporary file for editor")?;
 
     let initial_text = "Replace this text with your instructions. Then write to this file and exit your\ntext editor. Leave the file unchanged or empty to abort.";
@@ -271,18 +274,33 @@ async fn main() -> Result<()> {
             let (instruction, from_editor) = get_user_instruction(cli.message, cli.use_pane)?;
 
             if from_editor {
+                let (width, _) = terminal::size()?;
+                let width = width as usize;
+
+                let title = "┌─ User Instructions ";
+                let header =
+                    format!("{}{}", title, "─".repeat(width.saturating_sub(title.chars().count())));
+                let footer = "─".repeat(width);
+
                 let mut stdout = io::stdout();
                 execute!(
                     stdout,
                     SetForegroundColor(Color::Cyan),
-                    Print("\n--- User Instructions ---\n"),
+                    Print("\n"),
+                    Print(&header),
+                    Print("\n"),
                     ResetColor
                 )?;
-                println!("{}", instruction);
+
+                // Print the user's instruction text, trimming trailing whitespace and adding a
+                // single newline for consistent output.
+                println!("{}", instruction.trim_end());
+
                 execute!(
                     stdout,
                     SetForegroundColor(Color::Cyan),
-                    Print("--- End User Instructions ---\n"),
+                    Print(&footer),
+                    Print("\n"),
                     ResetColor
                 )?;
                 stdout.flush()?;

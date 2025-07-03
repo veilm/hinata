@@ -41,11 +41,11 @@ pub fn apply_changes(
         println!("Parsed {} change blocks", blocks.len());
     }
 
-    for block in &blocks {
+    for (i, block) in blocks.iter().enumerate() {
         if verbose {
             println!("---");
         }
-        apply_change_block(block, &common_root, disallow_creating, verbose)?;
+        apply_change_block(i, block, &common_root, disallow_creating, verbose)?;
     }
 
     Ok(())
@@ -125,6 +125,7 @@ fn parse_blocks(input: &str) -> Result<Vec<ChangeBlock>> {
 }
 
 fn apply_change_block(
+    i: usize,
     block: &ChangeBlock,
     common_root: &Path,
     disallow_creating: bool,
@@ -139,7 +140,7 @@ fn apply_change_block(
 
     if full_path.exists() {
         if !full_path.is_file() {
-            println!("FAILED: {} is not a file", block.relative_path);
+            println!("[{}] FAILED: {} is not a file", i, block.relative_path);
             return Ok(());
         }
 
@@ -160,7 +161,7 @@ fn apply_change_block(
                         full_path.display()
                     )
                 })?;
-                println!("CREATED: {}", block.relative_path);
+                println!("[{}] CREATED: {}", i, block.relative_path);
                 return Ok(());
             } else {
                 // The file exists and is not empty, but the target is empty. This is an error.
@@ -187,20 +188,20 @@ fn apply_change_block(
         std::fs::write(&full_path, new_content)
             .with_context(|| format!("Failed to write to file: {}", full_path.display()))?;
 
-        println!("OK: {}", block.relative_path);
+        println!("[{}] OK: {}", i, block.relative_path);
     } else {
         // File does not exist
         if disallow_creating {
             println!(
-                "FAILED: {} - file does not exist and --disallow-creating is set",
-                block.relative_path
+                "[{}] FAILED: {} - file does not exist and --disallow-creating is set",
+                i, block.relative_path
             );
             return Ok(());
         }
         if !block.target.is_empty() {
             println!(
-                "FAILED: {} - file does not exist but target is not empty for creation",
-                block.relative_path
+                "[{}] FAILED: {} - file does not exist but target is not empty for creation",
+                i, block.relative_path
             );
             return Ok(());
         }
@@ -224,7 +225,7 @@ fn apply_change_block(
             )
         })?;
 
-        println!("CREATED: {}", block.relative_path);
+        println!("[{}] CREATED: {}", i, block.relative_path);
     }
 
     Ok(())
