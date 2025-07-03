@@ -705,6 +705,8 @@ dependencies = [
  "dirs",
  "futures-util",
  "hinata-core",
+ "hnt-apply",
+ "hnt-pack",
  "log",
  "shlex",
  "simplelog",

@@ -9,6 +9,8 @@ clap = { version = "4.0", features = ["derive"] }
 # I'll also add hnt-pack as a dependency to reuse its path logic
 hnt-pack = { path = "../hnt-pack" }
 
+[lib]
+
 [[bin]]
 name = "hnt-apply"
 path = "src/main.rs"

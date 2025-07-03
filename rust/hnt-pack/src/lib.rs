@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use common_path;
+use std::fs;
 use std::path::PathBuf;
 
 /// Calculates the longest common path prefix for a slice of absolute file paths.
@@ -39,4 +40,47 @@ pub fn get_common_prefix(paths: &[PathBuf]) -> Result<PathBuf> {
     } else {
         Ok(common)
     }
+}
+
+/// Packs a list of files into a single string, with metadata.
+pub fn pack_files(paths: &[PathBuf]) -> Result<String> {
+    if paths.is_empty() {
+        return Ok(String::new());
+    }
+
+    let common_prefix = get_common_prefix(paths)?;
+
+    let mut relative_paths = Vec::new();
+    let mut file_content_blocks = Vec::new();
+
+    for path in paths {
+        let rel_path = path.strip_prefix(&common_prefix).with_context(|| {
+            format!(
+                "Path {} does not have prefix {}",
+                path.display(),
+                common_prefix.display()
+            )
+        })?;
+
+        relative_paths.push(rel_path.display().to_string());
+
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read file {}", path.display()))?;
+
+        let file_block = format!(
+            "<{}>\n{}</{}>",
+            rel_path.display(),
+            content,
+            rel_path.display()
+        );
+        file_content_blocks.push(file_block);
+    }
+
+    let mut result = String::new();
+    result.push_str("<file_paths>\n");
+    result.push_str(&relative_paths.join("\n"));
+    result.push_str("\n</file_paths>\n\n");
+    result.push_str(&file_content_blocks.join("\n\n"));
+
+    Ok(result)
 }

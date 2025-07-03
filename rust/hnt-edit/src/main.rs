@@ -8,6 +8,8 @@ use dirs;
 use futures_util::StreamExt;
 use hinata_core::chat;
 use hinata_core::llm::{LlmConfig, LlmStreamEvent, SharedArgs};
+use hnt_apply;
+use hnt_pack;
 use log::debug;
 use shlex;
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
@@ -222,13 +224,10 @@ async fn main() -> Result<()> {
             let files_str = fs::read_to_string(&abs_paths_file)
                 .with_context(|| format!("Failed to read {:?}", abs_paths_file))?;
             let files: Vec<String> = files_str.lines().map(String::from).collect();
+            let file_paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
 
-            let packed_sources = Command::new("llm-pack")
-                .arg("-s")
-                .args(&files)
-                .output()
-                .await?
-                .stdout;
+            let packed_sources_str = hnt_pack::pack_files(&file_paths)
+                .context("Failed to pack source files from continue_dir")?;
 
             let source_ref_txt_path = dir.join("source_reference.txt");
             let source_ref_chat_filename_relative = fs::read_to_string(&source_ref_txt_path)
@@ -239,7 +238,7 @@ async fn main() -> Result<()> {
 
             let new_source_reference_content = format!(
                 "<source_reference>\n{}</source_reference>\n",
-                String::from_utf8_lossy(&packed_sources)
+                &packed_sources_str
             );
 
             fs::write(&target_source_ref_file, new_source_reference_content).with_context(
@@ -274,25 +273,24 @@ async fn main() -> Result<()> {
                 }
             }
 
-            let packed_sources = Command::new("llm-pack")
-                .arg("-s")
-                .args(&cli.source_files)
-                .output()
-                .await?
-                .stdout;
-
-            let conversations_dir = chat::get_conversations_dir()?;
-            let new_conv_dir = chat::create_new_conversation(&conversations_dir)?;
-
-            let abs_paths: Result<Vec<_>, _> = cli
+            let abs_path_bufs: Result<Vec<PathBuf>, _> = cli
                 .source_files
                 .iter()
                 .map(|p| Path::new(p).canonicalize())
                 .collect();
-            let abs_paths = abs_paths?
+            let abs_path_bufs = abs_path_bufs?;
+
+            let packed_sources_str =
+                hnt_pack::pack_files(&abs_path_bufs).context("Failed to pack source files")?;
+
+            let conversations_dir = chat::get_conversations_dir()?;
+            let new_conv_dir = chat::create_new_conversation(&conversations_dir)?;
+
+            let abs_paths: Vec<String> = abs_path_bufs
                 .iter()
                 .map(|p| p.to_str().unwrap().to_string())
-                .collect::<Vec<_>>();
+                .collect();
+
             fs::write(
                 new_conv_dir.join("absolute_file_paths.txt"),
                 abs_paths.join("\n"),
@@ -307,7 +305,7 @@ async fn main() -> Result<()> {
 
             let source_reference = format!(
                 "<source_reference>\n{}</source_reference>",
-                String::from_utf8_lossy(&packed_sources)
+                &packed_sources_str
             );
             let source_ref_filename =
                 chat::write_message_file(&new_conv_dir, chat::Role::User, &source_reference)?;
@@ -374,29 +372,17 @@ async fn main() -> Result<()> {
     eprintln!("\nhnt-chat dir: {:?}", conversation_dir);
 
     // Run hnt-apply
-    let mut child = Command::new("hnt-apply")
-        .arg("--ignore-reasoning")
-        .args(&source_files)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()?;
-
-    let mut stdin = child
-        .stdin
-        .take()
-        .context("Failed to open stdin of hnt-apply")?;
-    stdin.write_all(llm_output.as_bytes()).await?;
-    drop(stdin); // Close stdin to signal EOF
-
-    let output = child.wait_with_output().await?;
-    io::stdout().write_all(&output.stdout)?;
-
-    if !output.status.success() {
-        let apply_stdout = String::from_utf8_lossy(&output.stdout);
-        let failure_message = format!("<hnt_apply_error>\n{}</hnt_apply_error>", apply_stdout);
+    let source_files_pb: Vec<PathBuf> = source_files.into_iter().map(PathBuf::from).collect();
+    if let Err(e) = hnt_apply::apply_changes(
+        source_files_pb,
+        false, // disallow_creating
+        cli.ignore_reasoning,
+        cli.verbose,
+        &llm_output,
+    ) {
+        let failure_message = format!("<hnt_apply_error>\n{}</hnt_apply_error>", e);
         chat::write_message_file(&conversation_dir, chat::Role::User, &failure_message)?;
-        bail!("hnt-apply failed with exit code {}", output.status);
+        bail!("hnt-apply failed: {}", e);
     }
 
     Ok(())
