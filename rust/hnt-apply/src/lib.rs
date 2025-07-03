@@ -150,7 +150,11 @@ fn apply_change_block(
             if content.is_empty() {
                 // This is a file creation scenario on an existing empty file.
                 // Overwrite with new content.
-                std::fs::write(&full_path, &block.replace).with_context(|| {
+                let mut content_to_write = block.replace.clone();
+                if !content_to_write.is_empty() && !content_to_write.ends_with('\n') {
+                    content_to_write.push('\n');
+                }
+                std::fs::write(&full_path, &content_to_write).with_context(|| {
                     format!(
                         "Failed to create and write to file: {}",
                         full_path.display()
@@ -209,7 +213,11 @@ fn apply_change_block(
                 )
             })?;
         }
-        std::fs::write(&full_path, &block.replace).with_context(|| {
+        let mut content_to_write = block.replace.clone();
+        if !content_to_write.is_empty() && !content_to_write.ends_with('\n') {
+            content_to_write.push('\n');
+        }
+        std::fs::write(&full_path, &content_to_write).with_context(|| {
             format!(
                 "Failed to create and write to file: {}",
                 full_path.display()
