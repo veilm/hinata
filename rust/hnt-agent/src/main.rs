@@ -82,16 +82,20 @@ fn get_input_from_editor(initial_text: &str, use_pane: bool) -> Result<String> {
 
     fs::write(&temp_file_path, initial_text)?;
 
+    let cwd = env::current_dir().context("Failed to get current working directory")?;
+
     let status = if use_pane {
         StdCommand::new("hnt-tui")
             .arg("pane")
             .arg(&editor)
             .arg(&temp_file_path)
+            .current_dir(&cwd)
             .status()
             .with_context(|| format!("Failed to open editor in pane: {}", editor))?
     } else {
         StdCommand::new(&editor)
             .arg(&temp_file_path)
+            .current_dir(&cwd)
             .status()
             .with_context(|| format!("Failed to open editor: {}", editor))?
     };
@@ -138,7 +142,9 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
 
     let role_text = format!("{} {}", icon, role);
     let turn_text = format!("turn {}", turn);
-    let prefix = "─── ";
+    // let prefix = "─── ";
+    // let prefix = "──────── ";
+    let prefix = "─────── ";
 
     let total_text_len = prefix.width()
         + role_text.width()
@@ -274,7 +280,8 @@ async fn main() -> Result<()> {
 
     // Add the user instruction
     debug!("Before writing user message file.");
-    chat::write_message_file(&conversation_dir, chat::Role::User, &user_instruction)?;
+    let tagged_instruction = format!("<user_request>\n{}\n</user_request>", user_instruction);
+    chat::write_message_file(&conversation_dir, chat::Role::User, &tagged_instruction)?;
     debug!("After writing user message file.");
 
     eprintln!(
@@ -307,15 +314,48 @@ async fn main() -> Result<()> {
         print_turn_header("hinata", turn_counter)?;
         execute!(stdout(), ResetColor)?;
 
+        let mut llm_error: Option<anyhow::Error> = None;
         while let Some(event) = stream.next().await {
-            match event? {
-                hinata_core::llm::LlmStreamEvent::Content(content) => {
+            match event {
+                Ok(hinata_core::llm::LlmStreamEvent::Content(content)) => {
                     llm_response.push_str(&content);
                     print!("{}", content);
                     stdout().flush()?;
                 }
-                hinata_core::llm::LlmStreamEvent::Reasoning(_) => {
-                    // For now, well just ignore reasoning events.
+                Ok(hinata_core::llm::LlmStreamEvent::Reasoning(_)) => {
+                    // For now, we'll just ignore reasoning events.
+                }
+                Err(e) => {
+                    llm_error = Some(e.into());
+                    break;
+                }
+            }
+        }
+
+        if let Some(e) = llm_error {
+            // Need to reset color in case it was left on from streaming
+            execute!(stdout(), ResetColor)?;
+            eprintln!("\n\nAn error occurred during the LLM request: {}", e);
+
+            let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
+            let args = SelectArgs {
+                height: 10,
+                color: Some(4),
+            };
+            let tty = Tty::new()?;
+            let selection = {
+                let mut select = TuiSelect::new(options, &args, tty)?;
+                select.run()?
+            };
+
+            match selection.as_deref() {
+                Some("Retry LLM request.") => {
+                    continue;
+                }
+                _ => {
+                    // "Abort." or None
+                    eprintln!("Aborting.");
+                    break;
                 }
             }
         }
@@ -374,10 +414,12 @@ async fn main() -> Result<()> {
                             // Add a blank line for spacing, then the footer
                             println!();
                             print_turn_footer(Color::Magenta)?;
+                            let tagged_instructions =
+                                format!("<user_request>\n{}\n</user_request>", new_instructions);
                             chat::write_message_file(
                                 &conversation_dir,
                                 chat::Role::User,
-                                &new_instructions,
+                                &tagged_instructions,
                             )?;
                             turn_counter += 1;
                             continue;
@@ -391,6 +433,24 @@ async fn main() -> Result<()> {
                 }
 
                 let captured_output = _session_guard.session.exec_captured(&command_text).await?;
+
+                // Display shell output to the user
+                print_turn_footer(Color::DarkCyan)?;
+                execute!(
+                    stdout(),
+                    SetForegroundColor(Color::White),
+                    Print("Shell Output\n"),
+                    ResetColor
+                )?;
+                if !captured_output.stdout.is_empty() {
+                    print!("{}", &captured_output.stdout);
+                }
+                if !captured_output.stderr.is_empty() {
+                    eprint!("{}", &captured_output.stderr);
+                }
+                // The output may or may not have a newline. The footer will draw a line
+                // and add a newline, so we are guaranteed to be on a new line after this.
+                print_turn_footer(Color::DarkCyan)?;
 
                 let result_message = format!(
                     "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
@@ -430,10 +490,12 @@ async fn main() -> Result<()> {
                     // Add a blank line for spacing, then the footer
                     println!();
                     print_turn_footer(Color::Magenta)?;
+                    let tagged_instructions =
+                        format!("<user_request>\n{}\n</user_request>", new_instructions);
                     chat::write_message_file(
                         &conversation_dir,
                         chat::Role::User,
-                        &new_instructions,
+                        &tagged_instructions,
                     )?;
                     turn_counter += 1;
                     continue;
