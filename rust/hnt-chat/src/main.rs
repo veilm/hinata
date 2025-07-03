@@ -68,10 +68,6 @@ enum Commands {
         #[arg(long, action = ArgAction::SetTrue)]
         include_reasoning: bool,
 
-        /// Implies --write and --include-reasoning. Saves leading <think> block to a separate file.
-        #[arg(long, action = ArgAction::SetTrue)]
-        separate_reasoning: bool,
-
         /// Merge consecutive messages from the same author
         #[arg(long, action = ArgAction::SetTrue)]
         merge: bool,
@@ -103,7 +99,6 @@ async fn main() -> Result<()> {
             write,
             output_filename,
             include_reasoning,
-            separate_reasoning,
         } => {
             handle_gen_command(
                 shared,
@@ -112,7 +107,6 @@ async fn main() -> Result<()> {
                 write,
                 output_filename,
                 include_reasoning,
-                separate_reasoning,
             )
             .await?
         }
@@ -192,19 +186,18 @@ async fn handle_gen_command(
     write: bool,
     output_filename: bool,
     include_reasoning: bool,
-    separate_reasoning: bool,
 ) -> Result<()> {
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
         .context("Failed to determine conversation directory")?;
 
-    let should_write = write || output_filename || separate_reasoning;
+    let should_write = write || output_filename;
 
     fs::write(conv_dir.join("model.txt"), &shared.model).context("Failed to write model file")?;
 
     let config = LlmConfig {
         model: shared.model,
         system_prompt: None,
-        include_reasoning: shared.debug_unsafe || separate_reasoning || include_reasoning,
+        include_reasoning: shared.debug_unsafe || include_reasoning,
     };
 
     let mut writer = Vec::new();
@@ -240,7 +233,7 @@ async fn handle_gen_command(
                 content_buffer.push_str(&text);
             }
             LlmStreamEvent::Reasoning(text) => {
-                if include_reasoning || separate_reasoning || shared.debug_unsafe {
+                if include_reasoning || shared.debug_unsafe {
                     if !has_printed_think_tag {
                         stdout
                             .write_all(b"<think>")
@@ -270,7 +263,7 @@ async fn handle_gen_command(
     let mut assistant_file_path: Option<PathBuf> = None;
 
     if should_write {
-        if separate_reasoning {
+        if include_reasoning {
             if !reasoning_buffer.is_empty() {
                 chat::write_message_file(
                     &conv_dir,
@@ -284,7 +277,7 @@ async fn handle_gen_command(
             assistant_file_path = Some(path);
         } else {
             let full_response = if !reasoning_buffer.is_empty() {
-                format!("<think>{}</think>{}", reasoning_buffer, content_buffer)
+                format!("<think>{}</think>\n{}", reasoning_buffer, content_buffer)
             } else {
                 content_buffer
             };

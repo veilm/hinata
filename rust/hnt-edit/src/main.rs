@@ -8,6 +8,7 @@ use crossterm::{
 use dirs;
 use futures_util::StreamExt;
 use hinata_core::chat;
+use hinata_core::chat::Role;
 use hinata_core::llm::{LlmConfig, LlmStreamEvent, SharedArgs};
 use hnt_apply;
 use hnt_pack;
@@ -278,8 +279,11 @@ async fn main() -> Result<()> {
                 let width = width as usize;
 
                 let title = "┌─ User Instructions ";
-                let header =
-                    format!("{}{}", title, "─".repeat(width.saturating_sub(title.chars().count())));
+                let header = format!(
+                    "{}{}",
+                    title,
+                    "─".repeat(width.saturating_sub(title.chars().count()))
+                );
                 let footer = "─".repeat(width);
 
                 let mut stdout = io::stdout();
@@ -386,11 +390,12 @@ async fn main() -> Result<()> {
     let stream = hinata_core::llm::stream_llm_response(llm_config, prompt);
     tokio::pin!(stream);
 
-    let mut llm_output = String::new();
+    let mut reasoning_buffer = String::new();
+    let mut content_buffer = String::new();
     while let Some(event) = stream.next().await {
         match event {
             Ok(LlmStreamEvent::Content(content)) => {
-                llm_output.push_str(&content);
+                content_buffer.push_str(&content);
                 if let Some(stdin) = highlighter_stdin.as_mut() {
                     stdin.write_all(content.as_bytes()).await?;
                 } else {
@@ -398,14 +403,16 @@ async fn main() -> Result<()> {
                     io::stdout().flush()?;
                 }
             }
-            Ok(LlmStreamEvent::Reasoning(reasoning)) if !cli.ignore_reasoning => {
-                let mut stdout = io::stdout();
-                execute!(stdout, SetForegroundColor(Color::Yellow))?;
-                print!("{}", reasoning);
-                execute!(stdout, ResetColor)?;
-                stdout.flush()?;
+            Ok(LlmStreamEvent::Reasoning(reasoning)) => {
+                if !cli.ignore_reasoning {
+                    reasoning_buffer.push_str(&reasoning);
+                    let mut stdout = io::stdout();
+                    execute!(stdout, SetForegroundColor(Color::Yellow))?;
+                    print!("{}", reasoning);
+                    execute!(stdout, ResetColor)?;
+                    stdout.flush()?;
+                }
             }
-            Ok(LlmStreamEvent::Reasoning(_)) => {} // Ignore if --ignore-reasoning
             Err(e) => bail!("LLM stream error: {}", e),
         }
     }
@@ -414,10 +421,19 @@ async fn main() -> Result<()> {
     }
     println!();
 
-    if llm_output.trim().is_empty() {
+    if !cli.ignore_reasoning && !reasoning_buffer.is_empty() {
+        let reasoning_message = format!("<think>{}</think>", reasoning_buffer);
+        chat::write_message_file(
+            &conversation_dir,
+            Role::AssistantReasoning,
+            &reasoning_message,
+        )?;
+    }
+    chat::write_message_file(&conversation_dir, Role::Assistant, &content_buffer)?;
+
+    if content_buffer.trim().is_empty() {
         bail!("LLM produced no output. Aborting before running hnt-apply.");
     }
-    chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_output)?;
 
     eprintln!("\nhnt-chat dir: {:?}", conversation_dir);
 
@@ -428,7 +444,7 @@ async fn main() -> Result<()> {
         false, // disallow_creating
         cli.ignore_reasoning,
         cli.verbose,
-        &llm_output,
+        &content_buffer,
     ) {
         let failure_message = format!("<hnt_apply_error>\n{}</hnt_apply_error>", e);
         chat::write_message_file(&conversation_dir, chat::Role::User, &failure_message)?;

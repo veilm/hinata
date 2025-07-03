@@ -40,6 +40,10 @@ struct Cli {
     #[command(flatten)]
     shared: SharedArgs,
 
+    /// Do not display or save LLM reasoning.
+    #[arg(long)]
+    ignore_reasoning: bool,
+
     /// Skip confirmation steps before executing commands or adding messages.
     #[arg(long)]
     no_confirm: bool,
@@ -303,12 +307,13 @@ async fn main() -> Result<()> {
         let config = LlmConfig {
             model: cli.shared.model.clone(),
             system_prompt: None,
-            include_reasoning: cli.shared.debug_unsafe,
+            include_reasoning: !cli.ignore_reasoning || cli.shared.debug_unsafe,
         };
 
         let stream = hinata_core::llm::stream_llm_response(config, prompt);
 
         let mut llm_response = String::new();
+        let mut reasoning_buffer = String::new();
         tokio::pin!(stream);
 
         print_turn_header("hinata", turn_counter)?;
@@ -322,8 +327,17 @@ async fn main() -> Result<()> {
                     print!("{}", content);
                     stdout().flush()?;
                 }
-                Ok(hinata_core::llm::LlmStreamEvent::Reasoning(_)) => {
-                    // For now, we'll just ignore reasoning events.
+                Ok(hinata_core::llm::LlmStreamEvent::Reasoning(reasoning)) => {
+                    if !cli.ignore_reasoning {
+                        reasoning_buffer.push_str(&reasoning);
+                        execute!(
+                            stdout(),
+                            SetForegroundColor(Color::Yellow),
+                            Print(&reasoning),
+                            ResetColor
+                        )?;
+                        stdout().flush()?;
+                    }
                 }
                 Err(e) => {
                     llm_error = Some(e.into());
@@ -363,6 +377,15 @@ async fn main() -> Result<()> {
 
         println!();
         print_turn_footer(Color::Blue)?;
+
+        if !cli.ignore_reasoning && !reasoning_buffer.is_empty() {
+            let reasoning_content = format!("<think>{}</think>", reasoning_buffer);
+            chat::write_message_file(
+                &conversation_dir,
+                chat::Role::AssistantReasoning,
+                &reasoning_content,
+            )?;
+        }
 
         // Add assistants response to the conversation
         chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
