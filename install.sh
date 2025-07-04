@@ -1,8 +1,14 @@
 #!/bin/sh -e
 
 cd "$(dirname "$0")"
-./build.sh
 
+prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
+mkdir -p "$prompts_dir"
+cp prompts/* "$prompts_dir"
+echo "hinata: created $prompts_dir"
+echo "hinata: installed agent system prompts"
+
+./build.sh
 cd src
 
 # --- Installation ---
