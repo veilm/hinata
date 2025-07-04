@@ -1,9 +1,10 @@
+use regex::Regex;
 use std::io::{self, Read, Write};
 
-/// Reads from a reader, escapes specific characters ('<'), and writes to a writer.
+/// Reads from a reader, escapes HNT tags by adding underscores, and writes to a writer.
 ///
-/// This function processes data in a streaming fashion, avoiding loading the
-/// entire content into memory.
+/// This function finds opening and closing HNT tags (e.g., <hnt-user>, </hnt-user>,
+/// <_hnt-assistant>, </__hnt-system>) and adds one underscore before "hnt".
 ///
 /// # Arguments
 /// * `reader` - A mutable reference to a type that implements `io::Read`.
@@ -12,51 +13,53 @@ use std::io::{self, Read, Write};
 /// # Returns
 /// An `io::Result<()>` indicating the outcome of the operation.
 pub fn escape(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<()> {
-    // Using a buffer for efficiency is better than byte-by-byte.
-    let mut buffer = [0; 8192];
+    let mut content = String::new();
+    reader.read_to_string(&mut content)?;
 
-    loop {
-        let bytes_read = reader.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break; // End of stream
-        }
+    // Pattern matches: </?_*hnt-(user|assistant|system)>
+    let re = Regex::new(r"<(/?)(_*)(hnt-(user|assistant|system))>").unwrap();
 
-        let chunk = &buffer[..bytes_read];
-        let mut last_pos = 0;
+    let result = re.replace_all(&content, |caps: &regex::Captures| {
+        format!(
+            "<{}{}_{}>",
+            caps.get(1).map_or("", |m| m.as_str()), // optional /
+            caps.get(2).map_or("", |m| m.as_str()), // existing underscores
+            caps.get(3).map_or("", |m| m.as_str())  // hnt-role
+        )
+    });
 
-        for (i, &byte) in chunk.iter().enumerate() {
-            if byte == b'<' {
-                // Write segment before the special character
-                if i > last_pos {
-                    writer.write_all(&chunk[last_pos..i])?;
-                }
-                // Write the escaped version
-                writer.write_all(b"\\<")?;
-                last_pos = i + 1;
-            }
-        }
-
-        // Write any remaining part of the chunk
-        if last_pos < chunk.len() {
-            writer.write_all(&chunk[last_pos..])?;
-        }
-    }
-
+    writer.write_all(result.as_bytes())?;
     Ok(())
 }
 
-/// Unescapes specific character sequences in a string slice.
+/// Unescapes HNT tags by removing one underscore.
 ///
-/// This function specifically replaces instances of "\\<" with "<".
-/// It is the inverse of the `escape` function.
+/// This function finds HNT tags with underscores (e.g., <_hnt-user>, </__hnt-assistant>)
+/// and removes one underscore before "hnt". It is the inverse of the `escape` function.
 ///
 /// # Arguments
 /// * `input` - The string slice to unescape.
 ///
 /// # Returns
-/// A new `String` with the character sequences unescaped.
+/// A new `String` with one underscore removed from HNT tags.
 pub fn unescape(input: &str) -> String {
-    input.replace("\\<", "<")
+    let re = Regex::new(r"<(/?)(_+)(hnt-(user|assistant|system))>").unwrap();
+
+    re.replace_all(input, |caps: &regex::Captures| {
+        let slash = caps.get(1).map_or("", |m| m.as_str());
+        let underscores = caps.get(2).map_or("", |m| m.as_str());
+        let hnt_role = caps.get(3).map_or("", |m| m.as_str());
+
+        // Remove one underscore if present
+        let new_underscores = if underscores.len() > 0 {
+            &underscores[1..]
+        } else {
+            ""
+        };
+
+        format!("<{}{}{}>", slash, new_underscores, hnt_role)
+    })
+    .to_string()
 }
 
 #[cfg(test)]
@@ -72,31 +75,81 @@ mod tests {
     }
 
     #[test]
-    fn test_escape() {
-        assert_eq!(test_escape_str("<tag>"), "\\<tag>");
-        assert_eq!(test_escape_str("text < text"), "text \\< text");
+    fn test_escape_hnt_tags() {
+        assert_eq!(
+            test_escape_str("<hnt-user>Hello</hnt-user>"),
+            "<_hnt-user>Hello</_hnt-user>"
+        );
+        assert_eq!(
+            test_escape_str("<hnt-assistant>Hi</hnt-assistant>"),
+            "<_hnt-assistant>Hi</_hnt-assistant>"
+        );
+        assert_eq!(
+            test_escape_str("<hnt-system>System</hnt-system>"),
+            "<_hnt-system>System</_hnt-system>"
+        );
     }
 
     #[test]
-    fn test_no_op() {
-        assert_eq!(test_escape_str("hello world"), "hello world");
+    fn test_escape_already_escaped() {
+        assert_eq!(
+            test_escape_str("<_hnt-user>Test</_hnt-user>"),
+            "<__hnt-user>Test</__hnt-user>"
+        );
+        assert_eq!(
+            test_escape_str("<___hnt-assistant>Multiple</___hnt-assistant>"),
+            "<____hnt-assistant>Multiple</____hnt-assistant>"
+        );
     }
 
     #[test]
-    fn test_mixed_tags() {
-        let input = "<outer><inner></inner></outer>";
-        let expected = "\\<outer>\\<inner>\\</inner>\\</outer>";
+    fn test_no_escape_regular_tags() {
+        assert_eq!(test_escape_str("<tag>"), "<tag>");
+        assert_eq!(test_escape_str("text < text"), "text < text");
+        assert_eq!(test_escape_str("<div>content</div>"), "<div>content</div>");
+    }
+
+    #[test]
+    fn test_escape_mixed_content() {
+        let input = "Before <hnt-user>User message with <tag> inside</hnt-user> after";
+        let expected = "Before <_hnt-user>User message with <tag> inside</_hnt-user> after";
         assert_eq!(test_escape_str(input), expected);
     }
 
     #[test]
-    fn test_unescape() {
-        assert_eq!(unescape("\\<tag>"), "<tag>");
-        assert_eq!(unescape("text \\< text"), "text < text");
-        assert_eq!(unescape("no escaping here"), "no escaping here");
+    fn test_unescape_hnt_tags() {
         assert_eq!(
-            unescape("\\<outer>\\<inner>\\</inner>\\</outer>"),
-            "<outer><inner></inner></outer>"
+            unescape("<_hnt-user>Hello</_hnt-user>"),
+            "<hnt-user>Hello</hnt-user>"
         );
+        assert_eq!(
+            unescape("<_hnt-assistant>Hi</_hnt-assistant>"),
+            "<hnt-assistant>Hi</hnt-assistant>"
+        );
+        assert_eq!(
+            unescape("<_hnt-system>System</_hnt-system>"),
+            "<hnt-system>System</hnt-system>"
+        );
+    }
+
+    #[test]
+    fn test_unescape_multiple_underscores() {
+        assert_eq!(
+            unescape("<__hnt-user>Test</__hnt-user>"),
+            "<_hnt-user>Test</_hnt-user>"
+        );
+        assert_eq!(
+            unescape("<____hnt-assistant>Multiple</____hnt-assistant>"),
+            "<___hnt-assistant>Multiple</___hnt-assistant>"
+        );
+    }
+
+    #[test]
+    fn test_unescape_no_underscores() {
+        assert_eq!(
+            unescape("<hnt-user>No underscores</hnt-user>"),
+            "<hnt-user>No underscores</hnt-user>"
+        );
+        assert_eq!(unescape("no escaping here"), "no escaping here");
     }
 }

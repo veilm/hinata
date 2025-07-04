@@ -462,7 +462,7 @@ mod tests {
 
         write_message_file(conv_dir, Role::User, "Hello").unwrap();
         thread::sleep(Duration::from_millis(2));
-        write_message_file(conv_dir, Role::Assistant, "Hi! <tag>").unwrap();
+        write_message_file(conv_dir, Role::Assistant, "Hi! <hnt-user>nested</hnt-user>").unwrap();
 
         let mut output_buffer = Vec::new();
         pack_conversation(conv_dir, &mut output_buffer, false).unwrap();
@@ -474,7 +474,10 @@ mod tests {
         let second_line = lines.next().unwrap();
 
         assert_eq!(first_line, "<hnt-user>Hello</hnt-user>");
-        assert_eq!(second_line, "<hnt-assistant>Hi! \\<tag></hnt-assistant>");
+        assert_eq!(
+            second_line,
+            "<hnt-assistant>Hi! <_hnt-user>nested</_hnt-user></hnt-assistant>"
+        );
     }
 
     #[test]

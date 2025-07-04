@@ -1,4 +1,3 @@
-- rust rewrite
 - recompute summaries
 - make a `memory` CLI or something
 	for now it can just have some different profiles (simple .md files)
@@ -27,15 +26,6 @@
 - make it so hnt-shell has a max amount of tokens it can give
 	then it logs the whole message to like /tmp/hnt-shell-1750571344.log
 	so the LLM can read it if it really wants
-
-- I think based Gemini nuked my idea for the hnt-user escaping in hnt-llm etc.
-	so at least then make the main parser flexible
-	
-	like
-	echo "hello !??? < eof>" | hnt-llm
-	etc.
-	shouldn't break
-
 - make some way to continue a hnt-agent conversation
 	even if headlesh has to get reset, no big deal
 - maybe always include a <pwd>

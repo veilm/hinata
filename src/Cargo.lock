@@ -645,6 +645,7 @@ dependencies = [
  "futures-util",
  "log",
  "rand",
+ "regex",
  "reqwest",
  "rpassword",
  "serde",
