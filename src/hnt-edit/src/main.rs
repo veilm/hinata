@@ -268,7 +268,7 @@ async fn main() -> Result<()> {
                 },
             )?;
 
-            (dir, files)
+            (dir, file_paths)
         }
         None => {
             let system_message = get_system_message(cli.system)?;
@@ -368,7 +368,7 @@ async fn main() -> Result<()> {
                 source_ref_filename.file_name().unwrap().to_str().unwrap(),
             )?;
 
-            (new_conv_dir, cli.source_files.clone())
+            (new_conv_dir, abs_path_bufs)
         }
     };
 
@@ -466,9 +466,8 @@ async fn main() -> Result<()> {
     eprintln!("\nhnt-chat dir: {:?}", conversation_dir);
 
     // Run hnt-apply
-    let source_files_pb: Vec<PathBuf> = source_files.into_iter().map(PathBuf::from).collect();
     if let Err(e) = hnt_apply::apply_changes(
-        source_files_pb,
+        source_files,
         false, // disallow_creating
         cli.ignore_reasoning,
         cli.verbose,
