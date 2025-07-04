@@ -9,6 +9,5 @@ members = [
     "hnt-llm",
     "hnt-pack",
     "hnt-tui",
-    "hnt-web",
     "libhinata-core",
 ]
