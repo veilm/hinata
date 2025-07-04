@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-which alert && alert "TODO rust rewrite" || true
+which alert && alert "web/build fix instead of exit 1" || true
 
 cd "$(dirname "$0")"
 
@@ -12,8 +12,8 @@ fi
 
 if ! which hnt-chat > /dev/null 2>&1
 then
-	echo "web/build: building hnt-chat"
-	../chat/build
+	echo "web/build: hnt-chat required"
+	exit 1
 fi
 
 web="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/web"

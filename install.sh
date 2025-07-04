@@ -1,8 +1,9 @@
 #!/bin/sh -e
 
 cd "$(dirname "$0")"
-
 ./build.sh
+
+cd src
 
 # --- Installation ---
 TARGET_DIR="./target/release"
