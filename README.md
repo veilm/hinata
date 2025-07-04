@@ -8,9 +8,9 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 
 # quick tour
 
-### [`hnt-agent`](./agent)
-simple [`hnt-chat`](./chat) and [`headlesh`](./agent/headlesh/) wrapper for
-letting an LLM operate a persistent shell
+### [`hnt-agent`](./src/hnt-agent/)
+simple [`hnt-chat`](./src/hnt-chat/) and [`headlesh`](./src/headlesh/README.md) wrapper
+for letting an LLM operate a persistent shell
 
 ```
 $ git log --oneline | head -1
@@ -31,13 +31,15 @@ b8b305b refactor: Handle recoil animations during enemy fade-out state
 
 the persistent shell is the only direct "tool" the model has access to. all
 other possible functionality (e.g. browser navigation with
-[`browse`](./agent/browse/), file editing with [`hnt-edit`](./edit/)) is
-implemented as CLI utilities that the LLM can leverage
+[`browse`](./util/browse/README.md), file editing with
+[`hnt-edit`](./src/hnt-edit/)) is implemented as CLI utilities that the LLM can
+leverage
 
 not as aesthetic as Claude Code. UX is WIP
 
-### [`hnt-edit`](./edit)
-simple [`hnt-chat`](./chat) wrapper for editing source code or other plaintext files
+### [`hnt-edit`](./src/hnt-edit/)
+simple [`hnt-chat`](./src/hnt-chat/) wrapper for editing source code or other
+plaintext files
 
 ```
 $ hnt-edit \
@@ -66,9 +68,9 @@ in my experience, hnt-edit's editing performance is higher than Aider's for my
 usual Gemini 2.5 Pro infra and web use cases, as of Apr 2025. (functional
 differences: system prompt and design of TARGET/REPLACE parser)
 
-### [`hnt-chat`](./chat/)
-simple [`hnt-llm`](./llm) wrapper, for chat history management using plaintext
-files and conversation directories
+### [`hnt-chat`](./src/hnt-chat/)
+simple [`hnt-llm`](./src/hnt-llm/) wrapper, for chat history management using
+plaintext files and conversation directories
 ```
 $ conversation=$(hnt-chat new)
 $ echo "please write a 2-line stanza about the user's given theme" | hnt-chat add system
@@ -88,7 +90,7 @@ $ ls $conversation
 1751202692095544873-assistant.md
 ```
 
-### [`hnt-llm`](./llm/)
+### [`hnt-llm`](./src/hnt-llm/)
 basic LLM API in/out. significantly faster startup than openai-python
 ```
 $ echo "hello Claude! ❄️" | hnt-llm --model openrouter/anthropic/claude-3-opus
@@ -97,40 +99,39 @@ Hello! It's great to meet you. I hope you're having a wonderful day! ❄️☃�
 
 has optional ~encrypted credential management using `hnt-llm save-key`
 
-# build everything
+# build and install everything
 ```
 git clone https://github.com/veilm/hinata
 cd hinata
-./build
+./install.sh
 ```
 
-- dependencies (you likely already have them): C libjasson and libcurl
-- optional dependencies: uv (pygments syntax highlighting)
+the only system dependency is [Rust](https://rustup.rs/)
 
 # full architecture
-- [`hnt-llm`](./llm/README.md): simple, performant text backend. pipe text input
+- [`hnt-llm`](./src/hnt-llm/): simple, performant text backend. pipe text input
 in, receive LLM text response out
-- [`hnt-chat`](./chat/README.md): wrapper around `hnt-llm` for managing
+- [`hnt-chat`](./src/hnt-chat/): wrapper around `hnt-llm` for managing
 conversations and message history, using simple conv directories and message
 markdown files
-- [`llm-pack`](./edit/llm-pack/README.md): take source code filenames as CLI
-args. write LLM packed prompt to stdout
-- [`hnt-apply`](./edit/README.md): take LLM output including TARGET/REPLACE
+- [`llm-pack`](./src/hnt-pack/): take source code filenames as CLI args. write
+LLM packed prompt to stdout
+- [`hnt-apply`](./src/hnt-apply/): take LLM output including TARGET/REPLACE
 blocks as stdin. make edits to those files on the LLM's behalf
 - [`hlmd-st`](./fmt/highlight/README.md): take LLM markdown output, including
 code blocks as stdin. write syntax highlighted ver to stdout
-- [`hnt-edit`](./edit/README.md): (very low-budget) aider clone. wrapper that
+- [`hnt-edit`](./src/hnt-edit/): (very low-budget) aider clone. wrapper that
 uses `llm-pack` to format source code. sends it along with user instructions to
 `hnt-chat`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
 to parse the LLM's desired edits
-- [`hnt-web`](./web/README.md): simple 80/20 web app wrapping hnt-chat.
+- [`hnt-web`](./web/README.md): simple 80/20 web app wrapping `hnt-chat`.
 sufficient for my own casual usage and mobile/{filesystem storage} requirement
-- [`headlesh`](./agent/headlesh/README.md): CLI headless shell manager. create
+- [`headlesh`](./src/headlesh/README.md): CLI headless shell manager. create
 shell sessions and easily read/write to them
-- [`hnt-agent`](./agent/): wrapper around `headlesh` for allowing an LLM to use
-a shell and receive output, in a feedback loop
-- [`browse`](./agent/browse): CLI for navigating your (not headless) GUI
-Chromium-based browser programmatically. intended for LLM web browsing
+- [`hnt-agent`](./src/hnt-agent/): wrapper around `headlesh` for allowing an LLM
+to use a shell and receive output, in a feedback loop
+- [`browse`](./util/browse/README.md): CLI for navigating your (not headless)
+GUI Chromium-based browser programmatically. intended for LLM web browsing
 
 # bugs / support
 feel free to @ me on X or make a GitHub issue, for literally any reason

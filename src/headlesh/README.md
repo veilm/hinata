@@ -4,7 +4,8 @@ a simple, efficient (no pty polling) manager of headless shell sessions
 # install
 ```sh
 git clone https://github.com/veilm/hinata
-./rust/install.sh
+cd hinata
+./install.sh
 ```
 
 # quickstart
