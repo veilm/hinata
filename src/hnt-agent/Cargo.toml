@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4" }
 clap = { version = "4.5", features = ["derive", "env"] }
 crossterm = "0.27.0"
 dirs = "5.0"
@@ -16,5 +16,5 @@ hnt-tui = { path = "../hnt-tui" }
 log = "0.4.27"
 regex = "1"
 simplelog = "0.12.2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt"] }
 unicode-width = "0.1.10"

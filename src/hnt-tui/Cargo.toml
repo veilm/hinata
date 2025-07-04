@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 crossterm = "0.27.0"
 clap = { version = "4.5.4", features = ["derive"] }
-anyhow = "1.0.86"
 termios = "0.3"
 vt100 = "0.15.2"
 
@@ -15,7 +14,7 @@ version = "0.9.0"
 
 [dependencies.tokio]
 version = "1"
-features = ["full"]
+features = ["rt-multi-thread", "macros", "sync"]
 
 [lib]
 name = "hnt_tui"

@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-nix = { version = "0.28", features = ["signal", "process", "fs"] }
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "rt-multi-thread"] }
+nix = { version = "0.28", features = ["process", "fs"] }
 fs2 = "0.4"
 simplelog = "0.12.2"
 dirs = "5.0.1"

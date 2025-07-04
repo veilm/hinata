@@ -7,5 +7,5 @@ edition = "2021"
 hinata-core = { path = "../libhinata-core" }
 anyhow = "1.0"
 clap = { version = "4.5.4", features = ["derive"] }
-tokio = { version = "1.37.0", features = ["full"] }
-futures-util = "0.3.31"
+tokio = { version = "1.37.0", features = ["macros", "rt", "io-util", "io-std"] }
+futures-util = { version = "0.3.31", default-features = false, features = ["async-await"] }
