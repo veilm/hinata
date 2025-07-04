@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# outputs path to cargo binary
+
+# if cargo is already in PATH, use it
+test=$(which cargo 2> /dev/null)
+[ -f "$test" ] && echo "$test" && exit 0
+
+# if cargo is in $CARGO_HOME or ~/.cargo, export it
+test=${CARGO_HOME:-$HOME/.cargo}
+test=$test/bin/cargo
+[ -f "$test" ] && echo "$test" && exit 0
+
+# else failed. not found
+exit 1

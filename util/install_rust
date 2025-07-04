@@ -1,18 +1,5 @@
 #!/bin/sh
 
-# if cargo is already in PATH, export it
-test=$(which cargo 2> /dev/null)
-[ -f "$test" ] &&
-	export CARGO=$test &&
-	return
-
-# if cargo is in $CARGO_HOME or ~/.cargo, export it
-test=${CARGO_HOME:-$HOME/.cargo}
-test=$test/bin/cargo
-[ -f "$test" ] &&
-	export CARGO=$test &&
-	return
-
 echo "You do not have Rust installed on your system!"
 printf "Install through the offical sh.rustup.rs channel? [y/N] "
 
@@ -22,13 +9,10 @@ case "$response" in
 	[yY][eE][sS]|[yY])
 		echo "hinata: Proceeding with rustup installation..."
 		curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-		# Try a re-export
-		. "$0"
 		;;
 
 	*)
 		echo "Installation aborted."
-		return 1
+		exit 1
 		;;
 esac
