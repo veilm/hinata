@@ -1,46 +1,89 @@
 # headlesh
-a simple, efficient (no pty polling) manager of headless shell sessions
 
-# install
-```sh
+A lightweight daemon for persistent, headless shell sessions. Create named shell sessions that persist in the background and execute commands in them from anywhere.
+
+## Installation
+
+```bash
 git clone https://github.com/veilm/hinata
-cd hinata
-./install.sh
+./hinata/install.sh
 ```
 
-# quickstart
-```sh
-# pick a session name. avoid special characters
-$ session=hajime
+## Quick Start
 
-# create a session. bash by default
-$ headlesh create $session
+```bash
+# Create a new session
+headlesh create my-session
 
-# list sessions
-$ headlesh list
-Active sessions:
-- hajime
+# Execute a command in the session
+echo "cd /tmp && pwd" | headlesh exec my-session
 
-# use other shell (must support reading command input from stdin)
-# headlesh create -s /bin/sh $session
+# List active sessions
+headlesh list
 
-# run one or more commands
-$ echo "cd /tmp" | headlesh exec $session
-$ echo "msg=foo ; pwd" | headlesh exec $session
-/tmp
-
-# new lines separate commands, just like in regular shell scripts
-$ echo "echo \$msg\ncat \$(date +%s)" | headlesh exec $session > /tmp/0.txt
-cat: 1747092138: No such file or directory
-# (writes to stdout and stderr appropriately. /tmp/0.txt contains "foo\n")
-
-# (sets exit code appropriately)
-$ echo $?
-1
-
-$ echo $msg
-# (nothing is printed, of course, because $msg was only set in your headlesh session)
-
-# use to end the session. do not `echo exit | headlesh exec`
-headlesh exit $session
+# Terminate a session
+headlesh exit my-session
 ```
+
+## Usage
+
+### Creating Sessions
+
+Start a new background shell session with a unique name:
+
+```bash
+headlesh create <session-id>
+```
+
+Options:
+- `--shell <shell>` - Specify shell to use (default: `sh`)
+
+Example:
+```bash
+headlesh create dev-env --shell bash
+```
+
+### Executing Commands
+
+Run commands in an existing session by piping them through stdin:
+
+```bash
+echo "your command here" | headlesh exec <session-id>
+```
+
+The command inherits the session's environment and working directory:
+
+```bash
+# Set up environment in a session
+echo "export API_KEY=secret123" | headlesh exec my-app
+echo "cd /opt/myapp" | headlesh exec my-app
+
+# Later commands remember the state
+echo "echo \$API_KEY" | headlesh exec my-app  # outputs: secret123
+echo "pwd" | headlesh exec my-app             # outputs: /opt/myapp
+```
+
+### Managing Sessions
+
+List all active sessions:
+```bash
+headlesh list
+```
+
+Terminate a session:
+```bash
+headlesh exit <session-id>
+```
+
+## How It Works
+
+Each session runs as a background daemon with its own shell process. Commands are passed via named pipes, and the session maintains state (environment variables, working directory) between executions.
+
+Sessions persist until explicitly terminated with `exit` or system restart. Each session is isolated with its own shell instance.
+
+## Notes
+
+- Session IDs must not contain `/` or `..`
+- Sessions are stored in `/tmp/headlesh_sessions/`
+- Logs are written to `~/.local/share/hinata/headlesh/<session-id>/`
+- Exit codes are preserved and returned to the caller
