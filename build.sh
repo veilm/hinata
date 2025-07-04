@@ -1,7 +1,9 @@
 #!/bin/sh -e
 
 cd "$(dirname "$0")"
+. ./util/install_rust
+
 cd src
 
 echo "hinata: building Rust binaries in release mode..."
-cargo build --release
+${CARGO:-cargo} build --release
