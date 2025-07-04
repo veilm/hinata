@@ -9,7 +9,7 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 # quick tour
 
 ### [`hnt-agent`](./src/hnt-agent/)
-simple [`hnt-chat`](./src/hnt-chat/) and [`headlesh`](./src/headlesh/README.md) wrapper
+simple [`hnt-chat`](./src/hnt-chat/) and [`headlesh`](./src/headlesh/) wrapper
 for letting an LLM operate a persistent shell
 
 ```
@@ -31,7 +31,7 @@ b8b305b refactor: Handle recoil animations during enemy fade-out state
 
 the persistent shell is the only direct "tool" the model has access to. all
 other possible functionality (e.g. browser navigation with
-[`browse`](./util/browse/README.md), file editing with
+[`browse`](./util/browse/), file editing with
 [`hnt-edit`](./src/hnt-edit/)) is implemented as CLI utilities that the LLM can
 leverage
 
@@ -118,19 +118,19 @@ markdown files
 LLM packed prompt to stdout
 - [`hnt-apply`](./src/hnt-apply/): take LLM output including TARGET/REPLACE
 blocks as stdin. make edits to those files on the LLM's behalf
-- [`hlmd-st`](./fmt/highlight/README.md): take LLM markdown output, including
+- [`hlmd-st`](./fmt/highlight/): take LLM markdown output, including
 code blocks as stdin. write syntax highlighted ver to stdout
 - [`hnt-edit`](./src/hnt-edit/): (very low-budget) aider clone. wrapper that
 uses `llm-pack` to format source code. sends it along with user instructions to
 `hnt-chat`. optionally displays it using `hlmd-st`/custom. then uses `hnt-apply`
 to parse the LLM's desired edits
-- [`hnt-web`](./web/README.md): simple 80/20 web app wrapping `hnt-chat`.
+- [`hnt-web`](./web/): simple 80/20 web app wrapping `hnt-chat`.
 sufficient for my own casual usage and mobile/{filesystem storage} requirement
-- [`headlesh`](./src/headlesh/README.md): CLI headless shell manager. create
+- [`headlesh`](./src/headlesh/): CLI headless shell manager. create
 shell sessions and easily read/write to them
 - [`hnt-agent`](./src/hnt-agent/): wrapper around `headlesh` for allowing an LLM
 to use a shell and receive output, in a feedback loop
-- [`browse`](./util/browse/README.md): CLI for navigating your (not headless)
+- [`browse`](./util/browse/): CLI for navigating your (not headless)
 GUI Chromium-based browser programmatically. intended for LLM web browsing
 
 # bugs / support
