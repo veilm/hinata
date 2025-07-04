@@ -2,6 +2,8 @@
 
 cd "$(dirname "$0")"
 
+./util/install_rust
+
 prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
 mkdir -p "$prompts_dir"
 cp prompts/* "$prompts_dir"

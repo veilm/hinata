@@ -1,0 +1,19 @@
+#!/bin/sh
+
+if ! which cargo > /dev/null
+then
+	echo "You do not have Rust installed on your system!"
+	printf "Install through the offical sh.rustup.rs channel? [y/N] "
+
+	read -r response
+	case "$response" in
+		[yY][eE][sS]|[yY])
+			echo "hinata: Proceeding with rustup installation..."
+			curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+			;;
+		*)
+			echo "Installation aborted."
+			exit 1
+			;;
+	esac
+fi
