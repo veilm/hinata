@@ -102,11 +102,10 @@ has optional ~encrypted credential management using `hnt-llm save-key`
 # build and install everything
 ```
 git clone https://github.com/veilm/hinata
-cd hinata
-./install.sh
+./hinata/install.sh
 ```
 
-the only system dependency is [Rust](https://rustup.rs/)
+system dependencies: [Rust](https://rustup.rs/), `pkg-config`
 
 # full architecture
 - [`hnt-llm`](./src/hnt-llm/): simple, performant text backend. pipe text input
