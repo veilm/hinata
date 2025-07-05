@@ -370,7 +370,7 @@ fn run_daemon(
             let shell_cmd = format!(
                 // Execute the script, redirecting stdout/stderr. Then, capture its
                 // exit code, write it to the status FIFO, and finally remove the script.
-                "{{ . \"{}\"; }} > \"{}\" 2> \"{}\"; ec=$?; echo $ec > \"{}\"; rm -f \"{}\"\n",
+                "{{ . \"{}\" < /dev/null; }} > \"{}\" 2> \"{}\"; ec=$?; echo $ec > \"{}\"; rm -f \"{}\"\n",
                 script_path.display(),
                 out_fifo_path.display(),
                 err_fifo_path.display(),
