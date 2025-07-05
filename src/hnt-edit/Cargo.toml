@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-crossterm = "0.27"
+ratatui = { version = "0.29", features = ["crossterm"] }
 dirs = "5.0"
 futures-util = "0.3"
 hinata-core = { path = "../libhinata-core" }
@@ -16,5 +16,6 @@ log = "0.4"
 shlex = "1.3"
 simplelog = "0.12"
 tempfile = "3.10"
+tui-textarea = "0.7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process"] }
 which = "4.4"

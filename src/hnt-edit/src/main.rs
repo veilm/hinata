@@ -1,10 +1,5 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use crossterm::{
-    execute,
-    style::{Color, Print, ResetColor, SetForegroundColor},
-    terminal,
-};
 use dirs;
 use futures_util::StreamExt;
 use hinata_core::chat;
@@ -13,6 +8,14 @@ use hinata_core::llm::{LlmConfig, LlmStreamEvent, SharedArgs};
 use hnt_apply;
 use hnt_pack;
 use log::debug;
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use ratatui::crossterm::{
+    cursor, execute,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal,
+};
+use ratatui::widgets::{Block, Borders};
+use ratatui::{TerminalOptions, Viewport};
 use shlex;
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use std::env;
@@ -23,6 +26,7 @@ use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 use tokio::{self, process::Command};
+use tui_textarea::{Input, TextArea};
 use which::which;
 
 // A guard to clean up empty files that were created during execution.
@@ -88,6 +92,10 @@ struct Cli {
     #[arg(long, env = "HINATA_USE_PANE")]
     use_pane: bool,
 
+    /// Use an external editor ($EDITOR) for the user instruction message.
+    #[arg(long)]
+    use_editor: bool,
+
     /// Do not ask the LLM for reasoning.
     #[arg(long, env = "HINATA_EDIT_IGNORE_REASONING")]
     ignore_reasoning: bool,
@@ -97,59 +105,125 @@ struct Cli {
     verbose: bool,
 }
 
-/// Gets user instruction from CLI arg or by launching $EDITOR.
-fn get_user_instruction(message: Option<String>, use_pane: bool) -> Result<(String, bool)> {
-    if let Some(message) = message {
-        return Ok((message, false));
+fn run_inline_tui_editor() -> Result<String> {
+    const TUI_HEIGHT: u16 = 10;
+    let mut terminal = ratatui::init_with_options(TerminalOptions {
+        viewport: Viewport::Inline(TUI_HEIGHT),
+    });
+
+    ratatui::crossterm::terminal::enable_raw_mode().context("Failed to enable raw mode")?;
+    let (start_col, start_row) = cursor::position()?;
+
+    let mut textarea = TextArea::default();
+    textarea.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Enter Instructions (Esc or Ctrl+D to submit, Ctrl+C to abort)"),
+    );
+
+    let instruction = loop {
+        terminal.draw(|f| {
+            f.render_widget(&textarea, f.area());
+        })?;
+        match event::read().context("Failed to read TUI event")? {
+            Event::Key(key) => match key.code {
+                KeyCode::Esc => break textarea.into_lines().join("\n"),
+                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    break textarea.into_lines().join("\n");
+                }
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    // clean up before bailing
+                    ratatui::crossterm::terminal::disable_raw_mode()?;
+                    execute!(
+                        io::stdout(),
+                        cursor::MoveTo(start_col, start_row),
+                        terminal::Clear(terminal::ClearType::FromCursorDown),
+                        cursor::Show
+                    )?;
+                    bail!("Aborted by user.");
+                }
+                _ => {
+                    textarea.input(Input::from(key));
+                }
+            },
+            _ => {}
+        }
+    };
+
+    ratatui::crossterm::terminal::disable_raw_mode()?;
+    execute!(
+        io::stdout(),
+        cursor::MoveTo(start_col, start_row),
+        terminal::Clear(terminal::ClearType::FromCursorDown),
+        cursor::Show
+    )?;
+
+    if instruction.trim().is_empty() {
+        bail!("Aborted: No instructions were provided.");
     }
 
-    let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
-    let mut file = tempfile::Builder::new()
-        .prefix("hnt-edit-")
-        .suffix(".md")
-        .tempfile_in(env::temp_dir())
-        .context("Failed to create temporary file for editor")?;
+    Ok(instruction)
+}
 
-    let initial_text = "Replace this text with your instructions. Then write to this file and exit your\ntext editor. Leave the file unchanged or empty to abort.";
-    file.write_all(initial_text.as_bytes())?;
-
-    let path = file.into_temp_path();
-
-    let status;
-    if use_pane {
-        status = std::process::Command::new("hnt-tui")
-            .arg("pane")
-            .arg(&editor)
-            .arg(&path)
-            .status()
-            .with_context(|| format!("Failed to run hnt-tui pane with editor: {}", editor))?;
-    } else {
-        let mut editor_parts = shlex::split(&editor).context("Failed to parse EDITOR variable")?;
-        let editor_cmd = editor_parts.remove(0);
-
-        status = std::process::Command::new(&editor_cmd)
-            .args(editor_parts)
-            .arg(&path)
-            .status()
-            .with_context(|| format!("Failed to open editor: {}", editor))?;
+/// Gets user instruction from CLI arg, an editor, or an inline TUI.
+fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
+    if let Some(message) = &cli.message {
+        return Ok((message.clone(), false));
     }
 
-    if !status.success() {
-        bail!("Editor exited with a non-zero status code");
+    if cli.use_editor {
+        let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
+        let mut file = tempfile::Builder::new()
+            .prefix("hnt-edit-")
+            .suffix(".md")
+            .tempfile_in(env::temp_dir())
+            .context("Failed to create temporary file for editor")?;
+
+        let initial_text = "Replace this text with your instructions. Then write to this file and exit your\ntext editor. Leave the file unchanged or empty to abort.";
+        file.write_all(initial_text.as_bytes())?;
+
+        let path = file.into_temp_path();
+
+        let status = if cli.use_pane {
+            std::process::Command::new("hnt-tui")
+                .arg("pane")
+                .arg(&editor)
+                .arg(&path)
+                .status()
+                .with_context(|| format!("Failed to run hnt-tui pane with editor: {}", editor))?
+        } else {
+            let mut editor_parts =
+                shlex::split(&editor).context("Failed to parse EDITOR variable")?;
+            let editor_cmd = editor_parts.remove(0);
+
+            std::process::Command::new(&editor_cmd)
+                .args(editor_parts)
+                .arg(&path)
+                .status()
+                .with_context(|| format!("Failed to open editor: {}", editor))?
+        };
+
+        if !status.success() {
+            bail!("Editor exited with a non-zero status code");
+        }
+
+        let mut instruction = String::new();
+        fs::File::open(&path)
+            .context("Failed to open temporary file after editing")?
+            .read_to_string(&mut instruction)
+            .context("Failed to read from temporary file after editing")?;
+
+        path.close()?;
+
+        if instruction.trim() == initial_text.trim() || instruction.trim().is_empty() {
+            bail!("Aborted: No changes were made.");
+        }
+
+        return Ok((instruction, true));
     }
 
-    let mut instruction = String::new();
-    fs::File::open(&path)
-        .context("Failed to open temporary file after editing")?
-        .read_to_string(&mut instruction)
-        .context("Failed to read from temporary file after editing")?;
-
-    path.close()?;
-
-    if instruction.trim() == initial_text.trim() || instruction.trim().is_empty() {
-        bail!("Aborted: No changes were made.");
-    }
-
+    // Default: use inline TUI editor
+    let instruction = run_inline_tui_editor()?;
     Ok((instruction, true))
 }
 
@@ -208,6 +282,10 @@ fn spawn_highlighter() -> Result<Option<Child>> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut cli = Cli::parse();
+
+    if cli.use_pane {
+        cli.use_editor = true;
+    }
 
     if cli.verbose {
         TermLogger::init(
@@ -271,11 +349,11 @@ async fn main() -> Result<()> {
             (dir, file_paths)
         }
         None => {
-            let system_message = get_system_message(cli.system)?;
-            let (instruction, from_editor) = get_user_instruction(cli.message, cli.use_pane)?;
+            let system_message = get_system_message(cli.system.clone())?;
+            let (instruction, from_editor) = get_user_instruction(&cli)?;
 
             if from_editor {
-                let (width, _) = terminal::size()?;
+                let (width, _) = ratatui::crossterm::terminal::size()?;
                 let width = width as usize;
 
                 let title = "┌─ User Instructions ";
