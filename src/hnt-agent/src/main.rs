@@ -1,6 +1,11 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use clap::Parser;
+
+use crossterm::{
+    cursor,
+    terminal::{Clear, ClearType},
+};
 use crossterm::{
     execute,
     style::{Color, Print, ResetColor, SetForegroundColor},
@@ -15,9 +20,11 @@ use hnt_tui::{SelectArgs, Tty, TuiSelect};
 use log::debug;
 use regex::Regex;
 use shlex;
+
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use std::env;
 use std::fs;
+use std::io::stderr;
 use std::io::stdout;
 use std::io::Cursor;
 use std::io::{Read, Write};
@@ -384,10 +391,12 @@ async fn main() -> Result<()> {
                     }
                 }
 
+
                 if let Some(e) = llm_error {
                     // Need to reset color in case it was left on from streaming
                     execute!(stdout(), ResetColor)?;
-                    eprintln!("\n\nAn error occurred during the LLM request: {}", e);
+                    let error_message = format!("An error occurred during the LLM request: {}", e);
+                    eprintln!("\n\n{}", &error_message);
 
                     let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
                     let args = SelectArgs {
@@ -401,13 +410,18 @@ async fn main() -> Result<()> {
                         select.run()?
                     };
 
+                    let lines_to_move_up = (error_message.lines().count() + 3) as u16;
+                    execute!(stderr(), cursor::MoveUp(lines_to_move_up), Clear(ClearType::FromCursorDown))?;
+
                     match selection.as_deref() {
                         Some("Retry LLM request.") => {
+                            eprintln!("-> Retrying LLM request.");
                             continue;
                         }
                         _ => {
                             // "Abort." or None
-                            eprintln!("Aborting.");
+                            // eprintln!("-> User chose to abort.");
+                            eprintln!("-> Chose to abort.");
                             break;
                         }
                     }
@@ -442,6 +456,7 @@ async fn main() -> Result<()> {
                             command_text = re_escape.replace_all(&command_text, r"$1\`").to_string();
                         }
 
+
                         if !cli.no_confirm {
                             eprintln!(
                                 "\nHinata has provided the following command. What would you like to do?"
@@ -463,12 +478,16 @@ async fn main() -> Result<()> {
                                 select.run()?
                             };
 
+                            execute!(stderr(), cursor::MoveUp(2), Clear(ClearType::FromCursorDown))?;
+
                             match selection.as_deref() {
                                 Some("Yes. Proceed to execute Hinata's shell commands.") => {
-                                    // User said yes, proceed.
+                                    eprintln!("-> Executing command.");
                                 }
 
                                 Some("No, and provide new instructions instead.") => {
+                                    // eprintln!("-> User chose to provide new instructions.");
+                                    eprintln!("-> Chose to provide new instructions.");
                                     // New instructions
                                     let new_instructions = prompt_for_instruction(&cli)?;
                                     print_turn_header("querent", human_turn_counter)?;
@@ -490,7 +509,9 @@ async fn main() -> Result<()> {
                                 }
                                 _ => {
                                     // Some("No. Abort execution.") or None
-                                    eprintln!("Aborting execution.");
+
+                                    // eprintln!("-> User chose to abort.");
+                                    eprintln!("-> Chose to abort.");
                                     break;
                                 }
                             }
@@ -510,7 +531,7 @@ async fn main() -> Result<()> {
                         execute!(
                             stdout(),
                             SetForegroundColor(Color::White),
-                            Print("Shell Output\n"),
+                            // Print("Shell Output\n"),
                             ResetColor
                         )?;
                         println!("{}", &result_message);
@@ -522,6 +543,7 @@ async fn main() -> Result<()> {
                         chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
                         turn_counter += 1;
                     }
+
                 } else {
                     eprintln!("LLM provided no <hnt-shell> command. What would you like to do?");
                     let options = vec![
@@ -540,8 +562,13 @@ async fn main() -> Result<()> {
                         select.run()?
                     };
 
+                    // execute!(stderr(), cursor::MoveUp(2), Clear(ClearType::FromCursorDown))?;
+                    execute!(stderr(), cursor::MoveUp(1), Clear(ClearType::FromCursorDown))?;
+
                     match selection.as_deref() {
                         Some("Provide new instructions for the LLM.") => {
+                            // eprintln!("-> User chose to provide new instructions.");
+                            eprintln!("-> Chose to provide new instructions.");
                             let new_instructions = prompt_for_instruction(&cli)?;
                             print_turn_header("querent", human_turn_counter)?;
                             human_turn_counter += 1;
@@ -562,7 +589,9 @@ async fn main() -> Result<()> {
                         }
                         _ => {
                             // Some("Quit. Terminate the agent.") or None
-                            eprintln!("Aborting");
+                            // eprintln!("-> User chose to quit.");
+                            // eprintln!("-> Chose to quit. Thank you for your hard work.");
+                            eprintln!("-> Chose to quit.");
                             break;
                         }
                     }
