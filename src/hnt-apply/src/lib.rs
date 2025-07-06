@@ -45,7 +45,15 @@ pub fn apply_changes(
         if verbose {
             println!("---");
         }
-        apply_change_block(i, block, &common_root, disallow_creating, verbose)?;
+
+        apply_change_block(
+            i,
+            block,
+            &common_root,
+            &source_files,
+            disallow_creating,
+            verbose,
+        )?;
     }
 
     Ok(())
@@ -128,24 +136,41 @@ fn apply_change_block(
     i: usize,
     block: &ChangeBlock,
     common_root: &Path,
+    source_files: &[PathBuf],
     disallow_creating: bool,
     verbose: bool,
 ) -> Result<()> {
-    let full_path = common_root.join(&block.relative_path);
+    let mut path_to_use = common_root.join(&block.relative_path);
+
+    if !path_to_use.exists() {
+        if let Some(found_path) = source_files
+            .iter()
+            .find(|p| p.ends_with(&block.relative_path))
+        {
+            path_to_use = found_path.clone();
+            if verbose {
+                println!(
+                    "Verbose: Using fallback path {} for relative path {}",
+                    path_to_use.display(),
+                    &block.relative_path
+                );
+            }
+        }
+    }
 
     if verbose {
         println!("Processing block for {}", &block.relative_path);
-        println!("Absolute path: {}", full_path.display());
+        println!("Absolute path: {}", path_to_use.display());
     }
 
-    if full_path.exists() {
-        if !full_path.is_file() {
+    if path_to_use.exists() {
+        if !path_to_use.is_file() {
             println!("[{}] FAILED: {} is not a file", i, block.relative_path);
             return Ok(());
         }
 
-        let content = std::fs::read_to_string(&full_path)
-            .with_context(|| format!("Failed to read file: {}", full_path.display()))?;
+        let content = std::fs::read_to_string(&path_to_use)
+            .with_context(|| format!("Failed to read file: {}", path_to_use.display()))?;
 
         if block.target.is_empty() {
             if content.is_empty() {
@@ -155,10 +180,10 @@ fn apply_change_block(
                 if !content_to_write.is_empty() && !content_to_write.ends_with('\n') {
                     content_to_write.push('\n');
                 }
-                std::fs::write(&full_path, &content_to_write).with_context(|| {
+                std::fs::write(&path_to_use, &content_to_write).with_context(|| {
                     format!(
                         "Failed to create and write to file: {}",
-                        full_path.display()
+                        path_to_use.display()
                     )
                 })?;
                 println!("[{}] CREATED: {}", i, block.relative_path);
@@ -185,8 +210,8 @@ fn apply_change_block(
         }
 
         let new_content = content.replace(&block.target, &block.replace);
-        std::fs::write(&full_path, new_content)
-            .with_context(|| format!("Failed to write to file: {}", full_path.display()))?;
+        std::fs::write(&path_to_use, new_content)
+            .with_context(|| format!("Failed to write to file: {}", path_to_use.display()))?;
 
         println!("[{}] OK: {}", i, block.relative_path);
     } else {
@@ -206,11 +231,11 @@ fn apply_change_block(
             return Ok(());
         }
 
-        if let Some(parent) = full_path.parent() {
+        if let Some(parent) = path_to_use.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
                 format!(
                     "Failed to create parent directories for {}",
-                    full_path.display()
+                    path_to_use.display()
                 )
             })?;
         }
@@ -218,10 +243,10 @@ fn apply_change_block(
         if !content_to_write.is_empty() && !content_to_write.ends_with('\n') {
             content_to_write.push('\n');
         }
-        std::fs::write(&full_path, &content_to_write).with_context(|| {
+        std::fs::write(&path_to_use, &content_to_write).with_context(|| {
             format!(
                 "Failed to create and write to file: {}",
-                full_path.display()
+                path_to_use.display()
             )
         })?;
 

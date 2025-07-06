@@ -15,7 +15,7 @@ cd src
 TARGET_DIR="./target/release"
 INSTALL_DIR="/usr/local/bin/"
 # bins="headlesh hnt-agent hnt-chat hnt-llm hnt-tui"
-bins="hnt-apply llm-pack hnt-tui hnt-edit hnt-llm hnt-chat headlesh hnt-agent"
+bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-tui headlesh hnt-agent"
 
 cd "$TARGET_DIR"
 
