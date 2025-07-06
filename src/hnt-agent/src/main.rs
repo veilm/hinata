@@ -67,23 +67,6 @@ struct Cli {
     no_escape_backticks: bool,
 }
 
-struct SessionGuard {
-    session: Session,
-}
-
-impl Drop for SessionGuard {
-    fn drop(&mut self) {
-        println!("Cleaning up session...");
-        // Spawn a new async task to handle the cleanup.
-        let session = self.session.clone(); // Clone the session to move it into the task
-        tokio::spawn(async move {
-            if let Err(e) = session.exit().await {
-                eprintln!("Error cleaning up session: {}", e);
-            }
-        });
-    }
-}
-
 fn prompt_for_instruction(cli: &Cli) -> Result<String> {
     if cli.use_editor {
         let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
@@ -225,7 +208,6 @@ async fn main() -> Result<()> {
     if cli.use_pane {
         cli.use_editor = true;
     }
-    let mut human_turn_counter = 1;
 
     if cli.verbose {
         TermLogger::init(
@@ -250,219 +232,301 @@ async fn main() -> Result<()> {
     session.spawn(None)?;
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     debug!("After session.spawn.");
-    let _session_guard = SessionGuard { session };
-    debug!("After instantiating SessionGuard.");
 
-    // 2. Get system and user messages (from args, files, or $EDITOR)
-    debug!("Before getting the system prompt.");
-    let system_prompt = if let Some(system) = &cli.system {
-        let path = Path::new(&system);
-        if path.is_file() {
-            Some(fs::read_to_string(path)?)
-        } else {
-            Some(system.clone())
-        }
-    } else {
-        // Try to load from default config path
-        dirs::config_dir().and_then(|config_dir| {
-            let prompt_path = config_dir.join("hinata/prompts/main-shell_agent.md");
-            fs::read_to_string(prompt_path).ok()
-        })
-    };
-
-    debug!("After getting the system prompt.");
-    debug!("Before getting the user instruction.");
-    let (user_instruction, _) = get_user_instruction(&cli)?;
-    print_turn_header("querent", human_turn_counter)?;
-    human_turn_counter += 1;
-    // Print the human's message with reset color
-    execute!(stdout(), ResetColor, Print(&user_instruction))?;
-    // Add a blank line for spacing, then the footer
-    println!();
-    print_turn_footer(Color::Magenta)?;
-    debug!("After getting the user instruction.");
-
-    // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
-    debug!("Before creating the conversation directory.");
-    let conversations_dir = chat::get_conversations_dir()?;
-    let conversation_dir = chat::create_new_conversation(&conversations_dir)?;
-    debug!("After creating the conversation directory.");
-
-    // 4. Add system message and start priming sequence.
-    if let Some(ref prompt) = system_prompt {
-        debug!("Before writing system message file.");
-        chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
-        debug!("After writing system message file.");
-    }
-
-    // Inject context from HINATA.md if it exists
-    if let Some(config_dir) = dirs::config_dir() {
-        let hinata_md_path = config_dir.join("hinata/agent/HINATA.md");
-        if let Ok(content) = fs::read_to_string(hinata_md_path) {
-            if !content.trim().is_empty() {
-                let message = format!("<info>\n{}\n</info>", content);
-                chat::write_message_file(&conversation_dir, chat::Role::User, &message)?;
-                debug!("Injected HINATA.md context.");
-            }
-        }
-    }
-
-    // Add the user instruction
-    debug!("Before writing user message file.");
-    let tagged_instruction = format!("<user_request>\n{}\n</user_request>", user_instruction);
-    chat::write_message_file(&conversation_dir, chat::Role::User, &tagged_instruction)?;
-    debug!("After writing user message file.");
-
-    eprintln!(
-        "Created conversation: {}",
-        conversation_dir.to_string_lossy()
-    );
-
-    // 5. Start the main interaction loop:
-    debug!("Right before the main loop starts.");
-    let mut turn_counter = 1;
-    loop {
-        // a. Pack conversation and generate LLM response
-        let mut buffer = Cursor::new(Vec::new());
-        chat::pack_conversation(&conversation_dir, &mut buffer, false)?;
-        let prompt_bytes = buffer.into_inner();
-        let prompt = String::from_utf8(prompt_bytes)
-            .context("Failed to convert packed conversation to string")?;
-
-        let config = LlmConfig {
-            model: cli.shared.model.clone(),
-            system_prompt: None,
-            include_reasoning: !cli.ignore_reasoning || cli.shared.debug_unsafe,
-        };
-
-        let stream = hinata_core::llm::stream_llm_response(config, prompt);
-
-        let mut llm_response = String::new();
-        let mut reasoning_buffer = String::new();
-        tokio::pin!(stream);
-
-        print_turn_header("hinata", turn_counter)?;
-        execute!(stdout(), ResetColor)?;
-
-        let mut in_reasoning_block = false;
-        let mut llm_error: Option<anyhow::Error> = None;
-        while let Some(event) = stream.next().await {
-            match event {
-                Ok(hinata_core::llm::LlmStreamEvent::Content(content)) => {
-                    if in_reasoning_block {
-                        execute!(stdout(), ResetColor)?;
-                        let trailing_newlines = reasoning_buffer
-                            .chars()
-                            .rev()
-                            .take_while(|&c| c == '\n')
-                            .count();
-                        let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
-                        for _ in 0..newlines_to_add {
-                            println!();
-                        }
-                        in_reasoning_block = false;
-                    }
-                    llm_response.push_str(&content);
-                    print!("{}", content);
-                    stdout().flush()?;
+    let result = tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            eprintln!("\nCtrl+C received, shutting down gracefully.");
+            Ok(())
+        },
+        res = async {
+            let mut human_turn_counter = 1;
+            // 2. Get system and user messages (from args, files, or $EDITOR)
+            debug!("Before getting the system prompt.");
+            let system_prompt = if let Some(system) = &cli.system {
+                let path = Path::new(&system);
+                if path.is_file() {
+                    Some(fs::read_to_string(path)?)
+                } else {
+                    Some(system.clone())
                 }
-                Ok(hinata_core::llm::LlmStreamEvent::Reasoning(reasoning)) => {
-                    if !cli.ignore_reasoning {
-                        reasoning_buffer.push_str(&reasoning);
-                        if !in_reasoning_block {
-                            execute!(stdout(), SetForegroundColor(Color::Yellow))?;
-                        }
-                        in_reasoning_block = true;
-                        execute!(stdout(), Print(&reasoning))?;
-                        stdout().flush()?;
+            } else {
+                // Try to load from default config path
+                dirs::config_dir().and_then(|config_dir| {
+                    let prompt_path = config_dir.join("hinata/prompts/main-shell_agent.md");
+                    fs::read_to_string(prompt_path).ok()
+                })
+            };
+
+            debug!("After getting the system prompt.");
+            debug!("Before getting the user instruction.");
+            let (user_instruction, _) = get_user_instruction(&cli)?;
+            print_turn_header("querent", human_turn_counter)?;
+            human_turn_counter += 1;
+            // Print the human's message with reset color
+            execute!(stdout(), ResetColor, Print(&user_instruction))?;
+            // Add a blank line for spacing, then the footer
+            println!();
+            print_turn_footer(Color::Magenta)?;
+            debug!("After getting the user instruction.");
+
+            // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
+            debug!("Before creating the conversation directory.");
+            let conversations_dir = chat::get_conversations_dir()?;
+            let conversation_dir = chat::create_new_conversation(&conversations_dir)?;
+            debug!("After creating the conversation directory.");
+
+            // 4. Add system message and start priming sequence.
+            if let Some(ref prompt) = system_prompt {
+                debug!("Before writing system message file.");
+                chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
+                debug!("After writing system message file.");
+            }
+
+            // Inject context from HINATA.md if it exists
+            if let Some(config_dir) = dirs::config_dir() {
+                let hinata_md_path = config_dir.join("hinata/agent/HINATA.md");
+                if let Ok(content) = fs::read_to_string(hinata_md_path) {
+                    if !content.trim().is_empty() {
+                        let message = format!("<info>\n{}\n</info>", content);
+                        chat::write_message_file(&conversation_dir, chat::Role::User, &message)?;
+                        debug!("Injected HINATA.md context.");
                     }
                 }
-                Err(e) => {
-                    llm_error = Some(e.into());
-                    break;
-                }
             }
-        }
 
-        if in_reasoning_block {
-            execute!(stdout(), ResetColor)?;
-            let trailing_newlines = reasoning_buffer
-                .chars()
-                .rev()
-                .take_while(|&c| c == '\n')
-                .count();
-            let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
-            for _ in 0..newlines_to_add {
+            // Add the user instruction
+            debug!("Before writing user message file.");
+            let tagged_instruction = format!("<user_request>\n{}\n</user_request>", user_instruction);
+            chat::write_message_file(&conversation_dir, chat::Role::User, &tagged_instruction)?;
+            debug!("After writing user message file.");
+
+            eprintln!(
+                "Created conversation: {}",
+                conversation_dir.to_string_lossy()
+            );
+
+            // 5. Start the main interaction loop:
+            debug!("Right before the main loop starts.");
+            let mut turn_counter = 1;
+            loop {
+                // a. Pack conversation and generate LLM response
+                let mut buffer = Cursor::new(Vec::new());
+                chat::pack_conversation(&conversation_dir, &mut buffer, false)?;
+                let prompt_bytes = buffer.into_inner();
+                let prompt = String::from_utf8(prompt_bytes)
+                    .context("Failed to convert packed conversation to string")?;
+
+                let config = LlmConfig {
+                    model: cli.shared.model.clone(),
+                    system_prompt: None,
+                    include_reasoning: !cli.ignore_reasoning || cli.shared.debug_unsafe,
+                };
+
+                let stream = hinata_core::llm::stream_llm_response(config, prompt);
+
+                let mut llm_response = String::new();
+                let mut reasoning_buffer = String::new();
+                tokio::pin!(stream);
+
+                print_turn_header("hinata", turn_counter)?;
+                execute!(stdout(), ResetColor)?;
+
+                let mut in_reasoning_block = false;
+                let mut llm_error: Option<anyhow::Error> = None;
+                while let Some(event) = stream.next().await {
+                    match event {
+                        Ok(hinata_core::llm::LlmStreamEvent::Content(content)) => {
+                            if in_reasoning_block {
+                                execute!(stdout(), ResetColor)?;
+                                let trailing_newlines = reasoning_buffer
+                                    .chars()
+                                    .rev()
+                                    .take_while(|&c| c == '\n')
+                                    .count();
+                                let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
+                                for _ in 0..newlines_to_add {
+                                    println!();
+                                }
+                                in_reasoning_block = false;
+                            }
+                            llm_response.push_str(&content);
+                            print!("{}", content);
+                            stdout().flush()?;
+                        }
+                        Ok(hinata_core::llm::LlmStreamEvent::Reasoning(reasoning)) => {
+                            if !cli.ignore_reasoning {
+                                reasoning_buffer.push_str(&reasoning);
+                                if !in_reasoning_block {
+                                    execute!(stdout(), SetForegroundColor(Color::Yellow))?;
+                                }
+                                in_reasoning_block = true;
+                                execute!(stdout(), Print(&reasoning))?;
+                                stdout().flush()?;
+                            }
+                        }
+                        Err(e) => {
+                            llm_error = Some(e.into());
+                            break;
+                        }
+                    }
+                }
+
+                if in_reasoning_block {
+                    execute!(stdout(), ResetColor)?;
+                    let trailing_newlines = reasoning_buffer
+                        .chars()
+                        .rev()
+                        .take_while(|&c| c == '\n')
+                        .count();
+                    let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
+                    for _ in 0..newlines_to_add {
+                        println!();
+                    }
+                }
+
+                if let Some(e) = llm_error {
+                    // Need to reset color in case it was left on from streaming
+                    execute!(stdout(), ResetColor)?;
+                    eprintln!("\n\nAn error occurred during the LLM request: {}", e);
+
+                    let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
+                    let args = SelectArgs {
+                        height: 10,
+                        color: Some(4),
+                        prefix: None,
+                    };
+                    let tty = Tty::new()?;
+                    let selection = {
+                        let mut select = TuiSelect::new(options, &args, tty)?;
+                        select.run()?
+                    };
+
+                    match selection.as_deref() {
+                        Some("Retry LLM request.") => {
+                            continue;
+                        }
+                        _ => {
+                            // "Abort." or None
+                            eprintln!("Aborting.");
+                            break;
+                        }
+                    }
+                }
+
                 println!();
-            }
-        }
+                print_turn_footer(Color::Blue)?;
 
-        if let Some(e) = llm_error {
-            // Need to reset color in case it was left on from streaming
-            execute!(stdout(), ResetColor)?;
-            eprintln!("\n\nAn error occurred during the LLM request: {}", e);
-
-            let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
-            let args = SelectArgs {
-                height: 10,
-                color: Some(4),
-                prefix: None,
-            };
-            let tty = Tty::new()?;
-            let selection = {
-                let mut select = TuiSelect::new(options, &args, tty)?;
-                select.run()?
-            };
-
-            match selection.as_deref() {
-                Some("Retry LLM request.") => {
-                    continue;
-                }
-                _ => {
-                    // "Abort." or None
-                    eprintln!("Aborting.");
-                    break;
-                }
-            }
-        }
-
-        println!();
-        print_turn_footer(Color::Blue)?;
-
-        if !cli.ignore_reasoning && !reasoning_buffer.is_empty() {
-            let reasoning_content = format!("<think>{}</think>", reasoning_buffer);
-            chat::write_message_file(
-                &conversation_dir,
-                chat::Role::AssistantReasoning,
-                &reasoning_content,
-            )?;
-        }
-
-        // Add assistants response to the conversation
-        chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
-
-        // Parse LLM response for the last <hnt-shell> command and execute it.
-        let re = Regex::new(r"(?s)<hnt-shell>(.*?)</hnt-shell>")?;
-        if let Some(captures) = re.captures_iter(&llm_response).last() {
-            if let Some(command_match) = captures.get(1) {
-                let mut command_text = command_match.as_str().trim().to_string();
-
-                if !cli.no_escape_backticks {
-                    // Escape backticks not preceded by a backslash
-                    // The original regex `(?<!\\)` uses a negative lookbehind, which is not supported by the default `regex` engine.
-                    // We replace it by matching a character that is not a backslash, or the beginning of the string, before a backtick.
-                    let re_escape = Regex::new(r"(^|[^\\])`")?;
-                    command_text = re_escape.replace_all(&command_text, r"$1\`").to_string();
+                if !cli.ignore_reasoning && !reasoning_buffer.is_empty() {
+                    let reasoning_content = format!("<think>{}</think>", reasoning_buffer);
+                    chat::write_message_file(
+                        &conversation_dir,
+                        chat::Role::AssistantReasoning,
+                        &reasoning_content,
+                    )?;
                 }
 
-                if !cli.no_confirm {
-                    eprintln!(
-                        "\nHinata has provided the following command. What would you like to do?"
-                    );
+                // Add assistants response to the conversation
+                chat::write_message_file(&conversation_dir, chat::Role::Assistant, &llm_response)?;
+
+                // Parse LLM response for the last <hnt-shell> command and execute it.
+                let re = Regex::new(r"(?s)<hnt-shell>(.*?)</hnt-shell>")?;
+                if let Some(captures) = re.captures_iter(&llm_response).last() {
+                    if let Some(command_match) = captures.get(1) {
+                        let mut command_text = command_match.as_str().trim().to_string();
+
+                        if !cli.no_escape_backticks {
+                            // Escape backticks not preceded by a backslash
+                            // The original regex `(?<!\\)` uses a negative lookbehind, which is not supported by the default `regex` engine.
+                            // We replace it by matching a character that is not a backslash, or the beginning of the string, before a backtick.
+                            let re_escape = Regex::new(r"(^|[^\\])`")?;
+                            command_text = re_escape.replace_all(&command_text, r"$1\`").to_string();
+                        }
+
+                        if !cli.no_confirm {
+                            eprintln!(
+                                "\nHinata has provided the following command. What would you like to do?"
+                            );
+                            let options = vec![
+                                "Yes. Proceed to execute Hinata's shell commands.".to_string(),
+                                "No, and provide new instructions instead.".to_string(),
+                                "No. Abort execution.".to_string(),
+                            ];
+
+                            let args = SelectArgs {
+                                height: 10,
+                                color: Some(4),
+                                prefix: None,
+                            };
+                            let tty = Tty::new()?;
+                            let selection = {
+                                let mut select = TuiSelect::new(options, &args, tty)?;
+                                select.run()?
+                            };
+
+                            match selection.as_deref() {
+                                Some("Yes. Proceed to execute Hinata's shell commands.") => {
+                                    // User said yes, proceed.
+                                }
+
+                                Some("No, and provide new instructions instead.") => {
+                                    // New instructions
+                                    let new_instructions = prompt_for_instruction(&cli)?;
+                                    print_turn_header("querent", human_turn_counter)?;
+                                    human_turn_counter += 1;
+                                    // Print the human's message with reset color
+                                    execute!(stdout(), ResetColor, Print(&new_instructions))?;
+                                    // Add a blank line for spacing, then the footer
+                                    println!();
+                                    print_turn_footer(Color::Magenta)?;
+                                    let tagged_instructions =
+                                        format!("<user_request>\n{}\n</user_request>", new_instructions);
+                                    chat::write_message_file(
+                                        &conversation_dir,
+                                        chat::Role::User,
+                                        &tagged_instructions,
+                                    )?;
+                                    turn_counter += 1;
+                                    continue;
+                                }
+                                _ => {
+                                    // Some("No. Abort execution.") or None
+                                    eprintln!("Aborting execution.");
+                                    break;
+                                }
+                            }
+                        }
+
+                        let captured_output = session.exec_captured(&command_text).await?;
+
+                        let result_message = format!(
+                            "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
+                            captured_output.stdout,
+                            captured_output.stderr,
+                            captured_output.exit_status.code().unwrap_or(1)
+                        );
+
+                        // Display shell output to the user
+                        print_turn_footer(Color::DarkCyan)?;
+                        execute!(
+                            stdout(),
+                            SetForegroundColor(Color::White),
+                            Print("Shell Output\n"),
+                            ResetColor
+                        )?;
+                        println!("{}", &result_message);
+                        // The output may or may not have a newline. The footer will draw a line
+                        // and add a newline, so we are guaranteed to be on a new line after this.
+                        print_turn_footer(Color::DarkCyan)?;
+
+                        // Add command output as a new user message to continue the conversation
+                        chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
+                        turn_counter += 1;
+                    }
+                } else {
+                    eprintln!("LLM provided no <hnt-shell> command. What would you like to do?");
                     let options = vec![
-                        "Yes. Proceed to execute Hinata's shell commands.".to_string(),
-                        "No, and provide new instructions instead.".to_string(),
-                        "No. Abort execution.".to_string(),
+                        "Provide new instructions for the LLM.".to_string(),
+                        "Quit. Terminate the agent.".to_string(),
                     ];
 
                     let args = SelectArgs {
@@ -477,12 +541,7 @@ async fn main() -> Result<()> {
                     };
 
                     match selection.as_deref() {
-                        Some("Yes. Proceed to execute Hinata's shell commands.") => {
-                            // User said yes, proceed.
-                        }
-
-                        Some("No, and provide new instructions instead.") => {
-                            // New instructions
+                        Some("Provide new instructions for the LLM.") => {
                             let new_instructions = prompt_for_instruction(&cli)?;
                             print_turn_header("querent", human_turn_counter)?;
                             human_turn_counter += 1;
@@ -502,87 +561,18 @@ async fn main() -> Result<()> {
                             continue;
                         }
                         _ => {
-                            // Some("No. Abort execution.") or None
-                            eprintln!("Aborting execution.");
+                            // Some("Quit. Terminate the agent.") or None
+                            eprintln!("Aborting");
                             break;
                         }
                     }
                 }
-
-                let captured_output = _session_guard.session.exec_captured(&command_text).await?;
-
-                let result_message = format!(
-                    "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
-                    captured_output.stdout,
-                    captured_output.stderr,
-                    captured_output.exit_status.code().unwrap_or(1)
-                );
-
-                // Display shell output to the user
-                print_turn_footer(Color::DarkCyan)?;
-                execute!(
-                    stdout(),
-                    SetForegroundColor(Color::White),
-                    Print("Shell Output\n"),
-                    ResetColor
-                )?;
-                println!("{}", &result_message);
-                // The output may or may not have a newline. The footer will draw a line
-                // and add a newline, so we are guaranteed to be on a new line after this.
-                print_turn_footer(Color::DarkCyan)?;
-
-                // Add command output as a new user message to continue the conversation
-                chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
-                turn_counter += 1;
             }
-        } else {
-            eprintln!("LLM provided no <hnt-shell> command. What would you like to do?");
-            let options = vec![
-                "Provide new instructions for the LLM.".to_string(),
-                "Quit. Terminate the agent.".to_string(),
-            ];
+            Ok::<(), anyhow::Error>(())
+        } => res,
+    };
 
-            let args = SelectArgs {
-                height: 10,
-                color: Some(4),
-                prefix: None,
-            };
-            let tty = Tty::new()?;
-            let selection = {
-                let mut select = TuiSelect::new(options, &args, tty)?;
-                select.run()?
-            };
+    session.exit().await?;
 
-            match selection.as_deref() {
-                Some("Provide new instructions for the LLM.") => {
-                    let new_instructions = prompt_for_instruction(&cli)?;
-                    print_turn_header("querent", human_turn_counter)?;
-                    human_turn_counter += 1;
-                    // Print the human's message with reset color
-                    execute!(stdout(), ResetColor, Print(&new_instructions))?;
-                    // Add a blank line for spacing, then the footer
-                    println!();
-                    print_turn_footer(Color::Magenta)?;
-                    let tagged_instructions =
-                        format!("<user_request>\n{}\n</user_request>", new_instructions);
-                    chat::write_message_file(
-                        &conversation_dir,
-                        chat::Role::User,
-                        &tagged_instructions,
-                    )?;
-                    turn_counter += 1;
-                    continue;
-                }
-                _ => {
-                    // Some("Quit. Terminate the agent.") or None
-                    eprintln!("Aborting");
-                    break;
-                }
-            }
-        }
-    }
-
-    // 6. Clean up headless session on exit is handled by SessionGuard.
-
-    Ok(())
+    result
 }
