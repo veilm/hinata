@@ -86,7 +86,7 @@ fn parse_one_block(input: &str) -> Result<(ChangeBlock, &str)> {
             // This handles a target with content.
             // `after_target_marker` would be `<target content>\n=======\n<replace content>...`
             after_target_marker
-                .split_once("\n=======\n")
+                .split_once("\n=======")
                 .with_context(|| format!("Unterminated TARGET section for path: {}", path))?
         };
 
