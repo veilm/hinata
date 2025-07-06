@@ -14,14 +14,16 @@ use hinata_core::llm::{LlmConfig, SharedArgs};
 use hnt_tui::{SelectArgs, Tty, TuiSelect};
 use log::debug;
 use regex::Regex;
+use shlex;
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use std::env;
 use std::fs;
 use std::io::stdout;
 use std::io::Cursor;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command as StdCommand;
+use tempfile;
 use tokio;
 use unicode_width::UnicodeWidthStr;
 
@@ -33,7 +35,7 @@ struct Cli {
     #[arg(short, long)]
     system: Option<String>,
 
-    /// User instruction message. If not provided, $EDITOR will be opened.
+    /// User instruction message. If not provided, a TUI editor will be opened.
     #[arg(short, long)]
     message: Option<String>,
 
@@ -55,6 +57,10 @@ struct Cli {
     /// Use hnt-tui pane to open the editor.
     #[arg(long, env = "HINATA_USE_PANE")]
     use_pane: bool,
+
+    /// Use an external editor ($EDITOR) for the user instruction message.
+    #[arg(long)]
+    use_editor: bool,
 
     /// Do not escape backticks in shell commands.
     #[arg(long)]
@@ -78,55 +84,70 @@ impl Drop for SessionGuard {
     }
 }
 
-fn get_input_from_editor(initial_text: &str, use_pane: bool) -> Result<String> {
-    let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
+fn prompt_for_instruction(cli: &Cli) -> Result<String> {
+    if cli.use_editor {
+        let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
+        let mut file = tempfile::Builder::new()
+            .prefix("hnt-agent-")
+            .suffix(".md")
+            .tempfile_in(env::temp_dir())
+            .context("Failed to create temporary file for editor")?;
 
-    let temp_file_name = format!("hnt-agent-{}.md", Utc::now().timestamp_nanos_opt().unwrap());
-    let temp_file_path = env::temp_dir().join(temp_file_name);
+        let initial_text = "Replace this text with your instructions. Then write to this file and exit your\ntext editor. Leave the file unchanged or empty to abort.";
+        file.write_all(initial_text.as_bytes())?;
 
-    fs::write(&temp_file_path, initial_text)?;
+        let path = file.into_temp_path();
 
-    let cwd = env::current_dir().context("Failed to get current working directory")?;
+        let status = if cli.use_pane {
+            StdCommand::new("hnt-tui")
+                .arg("pane")
+                .arg(&editor)
+                .arg(&path)
+                .status()
+                .with_context(|| format!("Failed to run hnt-tui pane with editor: {}", editor))?
+        } else {
+            let mut editor_parts =
+                shlex::split(&editor).context("Failed to parse EDITOR variable")?;
+            let editor_cmd = editor_parts.remove(0);
 
-    let status = if use_pane {
-        StdCommand::new("hnt-tui")
-            .arg("pane")
-            .arg(&editor)
-            .arg(&temp_file_path)
-            .current_dir(&cwd)
-            .status()
-            .with_context(|| format!("Failed to open editor in pane: {}", editor))?
-    } else {
-        StdCommand::new(&editor)
-            .arg(&temp_file_path)
-            .current_dir(&cwd)
-            .status()
-            .with_context(|| format!("Failed to open editor: {}", editor))?
-    };
+            StdCommand::new(&editor_cmd)
+                .args(editor_parts)
+                .arg(&path)
+                .status()
+                .with_context(|| format!("Failed to open editor: {}", editor))?
+        };
 
-    if !status.success() {
-        bail!("Editor exited with a non-zero status code");
+        if !status.success() {
+            bail!("Editor exited with a non-zero status code");
+        }
+
+        let mut instruction = String::new();
+        fs::File::open(&path)
+            .context("Failed to open temporary file after editing")?
+            .read_to_string(&mut instruction)
+            .context("Failed to read from temporary file after editing")?;
+
+        path.close()?;
+
+        if instruction.trim() == initial_text.trim() || instruction.trim().is_empty() {
+            bail!("Aborted: No changes were made.");
+        }
+
+        return Ok(instruction);
     }
 
-    let instruction = fs::read_to_string(&temp_file_path)
-        .context("Failed to read user instruction from temporary file")?;
-    fs::remove_file(temp_file_path).ok(); // Ignore error on cleanup
-
-    Ok(instruction)
+    // Default: use inline TUI editor
+    hnt_tui::inline_editor::prompt_for_input()
 }
 
-fn get_user_instruction(message: Option<String>, use_pane: bool) -> Result<String> {
-    let instruction = if let Some(message) = message {
-        message
-    } else {
-        get_input_from_editor("", use_pane)?
-    };
-
-    if instruction.trim().is_empty() {
-        bail!("User instruction is empty. Aborting.");
+/// Gets user instruction from CLI arg, an editor, or an inline TUI.
+fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
+    if let Some(message) = &cli.message {
+        return Ok((message.clone(), false));
     }
 
-    Ok(instruction)
+    let instruction = prompt_for_instruction(cli)?;
+    Ok((instruction, true))
 }
 
 fn print_turn_header(role: &str, turn: usize) -> Result<()> {
@@ -200,7 +221,10 @@ fn print_turn_footer(color: Color) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    if cli.use_pane {
+        cli.use_editor = true;
+    }
     let mut human_turn_counter = 1;
 
     if cli.verbose {
@@ -231,12 +255,12 @@ async fn main() -> Result<()> {
 
     // 2. Get system and user messages (from args, files, or $EDITOR)
     debug!("Before getting the system prompt.");
-    let system_prompt = if let Some(system) = cli.system {
+    let system_prompt = if let Some(system) = &cli.system {
         let path = Path::new(&system);
         if path.is_file() {
             Some(fs::read_to_string(path)?)
         } else {
-            Some(system)
+            Some(system.clone())
         }
     } else {
         // Try to load from default config path
@@ -245,9 +269,10 @@ async fn main() -> Result<()> {
             fs::read_to_string(prompt_path).ok()
         })
     };
+
     debug!("After getting the system prompt.");
     debug!("Before getting the user instruction.");
-    let user_instruction = get_user_instruction(cli.message, cli.use_pane)?;
+    let (user_instruction, _) = get_user_instruction(&cli)?;
     print_turn_header("querent", human_turn_counter)?;
     human_turn_counter += 1;
     // Print the human's message with reset color
@@ -455,9 +480,10 @@ async fn main() -> Result<()> {
                         Some("Yes. Proceed to execute Hinata's shell commands.") => {
                             // User said yes, proceed.
                         }
+
                         Some("No, and provide new instructions instead.") => {
                             // New instructions
-                            let new_instructions = get_input_from_editor("", cli.use_pane)?;
+                            let new_instructions = prompt_for_instruction(&cli)?;
                             print_turn_header("querent", human_turn_counter)?;
                             human_turn_counter += 1;
                             // Print the human's message with reset color
@@ -529,7 +555,7 @@ async fn main() -> Result<()> {
 
             match selection.as_deref() {
                 Some("Provide new instructions for the LLM.") => {
-                    let new_instructions = get_input_from_editor("", cli.use_pane)?;
+                    let new_instructions = prompt_for_instruction(&cli)?;
                     print_turn_header("querent", human_turn_counter)?;
                     human_turn_counter += 1;
                     // Print the human's message with reset color

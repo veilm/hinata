@@ -738,7 +738,9 @@ dependencies = [
  "hnt-tui",
  "log",
  "regex",
+ "shlex",
  "simplelog",
+ "tempfile",
  "tokio",
  "unicode-width 0.1.14",
 ]
