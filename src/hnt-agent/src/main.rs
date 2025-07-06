@@ -30,8 +30,10 @@ use std::io::Cursor;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command as StdCommand;
+use std::time::Duration;
 use tempfile;
 use tokio;
+use tokio::sync::watch;
 use unicode_width::UnicodeWidthStr;
 
 /// Interact with hinata LLM agent to execute shell commands.
@@ -206,6 +208,41 @@ fn print_turn_footer(color: Color) -> Result<()> {
         Print("\n"),
     )?;
     stdout.flush()?;
+    Ok(())
+}
+
+async fn run_spinner(mut rx: watch::Receiver<bool>) -> anyhow::Result<()> {
+    let spinner_chars = ['|', '/', '-', '\\'];
+    let mut i = 0;
+    let mut stdout = stdout();
+    let mut interval = tokio::time::interval(Duration::from_millis(150));
+
+    execute!(stdout, Print("Executing... "), cursor::Hide)?;
+    stdout.flush()?;
+
+    loop {
+        tokio::select! {
+            _ = rx.changed() => {
+                if *rx.borrow() {
+                    break;
+                }
+            }
+            _ = interval.tick() => {
+                execute!(stdout, Print(spinner_chars[i]), cursor::MoveLeft(1))?;
+                stdout.flush()?;
+                i = (i + 1) % spinner_chars.len();
+            }
+        }
+    }
+
+    execute!(
+        stdout,
+        Print("\r"),
+        Clear(ClearType::CurrentLine),
+        cursor::Show
+    )?;
+    stdout.flush()?;
+
     Ok(())
 }
 
@@ -517,7 +554,18 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                        let captured_output = session.exec_captured(&command_text).await?;
+
+                        print_turn_footer(Color::DarkCyan)?;
+
+                        let (tx, rx) = watch::channel(false);
+                        let spinner_task = tokio::spawn(run_spinner(rx));
+
+                        let captured_output_res = session.exec_captured(&command_text).await;
+
+                        tx.send(true).ok();
+                        spinner_task.await??;
+
+                        let captured_output = captured_output_res?;
 
                         let result_message = format!(
                             "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
@@ -527,7 +575,6 @@ async fn main() -> Result<()> {
                         );
 
                         // Display shell output to the user
-                        print_turn_footer(Color::DarkCyan)?;
                         execute!(
                             stdout(),
                             SetForegroundColor(Color::White),
@@ -540,12 +587,16 @@ async fn main() -> Result<()> {
                         print_turn_footer(Color::DarkCyan)?;
 
                         // Add command output as a new user message to continue the conversation
-                        chat::write_message_file(&conversation_dir, chat::Role::User, &result_message)?;
+                        chat::write_message_file(
+                            &conversation_dir,
+                            chat::Role::User,
+                            &result_message,
+                        )?;
                         turn_counter += 1;
                     }
 
                 } else {
-                    eprintln!("LLM provided no <hnt-shell> command. What would you like to do?");
+                    eprintln!("LLM provided no command. What would you like to do?");
                     let options = vec![
                         "Provide new instructions for the LLM.".to_string(),
                         "Quit. Terminate the agent.".to_string(),
