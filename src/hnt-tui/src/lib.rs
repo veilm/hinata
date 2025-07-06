@@ -1,3 +1,4 @@
+pub mod inline_editor;
 use clap::Args;
 use crossterm::{
     cursor, execute,

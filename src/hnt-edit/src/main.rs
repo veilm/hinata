@@ -9,19 +9,15 @@ use hnt_apply;
 use hnt_pack;
 
 use log::debug;
-use ratatui;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
+
 use ratatui::crossterm::{
-    cursor, execute,
+    execute,
     style::{Color, Print, ResetColor, SetForegroundColor},
     terminal,
 };
-use ratatui::widgets::{Block, Borders};
-use ratatui::{TerminalOptions, Viewport};
 use shlex;
 
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
-use std::cmp::min;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -30,7 +26,6 @@ use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 use tokio::{self, process::Command};
-use tui_textarea::{Input, TextArea};
 use which::which;
 
 // A guard to clean up empty files that were created during execution.
@@ -109,93 +104,6 @@ struct Cli {
     verbose: bool,
 }
 
-
-fn run_inline_tui_editor() -> Result<String> {
-    const TUI_HEIGHT: u16 = 10;
-
-    io::stdout().flush()?;
-    let (start_col, initial_pane_top) = cursor::position()?;
-
-    // Predict how many lines Ratatui will scroll to fit the pane.
-    let (_, rows) = terminal::size()?;
-    let spare = rows.saturating_sub(initial_pane_top); // rows remaining below cursor
-    let delta = TUI_HEIGHT.saturating_sub(spare); // lines that will be scrolled (0 if enough room)
-    let pane_top = initial_pane_top.saturating_sub(delta); // true pane top after the implicit scroll
-
-    let mut terminal = ratatui::init_with_options(TerminalOptions {
-        viewport: Viewport::Inline(TUI_HEIGHT),
-    });
-
-    let mut textarea = TextArea::default();
-    textarea.set_block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Enter Instructions (Esc or Ctrl+D to submit, Ctrl+C to abort)"),
-    );
-
-    let instruction = loop {
-        terminal.draw(|f| {
-            f.render_widget(&textarea, f.area());
-        })?;
-        match event::read().context("Failed to read TUI event")? {
-            Event::Key(key) => match key.code {
-                KeyCode::Esc => break textarea.into_lines().join("\n"),
-                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    break textarea.into_lines().join("\n");
-                }
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    // clean up before bailing
-                    ratatui::restore();
-                    let mut out = io::stdout();
-                    out.write_all(b"\x1b[?6l\x1b[r")?; // DECOM off, scroll region reset
-
-                    let (_, rows) = terminal::size()?;
-                    let real_height = min(TUI_HEIGHT, rows.saturating_sub(pane_top));
-                    for y in 0..real_height {
-                        execute!(
-                            out,
-                            cursor::MoveTo(0, pane_top + y),
-                            terminal::Clear(terminal::ClearType::CurrentLine)
-                        )?;
-                    }
-
-                    execute!(out, cursor::MoveTo(start_col, pane_top))?;
-                    bail!("Aborted by user.");
-                }
-                _ => {
-                    textarea.input(Input::from(key));
-                }
-            },
-            Event::Resize(_, _) => {
-                terminal.autoresize()?;
-            }
-            _ => {}
-        }
-    };
-
-    ratatui::restore();
-    let mut out = io::stdout();
-    out.write_all(b"\x1b[?6l\x1b[r")?; // DECOM off, scroll region reset
-
-    let (_, rows) = terminal::size()?;
-    let real_height = min(TUI_HEIGHT, rows.saturating_sub(pane_top));
-    for y in 0..real_height {
-        execute!(
-            out,
-            cursor::MoveTo(0, pane_top + y),
-            terminal::Clear(terminal::ClearType::CurrentLine)
-        )?;
-    }
-
-    execute!(out, cursor::MoveTo(start_col, pane_top))?;
-
-    if instruction.trim().is_empty() {
-        bail!("Aborted: No instructions were provided.");
-    }
-
-    Ok(instruction)
-}
-
 /// Gets user instruction from CLI arg, an editor, or an inline TUI.
 fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
     if let Some(message) = &cli.message {
@@ -254,7 +162,7 @@ fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
     }
 
     // Default: use inline TUI editor
-    let instruction = run_inline_tui_editor()?;
+    let instruction = hnt_tui::inline_editor::prompt_for_input()?;
     Ok((instruction, true))
 }
 
@@ -384,7 +292,7 @@ async fn main() -> Result<()> {
             let (instruction, from_editor) = get_user_instruction(&cli)?;
 
             if from_editor {
-                let (width, _) = ratatui::crossterm::terminal::size()?;
+                let (width, _) = terminal::size().context("Failed to get terminal dimensions")?;
                 let width = width as usize;
 
                 let title = "┌─ User Instructions ";
@@ -552,7 +460,6 @@ async fn main() -> Result<()> {
             println!();
         }
     }
-
 
     if let Some(mut stdin) = highlighter_stdin.take() {
         stdin.flush().await?;

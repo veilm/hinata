@@ -774,6 +774,7 @@ dependencies = [
  "hinata-core",
  "hnt-apply",
  "hnt-pack",
+ "hnt-tui",
  "log",
  "ratatui",
  "shlex",
@@ -809,11 +810,14 @@ dependencies = [
 name = "hnt-tui"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "crossterm 0.27.0",
  "portable-pty",
+ "ratatui",
  "termios",
  "tokio",
+ "tui-textarea",
  "vt100",
 ]
 

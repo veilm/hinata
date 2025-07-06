@@ -4,17 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-crossterm = "0.27.0"
+anyhow = "1.0"
 clap = { version = "4.5.4", features = ["derive"] }
+crossterm = "0.27.0"
+portable-pty = "0.9.0"
+ratatui = { version = "0.29", features = ["crossterm"] }
 termios = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tui-textarea = "0.7"
 vt100 = "0.15.2"
-
-[dependencies.portable-pty]
-version = "0.9.0"
-
-[dependencies.tokio]
-version = "1"
-features = ["rt-multi-thread", "macros", "sync"]
 
 [lib]
 name = "hnt_tui"
