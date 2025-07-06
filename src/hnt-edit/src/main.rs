@@ -522,8 +522,16 @@ async fn main() -> Result<()> {
         }
     }
 
+
     if let Some(mut stdin) = highlighter_stdin.take() {
         stdin.flush().await?;
+    }
+
+    if let Some(mut child) = highlighter {
+        child
+            .wait()
+            .await
+            .context("Error waiting for syntax highlighter to finish")?;
     }
     println!();
 
