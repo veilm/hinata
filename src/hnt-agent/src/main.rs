@@ -356,8 +356,15 @@ async fn main() -> Result<()> {
                 let mut reasoning_buffer = String::new();
                 tokio::pin!(stream);
 
+
                 print_turn_header("hinata", turn_counter)?;
                 execute!(stdout(), ResetColor)?;
+
+                let (width, _) = terminal::size()?;
+                let wrap_at = (width as usize).saturating_sub(MARGIN);
+                let mut current_column = MARGIN;
+
+                print!("{}", margin_str());
 
                 let mut in_reasoning_block = false;
                 let mut llm_error: Option<anyhow::Error> = None;
@@ -376,9 +383,47 @@ async fn main() -> Result<()> {
                                     println!();
                                 }
                                 in_reasoning_block = false;
+                                print!("{}", margin_str());
+                                current_column = MARGIN;
                             }
                             llm_response.push_str(&content);
-                            print!("{}", content);
+
+                            let words: Vec<&str> = content.split(' ').collect();
+                            for (i, word) in words.iter().enumerate() {
+                                let mut parts = word.split('\n').peekable();
+                                while let Some(part) = parts.next() {
+                                    if !part.is_empty() {
+
+                                        let part_width = part.width();
+
+                                        if current_column > MARGIN
+                                            && current_column + part_width > wrap_at
+                                        {
+                                            print!("\n{}", margin_str());
+                                            current_column = MARGIN;
+                                        }
+                                        print!("{}", part);
+                                        current_column += part_width;
+                                    }
+
+                                    if parts.peek().is_some() {
+                                        print!("\n{}", margin_str());
+                                        current_column = MARGIN;
+                                    }
+                                }
+
+                                if i < words.len() - 1 {
+                                    // A space existed after the original word.
+                                    if !word.ends_with('\n') {
+                                        if current_column + 1 > wrap_at {
+                                            print!("\n{}", margin_str());
+                                            current_column = MARGIN;
+                                        }
+                                        print!(" ");
+                                        current_column += 1;
+                                    }
+                                }
+                            }
                             stdout().flush()?;
                         }
                         Ok(hinata_core::llm::LlmStreamEvent::Reasoning(reasoning)) => {
