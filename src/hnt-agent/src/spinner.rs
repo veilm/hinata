@@ -781,6 +781,12 @@ pub static LOADING_MESSAGES: Lazy<Vec<String>> = Lazy::new(|| {
         "Shattering...",
         "Crystallizing...",
         "Cascading...",
+        "Twisting...",
+        "Teleporting...",
+        "Inverting...",
+        "Charming...",
+        "Bewitching...",
+        "Unraveling...",
     ]
     .into_iter()
     .map(String::from)

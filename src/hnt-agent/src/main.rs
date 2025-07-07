@@ -470,11 +470,13 @@ async fn main() -> Result<()> {
                         .join("\n");
                     eprintln!("\n\n{}", indented_error);
 
+
+
                     let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
                     let args = SelectArgs {
                         height: 10,
                         color: Some(4),
-                        prefix: None,
+                        prefix: Some(format!("{}🯖🭋", margin_str())),
                     };
                     let tty = Tty::new()?;
                     let selection = {
@@ -543,7 +545,7 @@ async fn main() -> Result<()> {
                             let args = SelectArgs {
                                 height: 10,
                                 color: Some(4),
-                                prefix: None,
+                                prefix: Some(format!("{}🯖🭋", margin_str())),
                             };
                             let tty = Tty::new()?;
                             let selection = {
@@ -686,7 +688,7 @@ async fn main() -> Result<()> {
                     let args = SelectArgs {
                         height: 10,
                         color: Some(4),
-                        prefix: None,
+                        prefix: Some(format!("{}🯖🭋", margin_str())),
                     };
                     let tty = Tty::new()?;
                     let selection = {
