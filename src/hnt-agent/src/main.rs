@@ -558,14 +558,34 @@ async fn main() -> Result<()> {
                         tx.send(true).ok();
                         spinner_task.await??;
 
+
                         let captured_output = captured_output_res?;
 
-                        let result_message = format!(
-                            "<hnt-shell_results>\n<stdout>\n{}</stdout>\n<stderr>\n{}</stderr>\n<exit_code>{}</exit_code>\n</hnt-shell_results>",
-                            captured_output.stdout,
-                            captured_output.stderr,
-                            captured_output.exit_status.code().unwrap_or(1)
-                        );
+                        let mut parts = Vec::new();
+
+                        let stdout_content = captured_output.stdout.trim();
+                        if !stdout_content.is_empty() {
+                            parts.push(format!("<stdout>\n{}\n</stdout>", stdout_content));
+                        }
+
+                        let stderr_content = captured_output.stderr.trim();
+                        if !stderr_content.is_empty() {
+                            parts.push(format!("<stderr>\n{}\n</stderr>", stderr_content));
+                        }
+
+                        let exit_code = captured_output.exit_status.code().unwrap_or(1);
+                        if exit_code != 0 {
+                            parts.push(format!("<exit_code>{}</exit_code>", exit_code));
+                        }
+
+                        let result_message = if parts.is_empty() {
+                            "<hnt-shell_results></hnt-shell_results>".to_string()
+                        } else {
+                            format!(
+                                "<hnt-shell_results>\n{}\n</hnt-shell_results>",
+                                parts.join("\n")
+                            )
+                        };
 
                         // Display shell output to the user
                         execute!(
