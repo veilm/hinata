@@ -16,4 +16,7 @@ pub enum Error {
 
     #[error("Session not found")]
     SessionNotFound,
+
+    #[error("PID file not found or is empty")]
+    PidNotFound,
 }

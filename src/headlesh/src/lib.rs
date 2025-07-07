@@ -3,14 +3,18 @@ pub mod error;
 use crate::error::Error;
 use dirs;
 use fs2::FileExt;
+
 use log::info;
+use nix::sys::signal::{self, Signal};
 use nix::sys::stat;
-use nix::unistd::{fork, mkfifo, setsid, ForkResult};
+use nix::unistd::{fork, mkfifo, setsid, ForkResult, Pid};
 use simplelog::{Config, LevelFilter, WriteLogger};
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::mem;
+
+use std::os::unix::process::CommandExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -238,6 +242,24 @@ impl Session {
         Ok(())
     }
 
+    /// Sends a SIGTERM signal to the session's shell process.
+    pub async fn kill(&self) -> Result<(), Error> {
+        let session_path = Path::new(SESSION_DIR).join(&self.session_id);
+        let shell_pid_path = session_path.join("shell.pid");
+
+        let pid_str = fs::read_to_string(&shell_pid_path).map_err(|_| Error::PidNotFound)?;
+
+        let pid_val = pid_str
+            .trim()
+            .parse::<i32>()
+            .map_err(|_| Error::PidNotFound)?;
+
+        let pid = Pid::from_raw(-pid_val);
+        signal::kill(pid, Signal::SIGTERM)?;
+
+        Ok(())
+    }
+
     /// Spawns the daemon process for the session.
     pub fn spawn(&self, shell: Option<String>) -> Result<(), error::Error> {
         let initial_cwd = env::current_dir()?;
@@ -337,9 +359,18 @@ fn run_daemon(
     mkfifo(&fifo_path, stat::Mode::S_IRWXU)?;
 
     let shell_to_use = shell.unwrap_or_else(|| "sh".to_string());
-    let mut child = std::process::Command::new(&shell_to_use)
-        .stdin(Stdio::piped())
-        .spawn()?;
+
+    let mut child = unsafe {
+        std::process::Command::new(&shell_to_use)
+            .stdin(Stdio::piped())
+            .pre_exec(|| {
+                nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            })
+            .spawn()?
+    };
+    let shell_pid_path = session_path.join("shell.pid");
+    fs::write(&shell_pid_path, child.id().to_string())?;
     let mut shell_stdin = child.stdin.take().unwrap();
 
     loop {
@@ -404,6 +435,7 @@ fn run_daemon(
 
     let _ = fs::remove_file(&fifo_path);
     let _ = fs::remove_file(&lock_path);
+    let _ = fs::remove_file(&shell_pid_path);
 
     Ok(())
 }

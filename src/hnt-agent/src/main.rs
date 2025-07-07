@@ -250,7 +250,9 @@ async fn main() -> Result<()> {
     debug!("After session.spawn.");
 
     let result = tokio::select! {
+
         _ = tokio::signal::ctrl_c() => {
+            session.kill().await.ok();
             eprintln!("\nCtrl+C received, shutting down gracefully.");
             Ok(())
         },
