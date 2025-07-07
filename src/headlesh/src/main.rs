@@ -84,7 +84,11 @@ fn main() {
             let session = Session {
                 session_id: session_id.clone(),
             };
-            match rt.block_on(session.exit()) {
+
+            match rt.block_on(async {
+                session.kill().await?;
+                session.exit().await
+            }) {
                 Ok(_) => {
                     println!("Termination signal sent to session '{}'.", session_id);
                 }
