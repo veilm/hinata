@@ -1,3 +1,6 @@
+- detect if the user's ansi colors are default or switched with something like wal?
+	is that possible? for me in foot I use the theme.ini
+	if default, use rgb, with our own specific built-in theme
 - recompute summaries
 - make a `memory` CLI or something
 	for now it can just have some different profiles (simple .md files)

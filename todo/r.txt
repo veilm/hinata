@@ -1,0 +1,22 @@
+the docs haven't been updated since
+	vm fa85c9e15777ad48b4cb88f18304aa047ff7756e
+
+you should use find_docs.py and the diff
+
+like make find_docs.py create a simple output of deps
+
+
+"path/to/OrderList.tsx changed
+	so X, which abstracts OrderList.tsx, may require changes
+
+if X changed, Y may require changes
+
+if Y changed, Z may require changes"
+etc., something reasonable
+
+
+then you basically give it all the files at once including the diff, and tell it
+to make any changes
+idk, or do them one at a time
+haven't thought it through yet
+

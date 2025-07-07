@@ -18,16 +18,413 @@ pub struct Spinner {
 }
 
 /*
+diamond
 - o3: 5/9 = 0.56
 - Claude Opus 3: 3.4/7 = 0.49
 - Claude Opus 4: 5/13 = 0.38
 - DeepSeek-R1 0528: 0.9/3 = 0.3
 - Gemini 2.5 Pro: 0.5/8.5 = 0.06
+
+shading
+- Claude 4 Opus: 5.85/10 = 0.59
+- o3: 5.2/12 = 0.43
+
+cross
+- Claude 4 Opus: 10.95/24 = 0.46
+
+Bb
+- Claude 4 Opus: 1.05/10 = 0.11
 */
 
 // A collection of all available spinners.
 pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
     vec![
+        Spinner {
+            // Claude 4 Opus
+            frames: vec!["╱", "╱╱", "╱╱╱", "│││", "╲╲╲", "╲╲", "╲", "│"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "□→┬→┬→┬→",
+                "┬→□→┬→┬→",
+                "┬→┬→□→┬→",
+                "┬→┬→┬→□→",
+                "┬→┬→┬→┬□",
+                "■→┬→┬→┬→",
+                "┬→■→┬→┬→",
+                "┬→┬→■→┬→",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus, sucralose
+            frames: vec![
+                "    •    ",
+                "   ┌•┐   ",
+                "  ┌┼─┼┐  ",
+                " ┌┼┼─┼┼┐ ",
+                "┌┼┼┼─┼┼┼┐",
+                "│┼┼┼•┼┼┼│",
+                "└┼┼┼─┼┼┼┘",
+                " └┼┼─┼┼┘ ",
+                "  └┼─┼┘  ",
+                "   └─┘   ",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "⟨0│ │0⟩",
+                "⟨0│░│0⟩",
+                "⟨0│▒│0⟩",
+                "⟨0│▓│0⟩",
+                "⟨1│▓│1⟩",
+                "⟨1│▒│1⟩",
+                "⟨1│░│1⟩",
+                "⟨1│ │1⟩",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "┌─┬─┬─┐",
+                "├─┼─┼─┤",
+                "├▓┼─┼─┤",
+                "├─┼▓┼─┤",
+                "├─┼─┼▓┤",
+                "├─┼─┼─┤",
+                "└─┴─┴─┘",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "┌┐      ",
+                "└┘┌┐    ",
+                "  └┘┌┐  ",
+                "    └┘┌┐",
+                "      └┘",
+                "    ┌┐└┘",
+                "  ┌┐└┘  ",
+                "┌┐└┘    ",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "───────",
+                "╱──────",
+                "─╱─────",
+                "──╱────",
+                "───╱───",
+                "────╱──",
+                "─────╱─",
+                "──────╱",
+                "───────",
+                "──────╲",
+                "─────╲─",
+                "────╲──",
+                "───╲───",
+                "──╲────",
+                "─╲─────",
+                "╲──────",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "┌      ",
+                "┌┬     ",
+                "┌┬┬    ",
+                "┌┬┬┬   ",
+                "├┼┼┼   ",
+                "├┼┼┼┤  ",
+                "└┴┴┴┘  ",
+                " └┴┴┘  ",
+                "  └┴┘  ",
+                "   └┘  ",
+                "       ",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "┌───┐",
+                "│╱─╲│",
+                "│╲ ╱│",
+                "└─╲╱┘",
+                "┌╲╱─┐",
+                "│╱ ╲│",
+                "│╲─╱│",
+                "└───┘",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "  │  ",
+                " ─┼─ ",
+                "┌─┼─┐",
+                "│ ┼ │",
+                "├─┼─┤",
+                "│ ┼ │",
+                "└─┼─┘",
+                " ─┼─ ",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "█▓▒░    ",
+                " █▓▒░   ",
+                "  █▓▒░  ",
+                "   █▓▒░ ",
+                "    █▓▒░",
+                "     █▓▒",
+                "      █▓",
+                "       █",
+                "      ▓█",
+                "     ▒▓█",
+                "    ░▒▓█",
+                "   ░▒▓█ ",
+                "  ░▒▓█  ",
+                " ░▒▓█   ",
+                "░▒▓█",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "█",
+                "░",
+                "",
+                "",
+                "",
+                "",
+                "░    ",
+                "░█   ",
+                "░    ",
+                "     ",
+                "     ",
+                "",
+                "     ",
+                "░    ",
+                "░░█  ",
+                "░    ",
+                "     ",
+                "",
+                "     ",
+                "     ",
+                "░    ",
+                "░░░█ ",
+                "░",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "█░░░░░░░",
+                "▓█░░░░░░",
+                "▒▓█░░░░░",
+                "░▒▓█░░░░",
+                "░░▒▓█░░░",
+                "░░░▒▓█░░",
+                "░░░░▒▓█░",
+                "░░░░░▒▓█",
+                "░░░░░░▒▓",
+                "░░░░░░░▒",
+                "░░░░░░░░",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "█     ░",
+                " ░   ▒ ",
+                "  ▒ ▓  ",
+                "   ▓█  ",
+                "    ",
+                "░     █",
+                "▒   ░  ",
+                "▓ ▒    ",
+                "█▓",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "   ░░░",
+                " ░▒▒▒░",
+                " ░▒▒▒░",
+                "   ░░░",
+                "   ",
+                "  ▒▒▒▒▒",
+                " ▒▓▓▓▓▒",
+                "▒▓▓█▓▓▒",
+                " ▒▓▓▓▓▒",
+                "  ▒▒▒▒▒",
+                "  ",
+                "    █",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "    █",
+                "    █",
+                "    █",
+                "    ",
+                "  █ █ █",
+                "    ",
+                "█       ",
+                "█       ",
+                "█       ",
+                "    ",
+                "  █ █ █",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // Claude 4 Opus
+            frames: vec![
+                "   ░",
+                "  ░▒░",
+                " ░▒▓▒░",
+                "░▒▓█▓▒░",
+                " ░▒▓▒░",
+                "  ░▒░",
+                "   ░",
+                "   ",
+                "  ▒▒▒",
+                " ▒▓█▓▒",
+                "  ▒▒▒",
+                "   ",
+                "   █",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // o3
+            frames: vec!["█   █", "▓ █ ▓", " ▒▒▒ ", "  ░  ", " ▒▒▒ ", "▓ █ ▓"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // o3
+            frames: vec!["░", "▒░", "▓▒░", "█▓▒░", " ░▒▓", "  ░▒", "   ░"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // o3
+            frames: vec!["░▒▓█▓▒", "▒▓█▓▒░", "▓█▓▒░▒", "█▓▒░▒▓", "▓▒░▒▓█", "▒░▒▓█▓"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            // sucralose
+            frames: vec!["░ ", "▒░", "▓▒", "█▓", "▓█", "▒▓", " ▒"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            frames: vec![
+                // sucralose
+                "▁▄█",
+                "▁▅🭶",
+                "▂▆🭷",
+                "▃▇🭸",
+                "▄█🭹",
+                "▅🭶🭺",
+                "▆🭷🭻",
+                "▇🭸▁",
+                "█🭹▁",
+                "🭶🭺▂",
+                "🭷🭻▃",
+                "🭸▁▄",
+                "🭹▁▅",
+                "🭺▂▆",
+                "🭻▃▇",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(100),
+        },
         Spinner {
             frames: vec![
                 // 0528
@@ -275,6 +672,7 @@ pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
         },
         Spinner {
             frames: vec![
+                // sucralose
                 "╶╀┼╴",
                 "╶┾┽╴",
                 "╶┼╁╴",
@@ -291,6 +689,7 @@ pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
         },
         Spinner {
             frames: vec![
+                // external
                 "⢀⠀", "⡀⠀", "⠄⠀", "⢂⠀", "⡂⠀", "⠅⠀", "⢃⠀", "⡃⠀", "⠍⠀", "⢋⠀", "⡋⠀", "⠍⠁", "⢋⠁", "⡋⠁",
                 "⠍⠉", "⠋⠉", "⠋⠉", "⠉⠙", "⠉⠙", "⠉⠩", "⠈⢙", "⠈⡙", "⢈⠩", "⡀⢙", "⠄⡙", "⢂⠩", "⡂⢘", "⠅⡘",
                 "⢃⠨", "⡃⢐", "⠍⡐", "⢋⠠", "⡋⢀", "⠍⡁", "⢋⠁", "⡋⠁", "⠍⠉", "⠋⠉", "⠋⠉", "⠉⠙", "⠉⠙", "⠉⠩",
@@ -302,6 +701,7 @@ pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
             interval: Duration::from_millis(150),
         },
         Spinner {
+            // external
             frames: vec!["⢄", "⢂", "⢁", "⡁", "⡈", "⡐", "⡠"]
                 .into_iter()
                 .map(String::from)
@@ -309,49 +709,36 @@ pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
             interval: Duration::from_millis(150),
         },
         Spinner {
-            frames: vec!["🌑 ", "🌒 ", "🌓 ", "🌔 ", "🌕 ", "🌖 ", "🌗 ", "🌘 "]
+            // external
+            frames: vec!["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
             interval: Duration::from_millis(150),
         },
         Spinner {
-            frames: vec!["░", "▒", "▓", "█", "▓", "▒", " "]
+            // sucralose
+            frames: vec!["││", "╱╲", "──", "╲╱"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
             interval: Duration::from_millis(150),
         },
         Spinner {
-            frames: vec!["||", "/\\", "--", "\\/"]
+            // sucralose
+            frames: vec!["│╱", "╱─", "─╲", "╲│"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
             interval: Duration::from_millis(150),
         },
         Spinner {
-            frames: vec!["|/", "/-", "-\\", "\\|"]
+            // sucralose
+            frames: vec!["│─", "╱╲", "─│", "╲╱"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
             interval: Duration::from_millis(150),
-        },
-        Spinner {
-            frames: vec!["|-", "/\\", "-|", "\\/"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-            interval: Duration::from_millis(150),
-        },
-        Spinner {
-            frames: vec![
-                "  ", "▁▁", "▂▂", "▃▃", "▄▄", "▅▅", "▆▆", "▇▇", "██", "🭶🭶", "🭷🭷", "🭸🭸", "🭹🭹", "🭺🭺",
-                "🭻🭻",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-            interval: Duration::from_millis(100),
         },
     ]
 });
