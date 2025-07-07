@@ -8,21 +8,26 @@ from pathlib import Path
 
 def find_project_root(start_path: Path) -> Path | None:
     """
-    Finds the Rust project root (directory with Cargo.toml) for a given path.
+    Finds the highest-level Rust project root (directory with Cargo.toml)
+    for a given path by traversing up the directory tree. This is useful for
+    finding the workspace root in projects with multiple crates.
     """
     current_path = start_path.resolve()
 
     if not current_path.is_dir():
         current_path = current_path.parent
 
+    highest_root = None
     while True:
         if (current_path / "Cargo.toml").is_file():
-            return current_path
+            highest_root = current_path
 
         if current_path.parent == current_path:  # Reached the root
-            return None
+            break
 
         current_path = current_path.parent
+
+    return highest_root
 
 
 def main():
