@@ -77,6 +77,10 @@ struct Cli {
     /// Do not escape backticks in shell commands.
     #[arg(long)]
     no_escape_backticks: bool,
+
+    /// Always use a specific spinner by its index, instead of a random one.
+    #[arg(long)]
+    spinner: Option<usize>,
 }
 
 fn prompt_for_instruction(cli: &Cli) -> Result<String> {
@@ -526,7 +530,21 @@ async fn main() -> Result<()> {
                         print_turn_footer(Color::DarkCyan)?;
 
 
-                        let spinner = spinner::get_random_spinner();
+
+                        let spinner = if let Some(index) = cli.spinner {
+                            if index >= spinner::SPINNERS.len() {
+                                eprintln!(
+                                    "Error: spinner index {} is out of bounds. There are {} spinners available (0-{}).",
+                                    index,
+                                    spinner::SPINNERS.len(),
+                                    spinner::SPINNERS.len() - 1
+                                );
+                                bail!("Spinner index out of bounds.");
+                            }
+                            spinner::SPINNERS[index].clone()
+                        } else {
+                            spinner::get_random_spinner()
+                        };
                         let (tx, rx) = watch::channel(false);
                         let spinner_task = tokio::spawn(spinner::run_spinner(spinner, rx));
 

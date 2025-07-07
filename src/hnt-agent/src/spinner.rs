@@ -18,23 +18,38 @@ pub struct Spinner {
 }
 
 // A collection of all available spinners.
-static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
+pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
     vec![
-        // Classic spinner
         Spinner {
-            frames: vec!["|", "/", "-", "\\"]
+            frames: vec!["||", "/\\", "--", "\\/"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
             interval: Duration::from_millis(150),
         },
-        // Dots spinner
         Spinner {
-            frames: vec![".", "..", "...", ".."]
+            frames: vec!["|/", "/-", "-\\", "\\|"]
                 .into_iter()
                 .map(String::from)
                 .collect(),
-            interval: Duration::from_millis(200),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            frames: vec!["|-", "/\\", "-|", "\\/"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            interval: Duration::from_millis(150),
+        },
+        Spinner {
+            frames: vec![
+                "  ", "▁▁", "▂▂", "▃▃", "▄▄", "▅▅", "▆▆", "▇▇", "██", "🭶🭶", "🭷🭷", "🭸🭸", "🭹🭹", "🭺🭺",
+                "🭻🭻",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+            interval: Duration::from_millis(100),
         },
     ]
 });
