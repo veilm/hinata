@@ -769,6 +769,10 @@ pub static LOADING_MESSAGES: Lazy<Vec<String>> = Lazy::new(|| {
         "Flickering...",
         "Spiraling...",
         "Usurping...",
+        "Incanting...",
+        "Awakening...",
+        "Manifesting...",
+        "Transcending...",
     ]
     .into_iter()
     .map(String::from)
@@ -802,6 +806,7 @@ pub async fn run_spinner(
     let mut i = 0;
     let mut interval = tokio::time::interval(spinner.interval);
     let mut stdout = stdout();
+    let start_time = tokio::time::Instant::now();
 
     execute!(stdout, cursor::Hide)?;
     stdout.flush()?;
@@ -815,12 +820,15 @@ pub async fn run_spinner(
             },
             _ = interval.tick() => {
                 let frame = &spinner.frames[i];
+                let elapsed_seconds = start_time.elapsed().as_secs();
                 execute!(
                     stdout,
                     cursor::MoveToColumn(0),
                     Clear(ClearType::CurrentLine),
-                    Print(format!("{} ", message)),
-                    Print(frame)
+                    Print(format!(
+                        "{} ({:>3}s)  {}",
+                        message, elapsed_seconds, frame
+                    ))
                 )?;
 
                 stdout.flush()?;
