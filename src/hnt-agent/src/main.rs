@@ -545,8 +545,11 @@ async fn main() -> Result<()> {
                         } else {
                             spinner::get_random_spinner()
                         };
+
+                        let loading_message = spinner::get_random_loading_message();
                         let (tx, rx) = watch::channel(false);
-                        let spinner_task = tokio::spawn(spinner::run_spinner(spinner, rx));
+                        let spinner_task =
+                            tokio::spawn(spinner::run_spinner(spinner, loading_message, rx));
 
                         let captured_output_res = session.exec_captured(&command_text).await;
 

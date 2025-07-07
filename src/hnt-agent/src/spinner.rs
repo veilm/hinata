@@ -743,6 +743,38 @@ pub static SPINNERS: Lazy<Vec<Spinner>> = Lazy::new(|| {
     ]
 });
 
+pub static LOADING_MESSAGES: Lazy<Vec<String>> = Lazy::new(|| {
+    vec![
+        "Ministering...",
+        "Communing...",
+        "Lining...",
+        "Beckoning...",
+        "Dreaming...",
+        "Crossing...",
+        "Ascending...",
+        "Evolving...",
+        "Conjuring...",
+        "Weaving...",
+        "Summoning...",
+        "Channeling...",
+        "Deciphering...",
+        "Illuminating...",
+        "Kindling...",
+        "Gathering...",
+        "Listening...",
+        "Scribing...",
+        "Painting...",
+        "Rousing...",
+        "Stirring...",
+        "Flickering...",
+        "Spiraling...",
+        "Usurping...",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+});
+
 /// Selects a random spinner from the predefined list.
 pub fn get_random_spinner() -> Spinner {
     let mut rng = rand::thread_rng();
@@ -752,8 +784,21 @@ pub fn get_random_spinner() -> Spinner {
         .expect("Spinner list should not be empty")
 }
 
+/// Selects a random loading message from the predefined list.
+pub fn get_random_loading_message() -> String {
+    let mut rng = rand::thread_rng();
+    LOADING_MESSAGES
+        .choose(&mut rng)
+        .cloned()
+        .expect("Loading messages list should not be empty")
+}
+
 /// Displays the provided spinner animation until a stop signal is received.
-pub async fn run_spinner(spinner: Spinner, mut rx: watch::Receiver<bool>) -> Result<()> {
+pub async fn run_spinner(
+    spinner: Spinner,
+    message: String,
+    mut rx: watch::Receiver<bool>,
+) -> Result<()> {
     let mut i = 0;
     let mut interval = tokio::time::interval(spinner.interval);
     let mut stdout = stdout();
@@ -774,7 +819,7 @@ pub async fn run_spinner(spinner: Spinner, mut rx: watch::Receiver<bool>) -> Res
                     stdout,
                     cursor::MoveToColumn(0),
                     Clear(ClearType::CurrentLine),
-                    Print("Executing... "),
+                    Print(format!("{} ", message)),
                     Print(frame)
                 )?;
 
