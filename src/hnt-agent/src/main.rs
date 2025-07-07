@@ -201,23 +201,6 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
     Ok(())
 }
 
-fn print_turn_footer(color: Color) -> Result<()> {
-    let (width, _) = terminal::size()?;
-    let width = width as usize;
-    let mut stdout = stdout();
-    let line = "─".repeat(width);
-
-    execute!(
-        stdout,
-        SetForegroundColor(color),
-        Print(&line),
-        ResetColor,
-        Print("\n"),
-    )?;
-    stdout.flush()?;
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut cli = Cli::parse();
@@ -282,9 +265,10 @@ async fn main() -> Result<()> {
             human_turn_counter += 1;
             // Print the human's message with reset color
             execute!(stdout(), ResetColor, Print(&user_instruction))?;
-            // Add a blank line for spacing, then the footer
+
+            // Add a blank line for spacing
             println!();
-            print_turn_footer(Color::Magenta)?;
+            println!();
             debug!("After getting the user instruction.");
 
             // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
@@ -318,10 +302,10 @@ async fn main() -> Result<()> {
             chat::write_message_file(&conversation_dir, chat::Role::User, &tagged_instruction)?;
             debug!("After writing user message file.");
 
-            eprintln!(
-                "Created conversation: {}",
-                conversation_dir.to_string_lossy()
-            );
+            // eprintln!(
+            //     "Created conversation: {}",
+            //     conversation_dir.to_string_lossy()
+            // );
 
             // 5. Start the main interaction loop:
             debug!("Right before the main loop starts.");
@@ -431,7 +415,6 @@ async fn main() -> Result<()> {
                         }
                         _ => {
                             // "Abort." or None
-                            // eprintln!("-> User chose to abort.");
                             eprintln!("-> Chose to abort.");
                             break;
                         }
@@ -439,7 +422,6 @@ async fn main() -> Result<()> {
                 }
 
                 println!();
-                print_turn_footer(Color::Blue)?;
 
                 if !cli.ignore_reasoning && !reasoning_buffer.is_empty() {
                     let reasoning_content = format!("<think>{}</think>", reasoning_buffer);
@@ -489,15 +471,14 @@ async fn main() -> Result<()> {
                                 select.run()?
                             };
 
-                            execute!(stderr(), cursor::MoveUp(2), Clear(ClearType::FromCursorDown))?;
+                            execute!(stderr(), cursor::MoveUp(1), Clear(ClearType::FromCursorDown))?;
 
                             match selection.as_deref() {
                                 Some("Yes. Proceed to execute Hinata's shell commands.") => {
-                                    eprintln!("-> Executing command.");
+                                    eprintln!("-> Executing command.\n");
                                 }
 
                                 Some("No, and provide new instructions instead.") => {
-                                    // eprintln!("-> User chose to provide new instructions.");
                                     eprintln!("-> Chose to provide new instructions.");
                                     // New instructions
                                     let new_instructions = prompt_for_instruction(&cli)?;
@@ -507,7 +488,6 @@ async fn main() -> Result<()> {
                                     execute!(stdout(), ResetColor, Print(&new_instructions))?;
                                     // Add a blank line for spacing, then the footer
                                     println!();
-                                    print_turn_footer(Color::Magenta)?;
                                     let tagged_instructions =
                                         format!("<user_request>\n{}\n</user_request>", new_instructions);
                                     chat::write_message_file(
@@ -521,17 +501,11 @@ async fn main() -> Result<()> {
                                 _ => {
                                     // Some("No. Abort execution.") or None
 
-                                    // eprintln!("-> User chose to abort.");
                                     eprintln!("-> Chose to abort.");
                                     break;
                                 }
                             }
                         }
-
-
-                        print_turn_footer(Color::DarkCyan)?;
-
-
 
                         let spinner = if let Some(index) = cli.spinner {
                             if index >= spinner::SPINNERS.len() {
@@ -594,10 +568,9 @@ async fn main() -> Result<()> {
                             // Print("Shell Output\n"),
                             ResetColor
                         )?;
+
                         println!("{}", &result_message);
-                        // The output may or may not have a newline. The footer will draw a line
-                        // and add a newline, so we are guaranteed to be on a new line after this.
-                        print_turn_footer(Color::DarkCyan)?;
+                        println!();
 
                         // Add command output as a new user message to continue the conversation
                         chat::write_message_file(
@@ -609,7 +582,7 @@ async fn main() -> Result<()> {
                     }
 
                 } else {
-                    eprintln!("LLM provided no command. What would you like to do?");
+                    eprintln!("\nLLM provided no command. What would you like to do?");
                     let options = vec![
                         "Provide new instructions for the LLM.".to_string(),
                         "Quit. Terminate the agent.".to_string(),
@@ -631,16 +604,18 @@ async fn main() -> Result<()> {
 
                     match selection.as_deref() {
                         Some("Provide new instructions for the LLM.") => {
-                            // eprintln!("-> User chose to provide new instructions.");
-                            eprintln!("-> Chose to provide new instructions.");
+                            eprintln!("-> Chose to provide new instructions.\n");
+
                             let new_instructions = prompt_for_instruction(&cli)?;
                             print_turn_header("querent", human_turn_counter)?;
                             human_turn_counter += 1;
                             // Print the human's message with reset color
                             execute!(stdout(), ResetColor, Print(&new_instructions))?;
-                            // Add a blank line for spacing, then the footer
+
+                            // Add a blank line for spacing
                             println!();
-                            print_turn_footer(Color::Magenta)?;
+                            println!();
+
                             let tagged_instructions =
                                 format!("<user_request>\n{}\n</user_request>", new_instructions);
                             chat::write_message_file(
@@ -653,7 +628,6 @@ async fn main() -> Result<()> {
                         }
                         _ => {
                             // Some("Quit. Terminate the agent.") or None
-                            // eprintln!("-> User chose to quit.");
                             // eprintln!("-> Chose to quit. Thank you for your hard work.");
                             eprintln!("-> Chose to quit.");
                             break;
