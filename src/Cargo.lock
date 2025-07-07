@@ -737,6 +737,8 @@ dependencies = [
  "hinata-core",
  "hnt-tui",
  "log",
+ "once_cell",
+ "rand",
  "regex",
  "shlex",
  "simplelog",

@@ -29,12 +29,15 @@ use std::io::stdout;
 use std::io::Cursor;
 use std::io::{Read, Write};
 use std::path::Path;
+
 use std::process::Command as StdCommand;
-use std::time::Duration;
 use tempfile;
 use tokio;
 use tokio::sync::watch;
+
 use unicode_width::UnicodeWidthStr;
+
+mod spinner;
 
 /// Interact with hinata LLM agent to execute shell commands.
 #[derive(Parser, Debug)]
@@ -208,41 +211,6 @@ fn print_turn_footer(color: Color) -> Result<()> {
         Print("\n"),
     )?;
     stdout.flush()?;
-    Ok(())
-}
-
-async fn run_spinner(mut rx: watch::Receiver<bool>) -> anyhow::Result<()> {
-    let spinner_chars = ['|', '/', '-', '\\'];
-    let mut i = 0;
-    let mut stdout = stdout();
-    let mut interval = tokio::time::interval(Duration::from_millis(150));
-
-    execute!(stdout, Print("Executing... "), cursor::Hide)?;
-    stdout.flush()?;
-
-    loop {
-        tokio::select! {
-            _ = rx.changed() => {
-                if *rx.borrow() {
-                    break;
-                }
-            }
-            _ = interval.tick() => {
-                execute!(stdout, Print(spinner_chars[i]), cursor::MoveLeft(1))?;
-                stdout.flush()?;
-                i = (i + 1) % spinner_chars.len();
-            }
-        }
-    }
-
-    execute!(
-        stdout,
-        Print("\r"),
-        Clear(ClearType::CurrentLine),
-        cursor::Show
-    )?;
-    stdout.flush()?;
-
     Ok(())
 }
 
@@ -557,8 +525,10 @@ async fn main() -> Result<()> {
 
                         print_turn_footer(Color::DarkCyan)?;
 
+
+                        let spinner = spinner::get_random_spinner();
                         let (tx, rx) = watch::channel(false);
-                        let spinner_task = tokio::spawn(run_spinner(rx));
+                        let spinner_task = tokio::spawn(spinner::run_spinner(spinner, rx));
 
                         let captured_output_res = session.exec_captured(&command_text).await;
 
