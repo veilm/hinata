@@ -801,6 +801,7 @@ pub fn get_random_loading_message() -> String {
 pub async fn run_spinner(
     spinner: Spinner,
     message: String,
+    margin: String,
     mut rx: watch::Receiver<bool>,
 ) -> Result<()> {
     let mut i = 0;
@@ -840,7 +841,7 @@ pub async fn run_spinner(
                     stdout,
                     cursor::MoveToColumn(0),
                     Clear(ClearType::CurrentLine),
-                    Print(format!("{}{}{}", message, time_display_block, frame))
+                    Print(format!("{}{}{}{}", margin, message, time_display_block, frame))
                 )?;
 
                 stdout.flush()?;

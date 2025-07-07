@@ -40,8 +40,26 @@ use unicode_width::UnicodeWidthStr;
 mod spinner;
 
 const MARGIN: usize = 2;
+
 fn margin_str() -> String {
     " ".repeat(MARGIN)
+}
+
+fn indent_multiline(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+
+    let mut indented = format!(
+        "{}{}",
+        margin_str(),
+        text.replace('\n', &format!("\n{}", margin_str()))
+    );
+
+    if indented.ends_with(&margin_str()) && text.ends_with('\n') {
+        indented.truncate(indented.len() - MARGIN);
+    }
+    indented
 }
 
 /// Interact with hinata LLM agent to execute shell commands.
@@ -270,18 +288,8 @@ async fn main() -> Result<()> {
             human_turn_counter += 1;
             // Print the human's message with reset color
             execute!(stdout(), ResetColor)?;
-            let mut indented_instruction = if !user_instruction.is_empty() {
-                format!(
-                    "{}{}",
-                    margin_str(),
-                    user_instruction.replace('\n', &format!("\n{}", margin_str()))
-                )
-            } else {
-                String::new()
-            };
-            if indented_instruction.ends_with(&margin_str()) && user_instruction.ends_with('\n') {
-                indented_instruction.truncate(indented_instruction.len() - MARGIN);
-            }
+
+            let indented_instruction = indent_multiline(&user_instruction);
             execute!(stdout(), Print(&indented_instruction))?;
 
             // Add a blank line for spacing
@@ -514,23 +522,8 @@ async fn main() -> Result<()> {
                                     human_turn_counter += 1;
                                     // Print the human's message with reset color
                                     execute!(stdout(), ResetColor)?;
-                                    let mut indented_instructions = if !new_instructions.is_empty()
-                                    {
-                                        format!(
-                                            "{}{}",
-                                            margin_str(),
-                                            new_instructions
-                                                .replace('\n', &format!("\n{}", margin_str()))
-                                        )
-                                    } else {
-                                        String::new()
-                                    };
-                                    if indented_instructions.ends_with(&margin_str())
-                                        && new_instructions.ends_with('\n')
-                                    {
-                                        indented_instructions
-                                            .truncate(indented_instructions.len() - MARGIN);
-                                    }
+
+                                    let indented_instructions = indent_multiline(&new_instructions);
                                     execute!(stdout(), Print(&indented_instructions))?;
                                     // Add a blank line for spacing, then the footer
                                     println!();
@@ -573,8 +566,9 @@ async fn main() -> Result<()> {
 
                         let loading_message = spinner::get_random_loading_message();
                         let (tx, rx) = watch::channel(false);
+
                         let spinner_task =
-                            tokio::spawn(spinner::run_spinner(spinner, loading_message, rx));
+                            tokio::spawn(spinner::run_spinner(spinner, loading_message, margin_str(), rx));
 
                         let captured_output_res = session.exec_captured(&command_text).await;
 
@@ -619,18 +613,8 @@ async fn main() -> Result<()> {
                         )?;
 
 
-                        let mut indented_result = if !result_message.is_empty() {
-                            format!(
-                                "{}{}",
-                                margin_str(),
-                                result_message.replace('\n', &format!("\n{}", margin_str()))
-                            )
-                        } else {
-                            String::new()
-                        };
-                        if indented_result.ends_with(&margin_str()) && result_message.ends_with('\n') {
-                            indented_result.truncate(indented_result.len() - MARGIN);
-                        }
+
+                        let indented_result = indent_multiline(&result_message);
                         println!("{}", &indented_result);
                         println!();
 
@@ -678,20 +662,8 @@ async fn main() -> Result<()> {
                             human_turn_counter += 1;
                             // Print the human's message with reset color
                             execute!(stdout(), ResetColor)?;
-                            let mut indented_instructions = if !new_instructions.is_empty() {
-                                format!(
-                                    "{}{}",
-                                    margin_str(),
-                                    new_instructions.replace('\n', &format!("\n{}", margin_str()))
-                                )
-                            } else {
-                                String::new()
-                            };
-                            if indented_instructions.ends_with(&margin_str())
-                                && new_instructions.ends_with('\n')
-                            {
-                                indented_instructions.truncate(indented_instructions.len() - MARGIN);
-                            }
+
+                            let indented_instructions = indent_multiline(&new_instructions);
                             execute!(stdout(), Print(&indented_instructions))?;
 
                             // Add a blank line for spacing
