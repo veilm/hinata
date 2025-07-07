@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
 mkdir -p "$prompts_dir"
-cp prompts/* "$prompts_dir"
+cp -r prompts/* "$prompts_dir"
 echo "hinata: created $prompts_dir"
 echo "hinata: installed agent system prompts"
 

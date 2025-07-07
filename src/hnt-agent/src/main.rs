@@ -268,7 +268,7 @@ async fn main() -> Result<()> {
             } else {
                 // Try to load from default config path
                 dirs::config_dir().and_then(|config_dir| {
-                    let prompt_path = config_dir.join("hinata/prompts/main-shell_agent.md");
+                    let prompt_path = config_dir.join("hinata/prompts/hnt-agent/main-shell_agent.md");
                     fs::read_to_string(prompt_path).ok()
                 })
             };

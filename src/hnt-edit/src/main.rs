@@ -180,7 +180,7 @@ fn get_system_message(system_arg: Option<String>) -> Result<String> {
         }
         None => {
             let config_home = dirs::config_dir().context("Could not find a config directory")?;
-            let default_path = config_home.join("hinata/prompts/main-file_edit.md");
+            let default_path = config_home.join("hinata/prompts/hnt-edit/main-file_edit.md");
             fs::read_to_string(&default_path)
                 .with_context(|| format!("Failed to read default system file: {:?}", default_path))
         }
