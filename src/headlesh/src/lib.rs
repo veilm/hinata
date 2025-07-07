@@ -315,6 +315,21 @@ impl Session {
     }
 }
 
+fn get_default_shell() -> String {
+    if let Ok(path_var) = env::var("PATH") {
+        let paths: Vec<PathBuf> = env::split_paths(&path_var).collect();
+        for shell in ["bash", "dash"] {
+            for path in &paths {
+                let shell_path = path.join(shell);
+                if shell_path.exists() {
+                    return shell.to_string();
+                }
+            }
+        }
+    }
+    "sh".to_string()
+}
+
 fn run_daemon(
     session_id: String,
     shell: Option<String>,
@@ -358,7 +373,7 @@ fn run_daemon(
     }
     mkfifo(&fifo_path, stat::Mode::S_IRWXU)?;
 
-    let shell_to_use = shell.unwrap_or_else(|| "sh".to_string());
+    let shell_to_use = shell.unwrap_or_else(get_default_shell);
 
     let mut child = unsafe {
         std::process::Command::new(&shell_to_use)

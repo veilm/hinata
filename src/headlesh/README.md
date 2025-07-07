@@ -36,11 +36,11 @@ headlesh create <session-id>
 ```
 
 Options:
-- `--shell <shell>` - Specify shell to use (default: `sh`)
+- `--shell <shell>` - Specify shell to use (default: `bash`)
 
 Example:
 ```bash
-headlesh create dev-env --shell bash
+headlesh create dev-env --shell dash
 ```
 
 ### Executing Commands
