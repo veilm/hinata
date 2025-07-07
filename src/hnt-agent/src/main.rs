@@ -39,6 +39,11 @@ use unicode_width::UnicodeWidthStr;
 
 mod spinner;
 
+const MARGIN: usize = 2;
+fn margin_str() -> String {
+    " ".repeat(MARGIN)
+}
+
 /// Interact with hinata LLM agent to execute shell commands.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -170,13 +175,10 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
     // let prefix = "──────── ";
     let prefix = "─────── ";
 
-    let total_text_len = prefix.width()
-        + role_text.width()
-        + " • ".width()
-        + turn_text.chars().count()
-        + " ".chars().count();
-    let line_len = if width > total_text_len {
-        width - total_text_len
+    let total_text_len =
+        prefix.width() + role_text.width() + " • ".width() + turn_text.width() + " ".width();
+    let line_len = if width > total_text_len + MARGIN * 2 {
+        width - total_text_len - MARGIN * 2
     } else {
         0
     };
@@ -184,6 +186,7 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
 
     execute!(
         stdout,
+        Print(margin_str()),
         SetForegroundColor(line_color),
         Print(prefix),
         SetForegroundColor(Color::White),
@@ -234,9 +237,10 @@ async fn main() -> Result<()> {
 
     let result = tokio::select! {
 
+
         _ = tokio::signal::ctrl_c() => {
             session.kill().await.ok();
-            eprintln!("\nCtrl+C received, shutting down gracefully.");
+            eprintln!("\n{}Ctrl+C received, shutting down gracefully.", margin_str());
             Ok(())
         },
         res = async {
@@ -260,11 +264,25 @@ async fn main() -> Result<()> {
 
             debug!("After getting the system prompt.");
             debug!("Before getting the user instruction.");
+
             let (user_instruction, _) = get_user_instruction(&cli)?;
             print_turn_header("querent", human_turn_counter)?;
             human_turn_counter += 1;
             // Print the human's message with reset color
-            execute!(stdout(), ResetColor, Print(&user_instruction))?;
+            execute!(stdout(), ResetColor)?;
+            let mut indented_instruction = if !user_instruction.is_empty() {
+                format!(
+                    "{}{}",
+                    margin_str(),
+                    user_instruction.replace('\n', &format!("\n{}", margin_str()))
+                )
+            } else {
+                String::new()
+            };
+            if indented_instruction.ends_with(&margin_str()) && user_instruction.ends_with('\n') {
+                indented_instruction.truncate(indented_instruction.len() - MARGIN);
+            }
+            execute!(stdout(), Print(&indented_instruction))?;
 
             // Add a blank line for spacing
             println!();
@@ -387,11 +405,17 @@ async fn main() -> Result<()> {
                 }
 
 
+
                 if let Some(e) = llm_error {
                     // Need to reset color in case it was left on from streaming
                     execute!(stdout(), ResetColor)?;
                     let error_message = format!("An error occurred during the LLM request: {}", e);
-                    eprintln!("\n\n{}", &error_message);
+                    let indented_error = error_message
+                        .lines()
+                        .map(|line| format!("{}{}", margin_str(), line))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    eprintln!("\n\n{}", indented_error);
 
                     let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
                     let args = SelectArgs {
@@ -408,14 +432,15 @@ async fn main() -> Result<()> {
                     let lines_to_move_up = (error_message.lines().count() + 3) as u16;
                     execute!(stderr(), cursor::MoveUp(lines_to_move_up), Clear(ClearType::FromCursorDown))?;
 
+
                     match selection.as_deref() {
                         Some("Retry LLM request.") => {
-                            eprintln!("-> Retrying LLM request.");
+                            eprintln!("{}-> Retrying LLM request.", margin_str());
                             continue;
                         }
                         _ => {
                             // "Abort." or None
-                            eprintln!("-> Chose to abort.");
+                            eprintln!("{}-> Chose to abort.", margin_str());
                             break;
                         }
                     }
@@ -450,9 +475,11 @@ async fn main() -> Result<()> {
                         }
 
 
+
                         if !cli.no_confirm {
                             eprintln!(
-                                "\nHinata has provided the following command. What would you like to do?"
+                                "\n{}Hinata has provided the following command. What would you like to do?",
+                                margin_str()
                             );
                             let options = vec![
                                 "Yes. Proceed to execute Hinata's shell commands.".to_string(),
@@ -473,20 +500,40 @@ async fn main() -> Result<()> {
 
                             execute!(stderr(), cursor::MoveUp(1), Clear(ClearType::FromCursorDown))?;
 
+
                             match selection.as_deref() {
                                 Some("Yes. Proceed to execute Hinata's shell commands.") => {
-                                    eprintln!("-> Executing command.\n");
+                                    eprintln!("{}-> Executing command.\n", margin_str());
                                 }
 
                                 Some("No, and provide new instructions instead.") => {
-                                    eprintln!("-> Chose to provide new instructions.");
+                                    eprintln!("{}-> Chose to provide new instructions.\n", margin_str());
                                     // New instructions
                                     let new_instructions = prompt_for_instruction(&cli)?;
                                     print_turn_header("querent", human_turn_counter)?;
                                     human_turn_counter += 1;
                                     // Print the human's message with reset color
-                                    execute!(stdout(), ResetColor, Print(&new_instructions))?;
+                                    execute!(stdout(), ResetColor)?;
+                                    let mut indented_instructions = if !new_instructions.is_empty()
+                                    {
+                                        format!(
+                                            "{}{}",
+                                            margin_str(),
+                                            new_instructions
+                                                .replace('\n', &format!("\n{}", margin_str()))
+                                        )
+                                    } else {
+                                        String::new()
+                                    };
+                                    if indented_instructions.ends_with(&margin_str())
+                                        && new_instructions.ends_with('\n')
+                                    {
+                                        indented_instructions
+                                            .truncate(indented_instructions.len() - MARGIN);
+                                    }
+                                    execute!(stdout(), Print(&indented_instructions))?;
                                     // Add a blank line for spacing, then the footer
+                                    println!();
                                     println!();
                                     let tagged_instructions =
                                         format!("<user_request>\n{}\n</user_request>", new_instructions);
@@ -501,16 +548,18 @@ async fn main() -> Result<()> {
                                 _ => {
                                     // Some("No. Abort execution.") or None
 
-                                    eprintln!("-> Chose to abort.");
+                                    eprintln!("{}-> Chose to abort.", margin_str());
                                     break;
                                 }
                             }
                         }
 
+
                         let spinner = if let Some(index) = cli.spinner {
                             if index >= spinner::SPINNERS.len() {
                                 eprintln!(
-                                    "Error: spinner index {} is out of bounds. There are {} spinners available (0-{}).",
+                                    "{}Error: spinner index {} is out of bounds. There are {} spinners available (0-{}).",
+                                    margin_str(),
                                     index,
                                     spinner::SPINNERS.len(),
                                     spinner::SPINNERS.len() - 1
@@ -569,7 +618,20 @@ async fn main() -> Result<()> {
                             ResetColor
                         )?;
 
-                        println!("{}", &result_message);
+
+                        let mut indented_result = if !result_message.is_empty() {
+                            format!(
+                                "{}{}",
+                                margin_str(),
+                                result_message.replace('\n', &format!("\n{}", margin_str()))
+                            )
+                        } else {
+                            String::new()
+                        };
+                        if indented_result.ends_with(&margin_str()) && result_message.ends_with('\n') {
+                            indented_result.truncate(indented_result.len() - MARGIN);
+                        }
+                        println!("{}", &indented_result);
                         println!();
 
                         // Add command output as a new user message to continue the conversation
@@ -581,8 +643,12 @@ async fn main() -> Result<()> {
                         turn_counter += 1;
                     }
 
+
                 } else {
-                    eprintln!("\nLLM provided no command. What would you like to do?");
+                    eprintln!(
+                        "\n{}LLM provided no command. What would you like to do?",
+                        margin_str()
+                    );
                     let options = vec![
                         "Provide new instructions for the LLM.".to_string(),
                         "Quit. Terminate the agent.".to_string(),
@@ -602,15 +668,31 @@ async fn main() -> Result<()> {
                     // execute!(stderr(), cursor::MoveUp(2), Clear(ClearType::FromCursorDown))?;
                     execute!(stderr(), cursor::MoveUp(1), Clear(ClearType::FromCursorDown))?;
 
+
                     match selection.as_deref() {
                         Some("Provide new instructions for the LLM.") => {
-                            eprintln!("-> Chose to provide new instructions.\n");
+                            eprintln!("{}-> Chose to provide new instructions.\n", margin_str());
 
                             let new_instructions = prompt_for_instruction(&cli)?;
                             print_turn_header("querent", human_turn_counter)?;
                             human_turn_counter += 1;
                             // Print the human's message with reset color
-                            execute!(stdout(), ResetColor, Print(&new_instructions))?;
+                            execute!(stdout(), ResetColor)?;
+                            let mut indented_instructions = if !new_instructions.is_empty() {
+                                format!(
+                                    "{}{}",
+                                    margin_str(),
+                                    new_instructions.replace('\n', &format!("\n{}", margin_str()))
+                                )
+                            } else {
+                                String::new()
+                            };
+                            if indented_instructions.ends_with(&margin_str())
+                                && new_instructions.ends_with('\n')
+                            {
+                                indented_instructions.truncate(indented_instructions.len() - MARGIN);
+                            }
+                            execute!(stdout(), Print(&indented_instructions))?;
 
                             // Add a blank line for spacing
                             println!();
@@ -627,9 +709,7 @@ async fn main() -> Result<()> {
                             continue;
                         }
                         _ => {
-                            // Some("Quit. Terminate the agent.") or None
-                            // eprintln!("-> Chose to quit. Thank you for your hard work.");
-                            eprintln!("-> Chose to quit.");
+                            eprintln!("{}-> Chose to quit. Farewell.", margin_str());
                             break;
                         }
                     }
