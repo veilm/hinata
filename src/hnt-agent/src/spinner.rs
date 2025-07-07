@@ -819,16 +819,28 @@ pub async fn run_spinner(
                 }
             },
             _ = interval.tick() => {
+
                 let frame = &spinner.frames[i];
                 let elapsed_seconds = start_time.elapsed().as_secs();
+
+                let time_str = format!("({}s)", elapsed_seconds);
+                let prefix = if elapsed_seconds < 10 { "  " } else { " " };
+                // let total_width = 11;
+                let total_width = 10;
+                let current_width = prefix.len() + time_str.len();
+
+                let time_display_block = if current_width < total_width {
+                    let suffix = " ".repeat(total_width - current_width);
+                    format!("{}{}{}", prefix, time_str, suffix)
+                } else {
+                    format!("{}{} ", prefix, time_str)
+                };
+
                 execute!(
                     stdout,
                     cursor::MoveToColumn(0),
                     Clear(ClearType::CurrentLine),
-                    Print(format!(
-                        "{} ({:>3}s)  {}",
-                        message, elapsed_seconds, frame
-                    ))
+                    Print(format!("{}{}{}", message, time_display_block, frame))
                 )?;
 
                 stdout.flush()?;
