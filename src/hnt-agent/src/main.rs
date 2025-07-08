@@ -218,6 +218,46 @@ fn print_turn_header(role: &str, turn: usize) -> Result<()> {
         Print(&line),
         Print("\n"),
     )?;
+
+    stdout.flush()?;
+    Ok(())
+}
+
+fn print_and_wrap_text(text: &str, current_column: &mut usize, wrap_at: usize) -> Result<()> {
+    let mut stdout = stdout();
+    let words: Vec<&str> = text.split(' ').collect();
+    for (i, word) in words.iter().enumerate() {
+        let mut parts = word.split('\n').peekable();
+        while let Some(part) = parts.next() {
+            if !part.is_empty() {
+                let part_width = part.width();
+
+                if *current_column > MARGIN && *current_column + part_width > wrap_at {
+                    print!("\n{}", margin_str());
+                    *current_column = MARGIN;
+                }
+                print!("{}", part);
+                *current_column += part_width;
+            }
+
+            if parts.peek().is_some() {
+                print!("\n{}", margin_str());
+                *current_column = MARGIN;
+            }
+        }
+
+        if i < words.len() - 1 {
+            // A space existed after the original word.
+            if !word.ends_with('\n') {
+                if *current_column + 1 > wrap_at {
+                    print!("\n{}", margin_str());
+                    *current_column = MARGIN;
+                }
+                print!(" ");
+                *current_column += 1;
+            }
+        }
+    }
     stdout.flush()?;
     Ok(())
 }
@@ -368,63 +408,32 @@ async fn main() -> Result<()> {
 
                 let mut in_reasoning_block = false;
                 let mut llm_error: Option<anyhow::Error> = None;
+
                 while let Some(event) = stream.next().await {
                     match event {
+
                         Ok(hinata_core::llm::LlmStreamEvent::Content(content)) => {
                             if in_reasoning_block {
                                 execute!(stdout(), ResetColor)?;
-                                let trailing_newlines = reasoning_buffer
-                                    .chars()
-                                    .rev()
-                                    .take_while(|&c| c == '\n')
-                                    .count();
-                                let newlines_to_add = 2_usize.saturating_sub(trailing_newlines);
-                                for _ in 0..newlines_to_add {
+                                in_reasoning_block = false;
+
+                                // If reasoning ended mid-line, we must move to a new line before proceeding.
+                                if current_column > MARGIN {
                                     println!();
                                 }
-                                in_reasoning_block = false;
+
+                                // Regardless of how the reasoning ended, we want a blank line for
+                                // vertical spacing before the content starts.
+                                println!();
+
+                                // Now that we are on a new line, we must print a margin.
+                                // This solves the double-margin bug, as we only print a margin
+                                // after explicitly creating new lines.
                                 print!("{}", margin_str());
                                 current_column = MARGIN;
                             }
                             llm_response.push_str(&content);
-
-                            let words: Vec<&str> = content.split(' ').collect();
-                            for (i, word) in words.iter().enumerate() {
-                                let mut parts = word.split('\n').peekable();
-                                while let Some(part) = parts.next() {
-                                    if !part.is_empty() {
-
-                                        let part_width = part.width();
-
-                                        if current_column > MARGIN
-                                            && current_column + part_width > wrap_at
-                                        {
-                                            print!("\n{}", margin_str());
-                                            current_column = MARGIN;
-                                        }
-                                        print!("{}", part);
-                                        current_column += part_width;
-                                    }
-
-                                    if parts.peek().is_some() {
-                                        print!("\n{}", margin_str());
-                                        current_column = MARGIN;
-                                    }
-                                }
-
-                                if i < words.len() - 1 {
-                                    // A space existed after the original word.
-                                    if !word.ends_with('\n') {
-                                        if current_column + 1 > wrap_at {
-                                            print!("\n{}", margin_str());
-                                            current_column = MARGIN;
-                                        }
-                                        print!(" ");
-                                        current_column += 1;
-                                    }
-                                }
-                            }
-                            stdout().flush()?;
+                            print_and_wrap_text(&content, &mut current_column, wrap_at)?;
                         }
                         Ok(hinata_core::llm::LlmStreamEvent::Reasoning(reasoning)) => {
                             if !cli.ignore_reasoning {
@@ -433,8 +442,7 @@ async fn main() -> Result<()> {
                                     execute!(stdout(), SetForegroundColor(Color::Yellow))?;
                                 }
                                 in_reasoning_block = true;
-                                execute!(stdout(), Print(&reasoning))?;
-                                stdout().flush()?;
+                                print_and_wrap_text(&reasoning, &mut current_column, wrap_at)?;
                             }
                         }
                         Err(e) => {
