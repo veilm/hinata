@@ -480,7 +480,7 @@ async fn main() -> Result<()> {
 
 
 
-                    let options = vec!["Retry LLM request.".to_string(), "Abort.".to_string()];
+                    let options = vec!["Retry LLM request.".to_string(), "Quit.".to_string()];
                     let args = SelectArgs {
                         height: 10,
                         color: Some(4),
@@ -502,8 +502,7 @@ async fn main() -> Result<()> {
                             continue;
                         }
                         _ => {
-                            // "Abort." or None
-                            eprintln!("{}-> Chose to abort.", margin_str());
+                            eprintln!("{}-> Chose to exit. Farewell.", margin_str());
                             break;
                         }
                     }
@@ -541,13 +540,13 @@ async fn main() -> Result<()> {
 
                         if !cli.no_confirm {
                             eprintln!(
-                                "\n{}Hinata has provided the following command. What would you like to do?",
+                                "\n{}Hinata has completed its turn. Your response?",
                                 margin_str()
                             );
                             let options = vec![
-                                "Yes. Proceed to execute Hinata's shell commands.".to_string(),
-                                "No, and provide new instructions instead.".to_string(),
-                                "No. Abort execution.".to_string(),
+                                "Confirm. Proceed to execute Hinata's shell block.".to_string(),
+                                "Skip this execution. Provide new instructions instead.".to_string(),
+                                "Exit the Hinata session.".to_string(),
                             ];
 
                             let args = SelectArgs {
@@ -565,11 +564,12 @@ async fn main() -> Result<()> {
 
 
                             match selection.as_deref() {
-                                Some("Yes. Proceed to execute Hinata's shell commands.") => {
+                                Some("Confirm. Proceed to execute Hinata's shell block.") => {
                                     eprintln!("{}-> Executing command.\n", margin_str());
                                 }
 
-                                Some("No, and provide new instructions instead.") => {
+
+                                Some("Skip this execution. Provide new instructions instead.") => {
                                     eprintln!("{}-> Chose to provide new instructions.\n", margin_str());
                                     // New instructions
                                     let new_instructions = prompt_for_instruction(&cli)?;
@@ -683,63 +683,35 @@ async fn main() -> Result<()> {
                     }
 
 
+
                 } else {
                     eprintln!(
-                        "\n{}LLM provided no command. What would you like to do?",
+                        "\n{}LLM provided no command. Please provide new instructions.",
                         margin_str()
                     );
-                    let options = vec![
-                        "Provide new instructions for the LLM.".to_string(),
-                        "Quit. Terminate the agent.".to_string(),
-                    ];
 
-                    let args = SelectArgs {
-                        height: 10,
-                        color: Some(4),
-                        prefix: Some(format!("{}🯖🭋", margin_str())),
-                    };
-                    let tty = Tty::new()?;
-                    let selection = {
-                        let mut select = TuiSelect::new(options, &args, tty)?;
-                        select.run()?
-                    };
+                    let new_instructions = prompt_for_instruction(&cli)?;
+                    print_turn_header("querent", human_turn_counter)?;
+                    human_turn_counter += 1;
+                    // Print the human's message with reset color
+                    execute!(stdout(), ResetColor)?;
 
-                    // execute!(stderr(), cursor::MoveUp(2), Clear(ClearType::FromCursorDown))?;
-                    execute!(stderr(), cursor::MoveUp(1), Clear(ClearType::FromCursorDown))?;
+                    let indented_instructions = indent_multiline(&new_instructions);
+                    execute!(stdout(), Print(&indented_instructions))?;
 
+                    // Add a blank line for spacing
+                    println!();
+                    println!();
 
-                    match selection.as_deref() {
-                        Some("Provide new instructions for the LLM.") => {
-                            eprintln!("{}-> Chose to provide new instructions.\n", margin_str());
-
-                            let new_instructions = prompt_for_instruction(&cli)?;
-                            print_turn_header("querent", human_turn_counter)?;
-                            human_turn_counter += 1;
-                            // Print the human's message with reset color
-                            execute!(stdout(), ResetColor)?;
-
-                            let indented_instructions = indent_multiline(&new_instructions);
-                            execute!(stdout(), Print(&indented_instructions))?;
-
-                            // Add a blank line for spacing
-                            println!();
-                            println!();
-
-                            let tagged_instructions =
-                                format!("<user_request>\n{}\n</user_request>", new_instructions);
-                            chat::write_message_file(
-                                &conversation_dir,
-                                chat::Role::User,
-                                &tagged_instructions,
-                            )?;
-                            turn_counter += 1;
-                            continue;
-                        }
-                        _ => {
-                            eprintln!("{}-> Chose to quit. Farewell.", margin_str());
-                            break;
-                        }
-                    }
+                    let tagged_instructions =
+                        format!("<user_request>\n{}\n</user_request>", new_instructions);
+                    chat::write_message_file(
+                        &conversation_dir,
+                        chat::Role::User,
+                        &tagged_instructions,
+                    )?;
+                    turn_counter += 1;
+                    continue;
                 }
             }
             Ok::<(), anyhow::Error>(())
