@@ -406,8 +406,11 @@ async fn main() -> Result<()> {
 
                 print!("{}", margin_str());
 
+
                 let mut in_reasoning_block = false;
                 let mut llm_error: Option<anyhow::Error> = None;
+
+                execute!(stdout(), cursor::Hide)?;
 
                 while let Some(event) = stream.next().await {
                     match event {
@@ -449,8 +452,11 @@ async fn main() -> Result<()> {
                             llm_error = Some(e.into());
                             break;
                         }
+
                     }
                 }
+
+                execute!(stdout(), cursor::Show)?;
 
                 if in_reasoning_block {
                     execute!(stdout(), ResetColor)?;
