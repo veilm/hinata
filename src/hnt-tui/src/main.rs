@@ -322,13 +322,6 @@ async fn main() -> io::Result<()> {
     let cli = Cli::parse();
     match &cli.command {
         Commands::Select(args) => {
-            if let Some(color) = args.color {
-                if color > 7 {
-                    eprintln!("Error: color must be between 0 and 7.");
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid color"));
-                }
-            }
-
             let lines: Vec<String> = io::stdin().lock().lines().filter_map(Result::ok).collect();
             if lines.is_empty() {
                 return Ok(());

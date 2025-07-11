@@ -59,59 +59,8 @@ fn indent_multiline(text: &str) -> String {
     if indented.ends_with(&margin_str()) && text.ends_with('\n') {
         indented.truncate(indented.len() - MARGIN);
     }
+
     indented
-}
-
-/// Interact with hinata LLM agent to execute shell commands.
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    /// System message string or path to system message file.
-    #[arg(long)]
-    system: Option<String>,
-
-    /// User instruction message. If not provided, a TUI editor will be opened.
-    #[arg(short, long)]
-    message: Option<String>,
-
-    /// Path to the conversation directory to resume a session.
-    #[arg(short, long)]
-    session: Option<String>,
-
-    /// Set the initial working directory. Overrides session's saved directory.
-    #[arg(long)]
-    pwd: Option<String>,
-
-    #[command(flatten)]
-    shared: SharedArgs,
-
-    /// Do not display or save LLM reasoning.
-    #[arg(long)]
-    ignore_reasoning: bool,
-
-    /// Skip confirmation steps before executing commands or adding messages.
-    #[arg(long)]
-    no_confirm: bool,
-
-    /// Enable verbose logging.
-    #[arg(short, long)]
-    verbose: bool,
-
-    /// Use hnt-tui pane to open the editor.
-    #[arg(long, env = "HINATA_USE_PANE")]
-    use_pane: bool,
-
-    /// Use an external editor ($EDITOR) for the user instruction message.
-    #[arg(long)]
-    use_editor: bool,
-
-    /// Do not escape backticks in shell commands.
-    #[arg(long)]
-    no_escape_backticks: bool,
-
-    /// Always use a specific spinner by its index, instead of a random one.
-    #[arg(long)]
-    spinner: Option<usize>,
 }
 
 fn prompt_for_instruction(cli: &Cli) -> Result<Option<String>> {
@@ -167,21 +116,59 @@ fn prompt_for_instruction(cli: &Cli) -> Result<Option<String>> {
     }
 
     // Default: use inline TUI editor
-    let instruction = hnt_tui::inline_editor::prompt_for_input()?;
-    if instruction.trim().is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(instruction))
-    }
+    hnt_tui::inline_editor::prompt_for_input()
 }
 
-/// Gets user instruction from CLI arg, an editor, or an inline TUI.
-fn get_user_instruction(cli: &Cli) -> Result<Option<(String, bool)>> {
-    if let Some(message) = &cli.message {
-        return Ok(Some((message.clone(), false)));
-    }
+/// Interact with hinata LLM agent to execute shell commands.
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// System message string or path to system message file.
+    #[arg(long)]
+    system: Option<String>,
 
-    prompt_for_instruction(cli)?.map_or(Ok(None), |instruction| Ok(Some((instruction, true))))
+    /// User instruction message. If not provided, a TUI editor will be opened.
+    #[arg(short, long)]
+    message: Option<String>,
+
+    /// Path to the conversation directory to resume a session.
+    #[arg(short, long)]
+    session: Option<String>,
+
+    /// Set the initial working directory. Overrides session's saved directory.
+    #[arg(long)]
+    pwd: Option<String>,
+
+    #[command(flatten)]
+    shared: SharedArgs,
+
+    /// Do not display or save LLM reasoning.
+    #[arg(long)]
+    ignore_reasoning: bool,
+
+    /// Skip confirmation steps before executing commands or adding messages.
+    #[arg(long)]
+    no_confirm: bool,
+
+    /// Enable verbose logging.
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Use hnt-tui pane to open the editor.
+    #[arg(long, env = "HINATA_USE_PANE")]
+    use_pane: bool,
+
+    /// Use an external editor ($EDITOR) for the user instruction message.
+    #[arg(long)]
+    use_editor: bool,
+
+    /// Do not escape backticks in shell commands.
+    #[arg(long)]
+    no_escape_backticks: bool,
+
+    /// Always use a specific spinner by its index, instead of a random one.
+    #[arg(long)]
+    spinner: Option<usize>,
 }
 
 fn print_turn_header(role: &str, turn: usize) -> Result<()> {
@@ -407,12 +394,13 @@ async fn main() -> Result<()> {
 
 
 
-            let (user_instruction, _) = if let Some(instruction_data) = get_user_instruction(&cli)?
-            {
-                instruction_data
-            } else {
 
-                // User aborted providing initial instructions.
+
+            let user_instruction = if let Some(message) = &cli.message {
+                message.clone()
+            } else if let Some(instruction) = prompt_for_instruction(&cli)? {
+                instruction
+            } else {
                 bail!("Aborted: No instructions were provided.");
             };
             print_turn_header("querent", human_turn_counter)?;
@@ -671,6 +659,8 @@ async fn main() -> Result<()> {
 
                                 Some("Skip this execution. Provide new instructions instead.") => {
                                     eprintln!("{}-> Chose to provide new instructions.\n", margin_str());
+
+
                                     // New instructions
                                     if let Some(new_instructions) = prompt_for_instruction(&cli)? {
                                         print_turn_header("querent", human_turn_counter)?;
@@ -820,7 +810,9 @@ async fn main() -> Result<()> {
                     eprintln!(
                         "\n{}LLM provided no command. Please provide new instructions.\n",
                         margin_str()
+
                     );
+
 
 
                     if let Some(new_instructions) = prompt_for_instruction(&cli)? {
@@ -854,13 +846,6 @@ async fn main() -> Result<()> {
             }
         } => res,
     };
-
-    if let Err(e) = &result {
-        // Controlled exits like aborting are now handled via error propagation.
-        // We print the user-facing error message here.
-        // Using Display instead of Debug to avoid `Error:` prefix from anyhow.
-        eprintln!("\n{}", e);
-    }
 
     if !session_name_for_display.is_empty() {
         eprintln!(
