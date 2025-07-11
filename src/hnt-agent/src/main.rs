@@ -114,7 +114,7 @@ struct Cli {
     spinner: Option<usize>,
 }
 
-fn prompt_for_instruction(cli: &Cli) -> Result<String> {
+fn prompt_for_instruction(cli: &Cli) -> Result<Option<String>> {
     if cli.use_editor {
         let editor = env::var("EDITOR").context("EDITOR environment variable not set")?;
         let mut file = tempfile::Builder::new()
@@ -160,24 +160,28 @@ fn prompt_for_instruction(cli: &Cli) -> Result<String> {
         path.close()?;
 
         if instruction.trim() == initial_text.trim() || instruction.trim().is_empty() {
-            bail!("Aborted: No changes were made.");
+            return Ok(None);
         }
 
-        return Ok(instruction);
+        return Ok(Some(instruction));
     }
 
     // Default: use inline TUI editor
-    hnt_tui::inline_editor::prompt_for_input()
+    let instruction = hnt_tui::inline_editor::prompt_for_input()?;
+    if instruction.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(instruction))
+    }
 }
 
 /// Gets user instruction from CLI arg, an editor, or an inline TUI.
-fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
+fn get_user_instruction(cli: &Cli) -> Result<Option<(String, bool)>> {
     if let Some(message) = &cli.message {
-        return Ok((message.clone(), false));
+        return Ok(Some((message.clone(), false)));
     }
 
-    let instruction = prompt_for_instruction(cli)?;
-    Ok((instruction, true))
+    prompt_for_instruction(cli)?.map_or(Ok(None), |instruction| Ok(Some((instruction, true))))
 }
 
 fn print_turn_header(role: &str, turn: usize) -> Result<()> {
@@ -326,12 +330,57 @@ async fn main() -> Result<()> {
         }
     }
 
+    // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
+    debug!("Before creating the conversation directory.");
+    let conversation_dir = if let Some(name) = &cli.session {
+        // 1. If <NAME> contains a forward slash ('/'), treat it as a path.
+        if name.contains('/') {
+            let path = Path::new(name);
+            if path.is_dir() {
+                path.to_path_buf()
+            } else {
+                bail!(
+                    "Session path '{}' does not exist or is not a directory.",
+                    name
+                )
+            }
+        } else {
+            // 2. If <NAME> does not contain a slash, treat it as a session name.
+            // 2a. First, check for a directory named `./<NAME>`.
+            let local_path = Path::new(name);
+            if local_path.is_dir() {
+                local_path.to_path_buf()
+            } else {
+                // 2b. If not, check for a directory named `<NAME>` inside the default conversations directory.
+                let conversations_dir = chat::get_conversations_dir()?;
+                let session_in_default_dir = conversations_dir.join(name);
+                if session_in_default_dir.is_dir() {
+                    session_in_default_dir
+                } else {
+                    // 2c. If neither exists, return an error.
+                    bail!("Session name '{}' not found in current directory or in the default conversations directory ({}).", name, conversations_dir.display())
+                }
+            }
+        }
+    } else {
+        // 3. If --session is not provided, create a new conversation directory.
+        let conversations_dir = chat::get_conversations_dir()?;
+        chat::create_new_conversation(&conversations_dir)?
+    };
+    debug!("Using conversation directory: {:?}", conversation_dir);
+    let session_name_for_display = conversation_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+
     let result = tokio::select! {
 
 
         _ = tokio::signal::ctrl_c() => {
             session.kill().await.ok();
             eprintln!("\n{}Ctrl+C received, shutting down gracefully.", margin_str());
+
             Ok(())
         },
         res = async {
@@ -356,7 +405,16 @@ async fn main() -> Result<()> {
             debug!("After getting the system prompt.");
             debug!("Before getting the user instruction.");
 
-            let (user_instruction, _) = get_user_instruction(&cli)?;
+
+
+            let (user_instruction, _) = if let Some(instruction_data) = get_user_instruction(&cli)?
+            {
+                instruction_data
+            } else {
+
+                // User aborted providing initial instructions.
+                bail!("Aborted: No instructions were provided.");
+            };
             print_turn_header("querent", human_turn_counter)?;
             human_turn_counter += 1;
             // Print the human's message with reset color
@@ -371,22 +429,8 @@ async fn main() -> Result<()> {
             debug!("After getting the user instruction.");
 
 
-            // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
-            debug!("Before creating the conversation directory.");
-            let conversation_dir = if let Some(session_path) = &cli.session {
-                let path = Path::new(session_path);
-                if !path.is_dir() {
-                    bail!(
-                        "Session directory does not exist or is not a directory: {}",
-                        session_path
-                    );
-                }
-                path.to_path_buf()
-            } else {
-                let conversations_dir = chat::get_conversations_dir()?;
-                chat::create_new_conversation(&conversations_dir)?
-            };
-            debug!("Using conversation directory: {:?}", conversation_dir);
+
+
 
 
             // 4. Add system message and start priming sequence.
@@ -555,9 +599,10 @@ async fn main() -> Result<()> {
                             eprintln!("{}-> Retrying LLM request.\n", margin_str());
                             continue;
                         }
+
+
                         _ => {
-                            eprintln!("{}-> Chose to exit. Farewell.", margin_str());
-                            break;
+                            bail!("User chose to exit.");
                         }
                     }
                 }
@@ -623,35 +668,43 @@ async fn main() -> Result<()> {
                                 }
 
 
+
                                 Some("Skip this execution. Provide new instructions instead.") => {
                                     eprintln!("{}-> Chose to provide new instructions.\n", margin_str());
                                     // New instructions
-                                    let new_instructions = prompt_for_instruction(&cli)?;
-                                    print_turn_header("querent", human_turn_counter)?;
-                                    human_turn_counter += 1;
-                                    // Print the human's message with reset color
-                                    execute!(stdout(), ResetColor)?;
+                                    if let Some(new_instructions) = prompt_for_instruction(&cli)? {
+                                        print_turn_header("querent", human_turn_counter)?;
+                                        human_turn_counter += 1;
+                                        // Print the human's message with reset color
+                                        execute!(stdout(), ResetColor)?;
 
-                                    let indented_instructions = indent_multiline(&new_instructions);
-                                    execute!(stdout(), Print(&indented_instructions))?;
-                                    // Add a blank line for spacing, then the footer
-                                    println!();
-                                    println!();
-                                    let tagged_instructions =
-                                        format!("<user_request>\n{}\n</user_request>", new_instructions);
-                                    chat::write_message_file(
-                                        &conversation_dir,
-                                        chat::Role::User,
-                                        &tagged_instructions,
-                                    )?;
-                                    turn_counter += 1;
-                                    continue;
+                                        let indented_instructions =
+                                            indent_multiline(&new_instructions);
+                                        execute!(stdout(), Print(&indented_instructions))?;
+                                        // Add a blank line for spacing, then the footer
+                                        println!();
+                                        println!();
+                                        let tagged_instructions = format!(
+                                            "<user_request>\n{}\n</user_request>",
+                                            new_instructions
+                                        );
+                                        chat::write_message_file(
+                                            &conversation_dir,
+                                            chat::Role::User,
+                                            &tagged_instructions,
+                                        )?;
+                                        turn_counter += 1;
+                                        continue;
+
+                                    } else {
+                                        bail!("User aborted providing new instructions.");
+                                    }
                                 }
+
+
                                 _ => {
                                     // Some("No. Abort execution.") or None
-
-                                    eprintln!("{}-> Chose to abort.", margin_str());
-                                    break;
+                                    bail!("User aborted execution.");
                                 }
                             }
                         }
@@ -769,33 +822,52 @@ async fn main() -> Result<()> {
                         margin_str()
                     );
 
-                    let new_instructions = prompt_for_instruction(&cli)?;
-                    print_turn_header("querent", human_turn_counter)?;
-                    human_turn_counter += 1;
-                    // Print the human's message with reset color
-                    execute!(stdout(), ResetColor)?;
 
-                    let indented_instructions = indent_multiline(&new_instructions);
-                    execute!(stdout(), Print(&indented_instructions))?;
+                    if let Some(new_instructions) = prompt_for_instruction(&cli)? {
+                        print_turn_header("querent", human_turn_counter)?;
+                        human_turn_counter += 1;
+                        // Print the human's message with reset color
+                        execute!(stdout(), ResetColor)?;
 
-                    // Add a blank line for spacing
-                    println!();
-                    println!();
+                        let indented_instructions = indent_multiline(&new_instructions);
+                        execute!(stdout(), Print(&indented_instructions))?;
 
-                    let tagged_instructions =
-                        format!("<user_request>\n{}\n</user_request>", new_instructions);
-                    chat::write_message_file(
-                        &conversation_dir,
-                        chat::Role::User,
-                        &tagged_instructions,
-                    )?;
-                    turn_counter += 1;
-                    continue;
+                        // Add a blank line for spacing
+                        println!();
+                        println!();
+
+                        let tagged_instructions =
+                            format!("<user_request>\n{}\n</user_request>", new_instructions);
+                        chat::write_message_file(
+                            &conversation_dir,
+                            chat::Role::User,
+                            &tagged_instructions,
+                        )?;
+                        turn_counter += 1;
+                        continue;
+
+                    } else {
+                        bail!("Aborted: User did not provide new instructions.");
+                    }
                 }
+
             }
-            Ok::<(), anyhow::Error>(())
         } => res,
     };
+
+    if let Err(e) = &result {
+        // Controlled exits like aborting are now handled via error propagation.
+        // We print the user-facing error message here.
+        // Using Display instead of Debug to avoid `Error:` prefix from anyhow.
+        eprintln!("\n{}", e);
+    }
+
+    if !session_name_for_display.is_empty() {
+        eprintln!(
+            "Note: To resume this session, use: --session {}",
+            session_name_for_display
+        );
+    }
 
     session.exit().await?;
 
