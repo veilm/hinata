@@ -6,8 +6,9 @@ body {
 	padding-left: 0;
 	padding-right: 0;
 	padding-top: 0;
+
 	padding-bottom: 300px; /* Generous space for the fixed message input area */
-	background-color: #121212; /* Dark background */
+	background-color: #000000; /* Dark background */
 	color: #e0e0e0; /* Light text */
 }
 
@@ -48,8 +49,9 @@ a {
 a:hover {
 	text-decoration: underline;
 }
+
 .container {
-	background-color: #1e1e1e; /* Slightly lighter dark for container */
+	background-color: #0a0a0a; /* Slightly lighter dark for container */
 	padding: 20px;
 	border-radius: 0; /* Minimal: no rounded corners */
 }
@@ -60,8 +62,9 @@ ul {
 li {
 	margin-bottom: 8px;
 }
+
 .message {
-	background-color: #282828; /* Background for each message block */
+	background-color: #121212; /* Background for each message block */
 	border: 1px solid #333333; /* Subtle border */
 	margin-bottom: 15px;
 	padding: 12px;
@@ -94,16 +97,17 @@ li {
 .message-system {
 	border-left: 4px solid #fcddf2; /* Light pink */
 }
+
 .message-user {
-	/*border-left: 4px solid #81ae9d;*/ /* Green */
 	border-left: 4px solid #9d81ae; /* Soft purple */
 }
 .message-assistant {
 	border-left: 4px solid #6ec8ff; /* Icy-blue */
 }
+
 .message-assistant-reasoning {
 	border-left: 4px solid #4b3c6d; /* Cooler purple */
-	background-color: #2c2c2c; /* Slightly different background for reasoning block */
+	background-color: #181818; /* Slightly different background for reasoning block */
 	font-size: 0.9em;
 	padding: 10px;
 }
@@ -118,8 +122,9 @@ li {
 	color: #6ec8ff;
 	font-family: inherit; /* Ensure monospace font */
 }
+
 .back-link:hover {
-	background-color: #2a2a2a;
+	background-color: #151515;
 	text-decoration: none;
 }
 .other-files-divider {
@@ -128,8 +133,9 @@ li {
 	margin-top: 25px;
 	margin-bottom: 20px;
 }
+
 .other-file-entry {
-	background-color: #2c2c2c;
+	background-color: #181818;
 	border: 1px solid #383838;
 	padding: 10px;
 	margin-bottom: 10px;
@@ -141,10 +147,11 @@ li {
 	margin-bottom: 5px;
 	color: #c0c0c0;
 }
+
 .other-file-content {
 	white-space: pre-wrap;
 	word-wrap: break-word;
-	background-color: #222222;
+	background-color: #0f0f0f;
 	padding: 8px;
 	max-height: 400px;
 	overflow-y: auto;
@@ -157,7 +164,7 @@ li {
 	font-style: italic;
 	/* No pre-wrap, as the message is short and simple */
 	white-space: normal;
-	background-color: #2c2c2c; /* Match entry background perhaps, or keep distinct */
+	background-color: #181818; /* Match entry background perhaps, or keep distinct */
 	padding: 8px;
 	border: 1px solid #333333;
 }
@@ -209,11 +216,12 @@ li {
 	min-width: 50px; /* Ensure labels align nicely */
 }
 
+
 #conversation-title-input,
 #conversation-model-input {
 	flex-grow: 1;
 	padding: 8px 10px;
-	background-color: #2c2c2c;
+	background-color: #181818;
 	color: #e0e0e0;
 	border: 1px solid #444444;
 	border-radius: 0;
@@ -225,22 +233,15 @@ li {
 #conversation-model-input:focus {
 	outline: none;
 	border-color: #6ec8ff;
-	background-color: #303030;
+	background-color: #1c1c1c;
 }
 
-.error-message {
-}
 
-/* Styles for .model-edit-container and #conversation-model-input 
-   have been consolidated above with .title-edit-container and 
-   #conversation-title-input for consistency.
-   This block is now redundant due to the consolidation.
-   If specific model-only styles were needed, they'd go here.
-*/
+
 
 .error-message {
 	color: #ff6b6b; /* A more vibrant red for errors */
-	background-color: #2e1c1c;
+	background-color: #1c0e0e;
 	border: 1px solid #773333;
 	padding: 8px;
 	margin-top: 10px;
@@ -252,10 +253,11 @@ li {
 	margin-bottom: 20px; /* Space below the button/section */
 }
 
+
 #create-conversation-btn {
 	padding: 10px 15px;
 	background-color: #6ec8ff; /* Icy-blue theme color */
-	color: #1e1e1e; /* Dark text for contrast on the button */
+	color: #0a0a0a; /* Dark text for contrast on the button */
 	border: none;
 	border-radius: 0; /* Consistent with minimal theme */
 	font-family: inherit;
@@ -269,7 +271,7 @@ li {
 }
 
 #create-conversation-btn:disabled {
-	background-color: #4a4a4a; /* Disabled look */
+	background-color: #222222; /* Disabled look */
 	color: #888888;
 	cursor: not-allowed;
 }
@@ -281,8 +283,9 @@ li {
 	left: 0;
 	right: 0;
 	/* width: auto; implicitly, controlled by left/right offsets */
+
 	box-sizing: border-box;
-	background-color: #1e1e1e; /* Match .container background or a suitable bar color */
+	background-color: #0a0a0a; /* Match .container background or a suitable bar color */
 	padding: 10px 20px; /* Vertical 10px, horizontal 20px for content inside the bar. Desktop will adjust left/right. */
 	z-index: 1000; /* Ensure it's above other content */
 	border-top: 1px solid #333333; /* Consistent border color for separation */
@@ -296,12 +299,13 @@ li {
 	}
 }
 
+
 #new-message-content {
 	width: 100%;
 	box-sizing: border-box; /* Include padding and border in the element's total width and height */
 	padding: 10px;
 	margin-bottom: 10px;
-	background-color: #2c2c2c;
+	background-color: #181818;
 	color: #e0e0e0;
 	border: 1px solid #444444;
 	border-radius: 0;
@@ -313,7 +317,7 @@ li {
 #new-message-content:focus {
 	outline: none;
 	border-color: #9d81ae;
-	background-color: #303030;
+	background-color: #1c1c1c;
 }
 
 #message-buttons {
@@ -334,31 +338,34 @@ li {
 	transition: background-color 0.2s ease;
 }
 
+
 /* Default: "Gen Assistant" uses the theme color */
 .btn-gen-assistant {
 	background-color: #6ec8ff;
-	color: #1e1e1e;
+	color: #0a0a0a;
 }
 .btn-gen-assistant:hover {
 	background-color: #4da3e0;
 }
 
+
 /* "Add System" and "Add Assistant" buttons: background like textarea (#2c2c2c) */
 .btn-add-system,
 .btn-add-assistant {
-	background-color: #2c2c2c; /* Match textarea background */
+	background-color: #181818; /* Match textarea background */
 	color: #e0e0e0; /* Light text */
 }
 .btn-add-system:hover,
 .btn-add-assistant:hover {
-	background-color: #3a3a3a; /* Slightly lighter version of #2c2c2c for hover */
+	background-color: #202020; /* Slightly lighter version of #2c2c2c for hover */
 }
 
-/* "Add User" button: green */
+
+
+/* "Add User" button: purple */
 .btn-add-user {
-	/* background-color: #81ae9d; */ /* Green from .message-user border */
 	background-color: #9d81ae; /* Purple from .message-user border */
-	color: #1e1e1e; /* Dark text for contrast */
+	color: #0a0a0a; /* Dark text for contrast */
 }
 .btn-add-user:hover {
 	background-color: #89709c; /* Darker purple on hover */
@@ -377,9 +384,10 @@ li {
 	color: #e0e0e0;
 }
 
+
 #primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn {
 	background-color: #4da3e0; /* Darker blue, matches main button hover */
-	color: #1e1e1e; /* Match main button text color */
+	color: #0a0a0a; /* Match main button text color */
 }
 #primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn:hover {
 	background-color: #3b8ac0; /* Even darker blue */
@@ -387,7 +395,7 @@ li {
 
 #primary-action-btn.btn-add-user + #dropdown-toggle-btn {
 	background-color: #89709c; /* Darker purple, matches main button hover */
-	color: #1e1e1e; /* Match main button text color */
+	color: #0a0a0a; /* Match main button text color */
 }
 #primary-action-btn.btn-add-user + #dropdown-toggle-btn:hover {
 	background-color: #755f88; /* Even darker purple */
@@ -395,16 +403,17 @@ li {
 
 /* When the primary action button is disabled (e.g., during generation), style the an-ddjacent dropdown toggle to match. */
 #primary-action-btn:disabled + #dropdown-toggle-btn {
-	background-color: #4a4a4a;
+	background-color: #222222;
 	color: #e0e0e0;
 }
+
 
 #action-dropdown-menu {
 	position: absolute;
 	bottom: 100%;
 	right: 0;
 	z-index: 1001;
-	background-color: #2c2c2c;
+	background-color: #181818;
 	border: 1px solid #444444;
 	box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.2);
 	border-radius: 4px;
@@ -421,11 +430,11 @@ li {
 	color: #e0e0e0;
 }
 #action-dropdown-menu button:hover {
-	background-color: #3a3a3a;
+	background-color: #202020;
 }
 /* Disabled state for all buttons in this group */
 #message-buttons button:disabled {
-	background-color: #4a4a4a;
+	background-color: #222222;
 	color: #e0e0e0;
 	cursor: not-allowed;
 	border: none;
@@ -470,14 +479,9 @@ li {
 	background-color: rgba(110, 200, 255, 0.1);
 }
 
+
 /* User Message Icons */
 .message-user .message-actions button {
-	/* Green */
-	/*
-	color: #81ae9d;
-	border-color: #81ae9d;
-	*/
-
 	/* Purple */
 	color: #9d81ae;
 	border-color: #9d81ae;
@@ -548,13 +552,14 @@ li {
 }
 
 /* Textarea for editing message content within a message block */
+
 .message-content-wrapper textarea {
 	/* Target textarea inside the content wrapper */
 	width: 100%;
 	box-sizing: border-box;
 	padding: 8px;
 	margin: 0; /* Remove margin if it's replacing content directly */
-	background-color: #2c2c2c; /* Match new message textarea */
+	background-color: #181818; /* Match new message textarea */
 	color: #e0e0e0;
 	border: 1px solid #444444;
 	border-radius: 0;
@@ -565,7 +570,7 @@ li {
 .message-content-wrapper textarea:focus {
 	outline: none;
 	border-color: #6ec8ff; /* Theme color for focus */
-	background-color: #303030; /* Slightly lighter background on focus */
+	background-color: #1c1c1c; /* Slightly lighter background on focus */
 }
 
 .message-user .message-content-wrapper textarea:focus {
@@ -603,8 +608,9 @@ li {
 	/* Margins are handled by the parent flex container (.page-actions-group) if applicable */
 }
 
+
 .page-action-button:disabled {
-	background-color: #4a4a4a !important; /* Use !important to override specific styles if needed */
+	background-color: #222222 !important; /* Use !important to override specific styles if needed */
 	color: #888888 !important;
 	cursor: not-allowed;
 }
@@ -612,7 +618,7 @@ li {
 /* Specific style for Fork Conversation Button */
 #fork-conversation-btn {
 	background-color: #6ec8ff; /* Theme color */
-	color: #1e1e1e; /* Dark text */
+	color: #0a0a0a; /* Dark text */
 }
 #fork-conversation-btn:hover {
 	background-color: #4da3e0; /* Darker icy-blue on hover */
@@ -621,19 +627,20 @@ li {
 /* Specific style for Pin/Unpin Toggle Button */
 #pin-toggle-btn {
 	background-color: #6ec8ff; /* Match Fork button: Theme color */
-	color: #1e1e1e; /* Match Fork button: Dark text */
+	color: #0a0a0a; /* Match Fork button: Dark text */
 }
 #pin-toggle-btn:hover {
 	background-color: #4da3e0; /* Darker icy-blue on hover */
 }
 
 /* Specific style for Jump to Latest Message Button */
+
 #jump-to-latest-btn {
-	background-color: #2c2c2c; /* Match 'Add System' button background */
+	background-color: #181818; /* Match 'Add System' button background */
 	color: #e0e0e0; /* Match 'Add System' button text color */
 }
 #jump-to-latest-btn:hover {
-	background-color: #3a3a3a; /* Match 'Add System' button hover background */
+	background-color: #202020; /* Match 'Add System' button hover background */
 }
 
 /* Styling for pinned items in the conversation list */
@@ -658,6 +665,7 @@ li {
 	vertical-align: -0.15em; /* Fine-tune baseline alignment */
 }
 
+
 /* Custom Scrollbars */
 /* For Webkit-based browsers (Chrome, Safari, Edge, Opera) */
 ::-webkit-scrollbar {
@@ -666,25 +674,25 @@ li {
 }
 
 ::-webkit-scrollbar-track {
-	background: #1e1e1e; /* Background of the scrollbar track, match container bg */
+	background: #0a0a0a; /* Background of the scrollbar track, match container bg */
 	border-radius: 4px; /* Optional: rounding for the track */
 }
 
 ::-webkit-scrollbar-thumb {
-	background-color: #555555; /* Color of the scrollbar thumb */
+	background-color: #333333; /* Color of the scrollbar thumb */
 	border-radius: 4px; /* Rounded corners for the thumb */
 	/* Create a "padding" effect by making the border same color as the track */
-	border: 2px solid #1e1e1e;
+	border: 2px solid #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background-color: #777777; /* Color of the thumb on hover */
+	background-color: #555555; /* Color of the thumb on hover */
 }
 
 /* For Firefox */
 html {
 	scrollbar-width: thin; /* "auto" or "thin" */
-	scrollbar-color: #555555 #1e1e1e; /* thumbColor trackColor */
+	scrollbar-color: #333333 #0a0a0a; /* thumbColor trackColor */
 }
 
 /* Ensure specific elements with potential overflow also respect this, if needed, though html rule should be enough */
@@ -707,8 +715,9 @@ html {
 	align-items: center;
 	z-index: 2000;
 }
+
 .info-modal-content {
-	background: #282828;
+	background: #121212;
 	color: #e0e0e0;
 	padding: 25px 50px 25px 25px;
 	border: 1px solid #444;
