@@ -9,7 +9,6 @@ echo "hinata: created $prompts_dir"
 echo "hinata: installed agent system prompts"
 
 ./build.sh
-cd src
 
 # --- Installation ---
 TARGET_DIR="./target/release"

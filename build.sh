@@ -17,5 +17,4 @@ cargo=$(./util/check_cargo_path)
 
 echo "hinata: building Rust binaries in release mode..."
 
-cd src
 $cargo build --release
