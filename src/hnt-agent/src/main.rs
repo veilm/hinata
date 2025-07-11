@@ -67,12 +67,20 @@ fn indent_multiline(text: &str) -> String {
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// System message string or path to system message file.
-    #[arg(short, long)]
+    #[arg(long)]
     system: Option<String>,
 
     /// User instruction message. If not provided, a TUI editor will be opened.
     #[arg(short, long)]
     message: Option<String>,
+
+    /// Path to the conversation directory to resume a session.
+    #[arg(short, long)]
+    session: Option<String>,
+
+    /// Set the initial working directory. Overrides session's saved directory.
+    #[arg(long)]
+    pwd: Option<String>,
 
     #[command(flatten)]
     shared: SharedArgs,
@@ -289,9 +297,34 @@ async fn main() -> Result<()> {
     let session = Session::create(session_id.clone()).await?;
     debug!("After Session::create.");
     debug!("Before session.spawn.");
+
     session.spawn(None)?;
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     debug!("After session.spawn.");
+
+    // Restore working directory if specified
+    if let Some(pwd) = cli.pwd.clone().or_else(|| {
+        cli.session.as_ref().and_then(|session_path| {
+            let pwd_file = Path::new(session_path).join("hnt-agent-pwd.txt");
+            fs::read_to_string(pwd_file).ok()
+        })
+    }) {
+        let trimmed_pwd = pwd.trim();
+        if !trimmed_pwd.is_empty() {
+            if let Ok(quoted_pwd) = shlex::try_quote(trimmed_pwd) {
+                let command = format!("cd {}", quoted_pwd);
+                debug!("Setting initial working directory with: {}", command);
+                if let Err(e) = session.exec_captured(&command).await {
+                    debug!("Failed to set initial working directory: {}", e);
+                }
+            } else {
+                debug!(
+                    "Failed to quote path for initial working directory: {}",
+                    trimmed_pwd
+                );
+            }
+        }
+    }
 
     let result = tokio::select! {
 
@@ -337,11 +370,23 @@ async fn main() -> Result<()> {
             println!();
             debug!("After getting the user instruction.");
 
+
             // 3. Create a new chat conversation (e.g., using `hinata_core::chat::create_new_conversation`)
             debug!("Before creating the conversation directory.");
-            let conversations_dir = chat::get_conversations_dir()?;
-            let conversation_dir = chat::create_new_conversation(&conversations_dir)?;
-            debug!("After creating the conversation directory.");
+            let conversation_dir = if let Some(session_path) = &cli.session {
+                let path = Path::new(session_path);
+                if !path.is_dir() {
+                    bail!(
+                        "Session directory does not exist or is not a directory: {}",
+                        session_path
+                    );
+                }
+                path.to_path_buf()
+            } else {
+                let conversations_dir = chat::get_conversations_dir()?;
+                chat::create_new_conversation(&conversations_dir)?
+            };
+            debug!("Using conversation directory: {:?}", conversation_dir);
 
             // 4. Add system message and start priming sequence.
             if let Some(ref prompt) = system_prompt {
@@ -504,7 +549,7 @@ async fn main() -> Result<()> {
 
                     match selection.as_deref() {
                         Some("Retry LLM request.") => {
-                            eprintln!("{}-> Retrying LLM request.", margin_str());
+                            eprintln!("{}-> Retrying LLM request.\n", margin_str());
                             continue;
                         }
                         _ => {
@@ -637,7 +682,32 @@ async fn main() -> Result<()> {
                         spinner_task.await??;
 
 
+
                         let captured_output = captured_output_res?;
+
+                        // Save current working directory
+                        if let Ok(pwd_output) = session.exec_captured("pwd").await {
+                            if pwd_output.exit_status.success() {
+                                let pwd = pwd_output.stdout.trim();
+                                if !pwd.is_empty() {
+                                    let pwd_file = conversation_dir.join("hnt-agent-pwd.txt");
+                                    if let Err(e) = fs::write(&pwd_file, pwd) {
+                                        debug!(
+                                            "Failed to save working directory to {}: {}",
+                                            pwd_file.display(),
+                                            e
+                                        );
+                                    }
+                                }
+                            } else {
+                                debug!(
+                                    "`pwd` command failed when trying to save working directory. Stderr: {}",
+                                    pwd_output.stderr.trim()
+                                );
+                            }
+                        } else {
+                            debug!("Failed to execute `pwd` command to save working directory.");
+                        }
 
                         let mut parts = Vec::new();
 
@@ -692,7 +762,7 @@ async fn main() -> Result<()> {
 
                 } else {
                     eprintln!(
-                        "\n{}LLM provided no command. Please provide new instructions.",
+                        "\n{}LLM provided no command. Please provide new instructions.\n",
                         margin_str()
                     );
 
