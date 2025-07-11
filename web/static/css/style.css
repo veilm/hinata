@@ -16,8 +16,8 @@ body {
 @media (min-width: 768px) {
 	body {
 		padding-top: 20px;
-		padding-left: 15%;
-		padding-right: 15%;
+		padding-left: 22%;
+		padding-right: 22%;
 		/* Override padding-bottom to ensure space for fixed input area + original 20px margin */
 		/* 300px for input area + 20px desired original bottom spacing for content */
 		padding-bottom: 320px;
@@ -79,7 +79,6 @@ li {
 	align-items: center;
 	margin-top: 10px;
 	padding-top: 8px;
-	border-top: 1px solid #333333;
 }
 
 .message-info {
@@ -223,7 +222,7 @@ li {
 #conversation-model-input {
 	flex-grow: 1;
 	padding: 8px 10px;
-	background-color: #101010;
+	background-color: #181818;
 	color: #e0e0e0;
 	border: 1px solid #333333;
 	border-radius: 0;
@@ -293,8 +292,8 @@ li {
 /* Adjust #message-input-area positioning on desktop to align with body padding */
 @media (min-width: 768px) {
 	#message-input-area {
-		left: 15%; /* Align with body's own padding */
-		right: 15%; /* Align with body's own padding */
+		left: 22%; /* Align with body's own padding */
+		right: 22%; /* Align with body's own padding */
 	}
 }
 
@@ -303,7 +302,7 @@ li {
 	box-sizing: border-box; /* Include padding and border in the element's total width and height */
 	padding: 10px;
 	margin-bottom: 10px;
-	background-color: #101010;
+	background-color: #181818;
 	color: #e0e0e0;
 	border: 1px solid #333333;
 	border-radius: 0;
@@ -613,28 +612,28 @@ li {
 /* Specific style for Fork Conversation Button */
 
 #fork-conversation-btn {
-	background-color: #6ec8ff; /* Theme color */
-	color: #000000; /* Dark text */
+	background-color: #101010;
+	color: #6ec8ff;
 }
 #fork-conversation-btn:hover {
-	background-color: #4da3e0; /* Darker icy-blue on hover */
+	background-color: #191919;
 }
 
 /* Specific style for Pin/Unpin Toggle Button */
 
 #pin-toggle-btn {
-	background-color: #6ec8ff; /* Match Fork button: Theme color */
-	color: #000000; /* Match Fork button: Dark text */
+	background-color: #101010;
+	color: #6ec8ff;
 }
 #pin-toggle-btn:hover {
-	background-color: #4da3e0; /* Darker icy-blue on hover */
+	background-color: #191919;
 }
 
 /* Specific style for Jump to Latest Message Button */
 
 #jump-to-latest-btn {
 	background-color: #101010; /* Match 'Add System' button background */
-	color: #e0e0e0; /* Match 'Add System' button text color */
+	color: #6ec8ff;
 }
 #jump-to-latest-btn:hover {
 	background-color: #191919; /* Match 'Add System' button hover background */
