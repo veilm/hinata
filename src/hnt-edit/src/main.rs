@@ -161,9 +161,12 @@ fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
         return Ok((instruction, true));
     }
 
+
     // Default: use inline TUI editor
-    let instruction = hnt_tui::inline_editor::prompt_for_input()?;
-    Ok((instruction, true))
+    match hnt_tui::inline_editor::prompt_for_input()? {
+        Some(instruction) => Ok((instruction, true)),
+        None => bail!("Aborted by user."),
+    }
 }
 
 /// Gets system message from CLI arg, file path, or default path.
