@@ -161,7 +161,6 @@ fn get_user_instruction(cli: &Cli) -> Result<(String, bool)> {
         return Ok((instruction, true));
     }
 
-
     // Default: use inline TUI editor
     match hnt_tui::inline_editor::prompt_for_input()? {
         Some(instruction) => Ok((instruction, true)),

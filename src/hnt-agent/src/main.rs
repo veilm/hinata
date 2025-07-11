@@ -354,7 +354,9 @@ async fn main() -> Result<()> {
         let conversations_dir = chat::get_conversations_dir()?;
         chat::create_new_conversation(&conversations_dir)?
     };
+
     debug!("Using conversation directory: {:?}", conversation_dir);
+
     let session_name_for_display = conversation_dir
         .file_name()
         .and_then(|s| s.to_str())
@@ -370,8 +372,8 @@ async fn main() -> Result<()> {
 
             Ok(())
         },
+
         res = async {
-            let mut human_turn_counter = 1;
             // 2. Get system and user messages (from args, files, or $EDITOR)
             debug!("Before getting the system prompt.");
             let system_prompt = if let Some(system) = &cli.system {
@@ -396,6 +398,7 @@ async fn main() -> Result<()> {
 
 
 
+
             let user_instruction = if let Some(message) = &cli.message {
                 message.clone()
             } else if let Some(instruction) = prompt_for_instruction(&cli)? {
@@ -403,6 +406,48 @@ async fn main() -> Result<()> {
             } else {
                 bail!("Aborted: No instructions were provided.");
             };
+
+            let mut human_turn_counter = 1;
+            let mut turn_counter = 1;
+            if cli.session.is_some() {
+                let mut assistant_turn_count = 0;
+                let mut user_turn_count = 0;
+                let mut last_assistant_message: Option<String> = None;
+
+                let mut entries: Vec<_> = fs::read_dir(&conversation_dir)?
+                    .filter_map(Result::ok)
+                    .collect();
+                entries.sort_by_key(|e| e.file_name());
+
+                for entry in entries {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                            if filename.ends_with("-assistant.md") {
+                                assistant_turn_count += 1;
+                                last_assistant_message = Some(fs::read_to_string(&path)?);
+                            } else if filename.ends_with("-user.md") {
+                                let content = fs::read_to_string(&path)?;
+                                if content.contains("<user_request>") {
+                                    user_turn_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(last_message) = last_assistant_message {
+                    human_turn_counter = user_turn_count + 1;
+                    turn_counter = assistant_turn_count + 1;
+
+                    print_turn_header("hinata", assistant_turn_count)?;
+                    execute!(stdout(), ResetColor)?;
+                    let indented_message = indent_multiline(&last_message);
+                    execute!(stdout(), Print(&indented_message))?;
+                    println!();
+                    println!();
+                }
+            }
             print_turn_header("querent", human_turn_counter)?;
             human_turn_counter += 1;
             // Print the human's message with reset color
@@ -453,9 +498,9 @@ async fn main() -> Result<()> {
             //     conversation_dir.to_string_lossy()
             // );
 
+
             // 5. Start the main interaction loop:
             debug!("Right before the main loop starts.");
-            let mut turn_counter = 1;
             loop {
                 // a. Pack conversation and generate LLM response
                 let mut buffer = Cursor::new(Vec::new());
@@ -848,10 +893,23 @@ async fn main() -> Result<()> {
     };
 
     if !session_name_for_display.is_empty() {
-        eprintln!(
-            "Note: To resume this session, use: --session {}",
-            session_name_for_display
-        );
+        let has_assistant_message = fs::read_dir(&conversation_dir)
+            .map(|entries| {
+                entries.filter_map(Result::ok).any(|entry| {
+                    entry
+                        .file_name()
+                        .to_str()
+                        .map_or(false, |s| s.ends_with("-assistant.md"))
+                })
+            })
+            .unwrap_or(false);
+
+        if has_assistant_message {
+            eprintln!(
+                "Note: To resume this session, use: --session {}",
+                session_name_for_display
+            );
+        }
     }
 
     session.exit().await?;
