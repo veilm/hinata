@@ -329,14 +329,23 @@ async fn main() -> Result<()> {
                 stdout.flush()?;
             }
 
+
             for file_path in &cli.source_files {
                 let path = Path::new(file_path);
                 if !path.exists() {
                     if let Some(parent) = path.parent() {
-                        if !parent.exists() {
-                            fs::create_dir_all(parent).with_context(|| {
-                                format!("Failed to create parent directory for {}", file_path)
-                            })?;
+                        // An empty parent path means the current directory, which is assumed to exist.
+                        if parent != Path::new("") && !parent.is_dir() {
+                            let pwd = env::current_dir()
+                                .context("Failed to get current working directory")?;
+                            let pwd_display = pwd.display();
+                            let parent_dir_display = parent.display();
+                            bail!(
+                                "parent dir '{}' does not exist for file '{}'\nnote: current pwd is '{}'",
+                                parent_dir_display,
+                                file_path,
+                                pwd_display
+                            );
                         }
                     }
                     fs::File::create(path)
