@@ -166,9 +166,14 @@ struct Cli {
     #[arg(long)]
     no_escape_backticks: bool,
 
+
     /// Always use a specific spinner by its index, instead of a random one.
     #[arg(long)]
     spinner: Option<usize>,
+
+    /// Display shell command results as raw XML.
+    #[arg(long)]
+    shell_results_display_xml: bool,
 }
 
 fn print_turn_header(role: &str, turn: usize) -> Result<()> {
@@ -826,19 +831,63 @@ async fn main() -> Result<()> {
                             )
                         };
 
+
+
                         // Display shell output to the user
-                        execute!(
-                            stdout(),
-                            SetForegroundColor(Color::White),
-                            // Print("Shell Output\n"),
-                            ResetColor
-                        )?;
+                        if cli.shell_results_display_xml {
+                            let indented_result = indent_multiline(&result_message);
+                            println!("{}", &indented_result);
+                            println!();
 
+                        } else {
 
+                            if !stdout_content.is_empty() {
+                                let indented_stdout = indent_multiline(stdout_content);
+                                execute!(
+                                    stdout(),
+                                    SetForegroundColor(Color::Cyan),
+                                    Print(&indented_stdout),
+                                    ResetColor,
+                                    Print("\n")
+                                )?;
+                            }
 
-                        let indented_result = indent_multiline(&result_message);
-                        println!("{}", &indented_result);
-                        println!();
+                            if !stdout_content.is_empty() && !stderr_content.is_empty() {
+                                println!();
+                            }
+
+                            if !stderr_content.is_empty() {
+                                let indented_stderr = indent_multiline(stderr_content);
+                                execute!(
+                                    stderr(),
+                                    SetForegroundColor(Color::Red),
+                                    Print(&indented_stderr),
+                                    ResetColor,
+                                    Print("\n")
+                                )?;
+                            }
+
+                            if !stdout_content.is_empty()
+                                && stderr_content.is_empty()
+                                && exit_code != 0
+                            {
+                                println!();
+                            }
+
+                            if exit_code != 0 {
+                                let exit_message = format!("🫀 exit code: {}", exit_code);
+                                let indented_exit_message = indent_multiline(&exit_message);
+                                execute!(
+                                    stdout(),
+                                    SetForegroundColor(Color::Red),
+                                    Print(&indented_exit_message),
+                                    ResetColor,
+                                    Print("\n")
+                                )?;
+                            }
+
+                            println!();
+                        }
 
                         // Add command output as a new user message to continue the conversation
                         chat::write_message_file(
