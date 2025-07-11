@@ -388,21 +388,24 @@ async fn main() -> Result<()> {
             };
             debug!("Using conversation directory: {:?}", conversation_dir);
 
-            // 4. Add system message and start priming sequence.
-            if let Some(ref prompt) = system_prompt {
-                debug!("Before writing system message file.");
-                chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
-                debug!("After writing system message file.");
-            }
 
-            // Inject context from HINATA.md if it exists
-            if let Some(config_dir) = dirs::config_dir() {
-                let hinata_md_path = config_dir.join("hinata/agent/HINATA.md");
-                if let Ok(content) = fs::read_to_string(hinata_md_path) {
-                    if !content.trim().is_empty() {
-                        let message = format!("<info>\n{}\n</info>", content);
-                        chat::write_message_file(&conversation_dir, chat::Role::User, &message)?;
-                        debug!("Injected HINATA.md context.");
+            // 4. Add system message and start priming sequence.
+            if cli.session.is_none() {
+                if let Some(ref prompt) = system_prompt {
+                    debug!("Before writing system message file.");
+                    chat::write_message_file(&conversation_dir, chat::Role::System, &prompt)?;
+                    debug!("After writing system message file.");
+                }
+
+                // Inject context from HINATA.md if it exists
+                if let Some(config_dir) = dirs::config_dir() {
+                    let hinata_md_path = config_dir.join("hinata/agent/HINATA.md");
+                    if let Ok(content) = fs::read_to_string(hinata_md_path) {
+                        if !content.trim().is_empty() {
+                            let message = format!("<info>\n{}\n</info>", content);
+                            chat::write_message_file(&conversation_dir, chat::Role::User, &message)?;
+                            debug!("Injected HINATA.md context.");
+                        }
                     }
                 }
             }
