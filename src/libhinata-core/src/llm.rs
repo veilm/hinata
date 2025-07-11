@@ -59,7 +59,7 @@ pub struct SharedArgs {
     #[arg(
         long,
         env = "HINATA_MODEL",
-        default_value = "openrouter/deepseek/deepseek-chat-v3-0324:free"
+        default_value = "openrouter/google/gemini-2.5-pro"
     )]
     pub model: String,
     /// Enable unsafe debugging options.

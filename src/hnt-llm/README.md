@@ -11,7 +11,8 @@ git clone https://github.com/veilm/hinata
 ## Quick Start
 
 ```sh
-# Basic usage - defaults to OR's free DeepSeek-V3
+
+# Basic usage - defaults to OpenRouter's Gemini 2.5 Pro
 echo "Tell me a joke about Rust" | hnt-llm
 
 # Use a specific model
@@ -80,8 +81,9 @@ Specify models using the `provider/model` format:
 hnt-llm --model openai/gpt-4o
 hnt-llm --model openai/gpt-4o-mini
 
+
 # OpenRouter
-hnt-llm --model openrouter/deepseek/deepseek-chat-v3-0324:free
+hnt-llm --model openrouter/google/gemini-2.5-pro
 hnt-llm --model openrouter/anthropic/claude-3.5-sonnet
 
 # DeepSeek
