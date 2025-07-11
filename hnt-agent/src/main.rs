@@ -823,10 +823,10 @@ async fn main() -> Result<()> {
                         }
 
                         let result_message = if parts.is_empty() {
-                            "<hnt-shell_results></hnt-shell_results>".to_string()
+                            "<hnt-shell-results></hnt-shell-results>".to_string()
                         } else {
                             format!(
-                                "<hnt-shell_results>\n{}\n</hnt-shell_results>",
+                                "<hnt-shell-results>\n{}\n</hnt-shell-results>",
                                 parts.join("\n")
                             )
                         };
