@@ -13,17 +13,27 @@ import (
 )
 
 func getHinataDir(dirType string) (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
 	var baseDir string
+	
 	switch dirType {
 	case "config":
-		baseDir = filepath.Join(homeDir, ".config")
+		baseDir = os.Getenv("XDG_CONFIG_HOME")
+		if baseDir == "" {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			baseDir = filepath.Join(homeDir, ".config")
+		}
 	case "data":
-		baseDir = filepath.Join(homeDir, ".local", "share")
+		baseDir = os.Getenv("XDG_DATA_HOME")
+		if baseDir == "" {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			baseDir = filepath.Join(homeDir, ".local", "share")
+		}
 	default:
 		return "", fmt.Errorf("invalid directory type: %s", dirType)
 	}
