@@ -3,8 +3,6 @@ use async_stream::stream;
 use clap::Parser;
 use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::io::Read;
-use tokio::io::{stdout, AsyncWriteExt};
 
 /// Configuration for an LLM request.
 #[derive(Debug, Clone)]
@@ -55,31 +53,12 @@ pub struct Delta {
 
 #[derive(Parser, Debug, Clone)]
 pub struct SharedArgs {
-    /// The model to use for the LLM.
-    #[arg(
-        long,
-        env = "HINATA_MODEL",
-        default_value = "openrouter/google/gemini-2.5-pro"
-    )]
-    pub model: String,
+    /// The model to use for the LLM. This is optional and will override environment variables if provided.
+    #[arg(long)]
+    pub model: Option<String>,
     /// Enable unsafe debugging options.
     #[arg(long, help = "Enable unsafe debugging options.")]
     pub debug_unsafe: bool,
-}
-
-/// Arguments for the LLM generation task.
-#[derive(Parser, Debug, Clone)]
-pub struct GenArgs {
-    #[command(flatten)]
-    pub shared: SharedArgs,
-
-    /// The system prompt to use.
-    #[arg(short, long)]
-    pub system: Option<String>,
-
-    /// Include reasoning in the output.
-    #[arg(long)]
-    pub include_reasoning: bool,
 }
 
 pub struct Provider {
@@ -209,13 +188,6 @@ pub fn build_messages(
     }
 
     Ok(messages)
-}
-
-#[derive(PartialEq, Debug)]
-enum OutputPhase {
-    Init,
-    Thinking,
-    Responding,
 }
 
 fn find_sse_terminator(buffer: &[u8]) -> Option<(usize, usize)> {
@@ -371,63 +343,4 @@ pub fn stream_llm_response(
             }
         }
     }
-}
-
-/// Main logic for running the LLM.
-pub async fn generate(args: &GenArgs) -> Result<()> {
-    let mut stdin_content = String::new();
-    std::io::stdin().read_to_string(&mut stdin_content)?;
-
-    let config = LlmConfig {
-        model: args.shared.model.clone(),
-        system_prompt: args.system.clone(),
-        include_reasoning: args.include_reasoning,
-    };
-
-    let stream = stream_llm_response(config, stdin_content);
-    tokio::pin!(stream);
-
-    let mut out = stdout();
-    let mut phase = OutputPhase::Init;
-    let mut think_tag_printed = false;
-
-    while let Some(event) = stream.next().await {
-        match event? {
-            LlmStreamEvent::Content(text) => {
-                if phase == OutputPhase::Init {
-                    phase = OutputPhase::Responding;
-                }
-                if phase == OutputPhase::Thinking {
-                    phase = OutputPhase::Responding;
-                    if think_tag_printed {
-                        out.write_all(b"</think>\n").await?;
-                        think_tag_printed = false;
-                    }
-                }
-                out.write_all(text.as_bytes()).await?;
-            }
-            LlmStreamEvent::Reasoning(text) => {
-                if args.include_reasoning {
-                    if phase == OutputPhase::Init {
-                        phase = OutputPhase::Thinking;
-                        if !think_tag_printed {
-                            out.write_all(b"<think>").await?;
-                            think_tag_printed = true;
-                        }
-                    }
-                    if phase == OutputPhase::Thinking {
-                        out.write_all(text.as_bytes()).await?;
-                    }
-                }
-            }
-        }
-        out.flush().await?;
-    }
-
-    if think_tag_printed {
-        out.write_all(b"</think>\n").await?;
-        out.flush().await?;
-    }
-
-    Ok(())
 }

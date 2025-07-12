@@ -166,7 +166,6 @@ struct Cli {
     #[arg(long)]
     no_escape_backticks: bool,
 
-
     /// Always use a specific spinner by its index, instead of a random one.
     #[arg(long)]
     spinner: Option<usize>,
@@ -498,10 +497,19 @@ async fn main() -> Result<()> {
             chat::write_message_file(&conversation_dir, chat::Role::User, &tagged_instruction)?;
             debug!("After writing user message file.");
 
+
             // eprintln!(
             //     "Created conversation: {}",
             //     conversation_dir.to_string_lossy()
             // );
+
+            let model = cli
+                .shared
+                .model
+                .clone()
+                .or_else(|| env::var("HINATA_AGENT_MODEL").ok())
+                .or_else(|| env::var("HINATA_MODEL").ok())
+                .unwrap_or_else(|| "openrouter/google/gemini-2.5-pro".to_string());
 
 
             // 5. Start the main interaction loop:
@@ -514,8 +522,9 @@ async fn main() -> Result<()> {
                 let prompt = String::from_utf8(prompt_bytes)
                     .context("Failed to convert packed conversation to string")?;
 
+
                 let config = LlmConfig {
-                    model: cli.shared.model.clone(),
+                    model: model.clone(),
                     system_prompt: None,
                     include_reasoning: !cli.ignore_reasoning || cli.shared.debug_unsafe,
                 };

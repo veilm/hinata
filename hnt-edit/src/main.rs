@@ -249,7 +249,6 @@ async fn main() -> Result<()> {
     // This guard will clean up empty files if the program exits prematurely.
     let mut created_files_guard = CreatedFilesGuard::new();
 
-
     debug!("Arguments parsed: {:?}\n", cli);
 
     for file_path in &cli.source_files {
@@ -258,8 +257,8 @@ async fn main() -> Result<()> {
             if let Some(parent) = path.parent() {
                 // An empty parent path means the current directory, which is assumed to exist.
                 if parent != Path::new("") && !parent.is_dir() {
-                    let pwd = env::current_dir()
-                        .context("Failed to get current working directory")?;
+                    let pwd =
+                        env::current_dir().context("Failed to get current working directory")?;
                     let pwd_display = pwd.display();
                     let parent_dir_display = parent.display();
                     bail!(
@@ -406,8 +405,16 @@ async fn main() -> Result<()> {
     let mut highlighter = spawn_highlighter()?;
     let mut highlighter_stdin = highlighter.as_mut().and_then(|h| h.stdin.take());
 
+    let model = cli
+        .shared
+        .model
+        .clone()
+        .or_else(|| env::var("HINATA_EDIT_MODEL").ok())
+        .or_else(|| env::var("HINATA_MODEL").ok())
+        .unwrap_or_else(|| "openrouter/google/gemini-2.5-pro".to_string());
+
     let llm_config = LlmConfig {
-        model: cli.shared.model.clone(),
+        model,
         system_prompt: None,
         include_reasoning: !cli.ignore_reasoning || cli.shared.debug_unsafe,
     };

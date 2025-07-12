@@ -190,12 +190,21 @@ async fn handle_gen_command(
     let conv_dir = determine_conversation_dir(conversation_path.as_deref())
         .context("Failed to determine conversation directory")?;
 
+    let model = shared
+        .model
+        .clone()
+        .or_else(|| env::var("HINATA_CHAT_MODEL").ok())
+        .or_else(|| env::var("HINATA_MODEL").ok())
+        .unwrap_or_else(|| "openrouter/google/gemini-2.5-pro".to_string());
+
     let should_write = write || output_filename;
 
-    fs::write(conv_dir.join("model.txt"), &shared.model).context("Failed to write model file")?;
+    if let Some(model_str) = &shared.model {
+        fs::write(conv_dir.join("model.txt"), model_str).context("Failed to write model file")?;
+    }
 
     let config = LlmConfig {
-        model: shared.model,
+        model: model.clone(),
         system_prompt: None,
         include_reasoning: shared.debug_unsafe || include_reasoning,
     };

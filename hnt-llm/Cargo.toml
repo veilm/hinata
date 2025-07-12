@@ -14,4 +14,5 @@ hinata-core = { path = "../libhinata-core" }
 tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
 simplelog = "0.12.2"
 log = "0.4.21"
+futures-util = "0.3.31"
 
