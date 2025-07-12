@@ -14,7 +14,7 @@ import (
 
 func getHinataDir(dirType string) (string, error) {
 	var baseDir string
-	
+
 	switch dirType {
 	case "config":
 		baseDir = os.Getenv("XDG_CONFIG_HOME")
@@ -145,7 +145,7 @@ func GetAPIKeyFromStore(provider string) (string, error) {
 	for _, line := range lines {
 		if strings.HasPrefix(line, keyPrefix) {
 			encodedKey := strings.TrimPrefix(line, keyPrefix)
-			
+
 			dataDir, err := getHinataDir("data")
 			if err != nil {
 				return "", err

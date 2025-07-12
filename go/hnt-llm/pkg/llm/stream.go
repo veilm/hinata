@@ -162,11 +162,11 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 
 				if len(chunk.Choices) > 0 {
 					delta := chunk.Choices[0].Delta
-					
+
 					if delta.Content != nil && *delta.Content != "" {
 						eventChan <- StreamEvent{Content: *delta.Content}
 					}
-					
+
 					if config.IncludeReasoning {
 						if delta.Reasoning != nil && *delta.Reasoning != "" {
 							eventChan <- StreamEvent{Reasoning: *delta.Reasoning}
