@@ -2,7 +2,7 @@
 
 [ "$1" ] && comment="here is a brief comment by the developer (only relevant to deciding on the commit message): $@"
 
-export HINATA_MODEL=openrouter/google/gemini-2.5-pro
+export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
 hnt-agent --no-confirm -m "please do the following
 1. check the repo status
 2. check if no changes are staged
