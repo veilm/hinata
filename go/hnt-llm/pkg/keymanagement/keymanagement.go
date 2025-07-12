@@ -1,14 +1,9 @@
 package keymanagement
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,191 +12,218 @@ import (
 	"golang.org/x/term"
 )
 
-type KeyStore struct {
-	Keys map[string]string `json:"keys"`
-}
-
-func getKeyStorePath() (string, error) {
+func getHinataDir(dirType string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	dataDir := filepath.Join(homeDir, ".local", "share", "hinata")
-	return filepath.Join(dataDir, "api_keys.json"), nil
+
+	var baseDir string
+	switch dirType {
+	case "config":
+		baseDir = filepath.Join(homeDir, ".config")
+	case "data":
+		baseDir = filepath.Join(homeDir, ".local", "share")
+	default:
+		return "", fmt.Errorf("invalid directory type: %s", dirType)
+	}
+
+	hinataDir := filepath.Join(baseDir, "hinata")
+	if err := os.MkdirAll(hinataDir, 0700); err != nil {
+		return "", err
+	}
+
+	return hinataDir, nil
 }
 
-func deriveKey(passphrase string) []byte {
-	hash := sha256.Sum256([]byte(passphrase))
-	return hash[:]
+func ensureLocalKey(dataDir string) error {
+	keyPath := filepath.Join(dataDir, ".local_key")
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return err
+		}
+		if err := os.WriteFile(keyPath, key, 0600); err != nil {
+			return err
+		}
+		setPermissions(keyPath)
+	}
+	return nil
 }
 
-func encrypt(plaintext, passphrase string) (string, error) {
-	key := deriveKey(passphrase)
-	
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+func readLocalKey(dataDir string) ([]byte, error) {
+	keyPath := filepath.Join(dataDir, ".local_key")
+	return os.ReadFile(keyPath)
 }
 
-func decrypt(ciphertext, passphrase string) (string, error) {
-	key := deriveKey(passphrase)
-	
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
+func xorCrypt(key []byte, data []byte) {
+	for i := range data {
+		data[i] ^= key[i%len(key)]
 	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
-		return "", fmt.Errorf("ciphertext too short")
-	}
-
-	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
 }
 
-func loadKeyStore() (*KeyStore, error) {
-	storePath, err := getKeyStorePath()
+func setPermissions(path string) error {
+	return os.Chmod(path, 0600)
+}
+
+func SaveAPIKey(provider, apiKey string) error {
+	configDir, err := getHinataDir("config")
+	if err != nil {
+		return err
+	}
+
+	dataDir, err := getHinataDir("data")
+	if err != nil {
+		return err
+	}
+
+	if err := ensureLocalKey(dataDir); err != nil {
+		return err
+	}
+
+	keysPath := filepath.Join(configDir, "keys")
+
+	var lines []string
+	if content, err := os.ReadFile(keysPath); err == nil {
+		lines = strings.Split(string(content), "\n")
+	}
+
+	keyPrefix := provider + "="
+	var newLines []string
+	for _, line := range lines {
+		if line != "" && !strings.HasPrefix(line, keyPrefix) {
+			newLines = append(newLines, line)
+		}
+	}
+
+	localKey, err := readLocalKey(dataDir)
+	if err != nil {
+		return err
+	}
+
+	dataToEncrypt := []byte(apiKey)
+	xorCrypt(localKey, dataToEncrypt)
+
+	encodedKey := base64.StdEncoding.EncodeToString(dataToEncrypt)
+	newLines = append(newLines, fmt.Sprintf("%s=%s", provider, encodedKey))
+
+	content := strings.Join(newLines, "\n") + "\n"
+	if err := os.WriteFile(keysPath, []byte(content), 0600); err != nil {
+		return err
+	}
+
+	return setPermissions(keysPath)
+}
+
+func GetAPIKeyFromStore(provider string) (string, error) {
+	configDir, err := getHinataDir("config")
+	if err != nil {
+		return "", err
+	}
+
+	keysPath := filepath.Join(configDir, "keys")
+	content, err := os.ReadFile(keysPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	keyPrefix := provider + "="
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, keyPrefix) {
+			encodedKey := strings.TrimPrefix(line, keyPrefix)
+			
+			dataDir, err := getHinataDir("data")
+			if err != nil {
+				return "", err
+			}
+
+			localKey, err := readLocalKey(dataDir)
+			if err != nil {
+				return "", err
+			}
+
+			encryptedData, err := base64.StdEncoding.DecodeString(encodedKey)
+			if err != nil {
+				return "", err
+			}
+
+			xorCrypt(localKey, encryptedData)
+			return string(encryptedData), nil
+		}
+	}
+
+	return "", nil
+}
+
+func ListKeys() ([]string, error) {
+	configDir, err := getHinataDir("config")
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(storePath)
+	keysPath := filepath.Join(configDir, "keys")
+	content, err := os.ReadFile(keysPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &KeyStore{Keys: make(map[string]string)}, nil
+			return nil, nil
 		}
 		return nil, err
 	}
 
-	var store KeyStore
-	if err := json.Unmarshal(data, &store); err != nil {
-		return nil, err
-	}
-
-	if store.Keys == nil {
-		store.Keys = make(map[string]string)
-	}
-
-	return &store, nil
-}
-
-func saveKeyStore(store *KeyStore) error {
-	storePath, err := getKeyStorePath()
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(storePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(store, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(storePath, data, 0600)
-}
-
-func SaveAPIKey(provider, apiKey string) error {
-	fmt.Print("Enter encryption passphrase: ")
-	passphrase, err := term.ReadPassword(int(syscall.Stdin))
-	fmt.Println()
-	if err != nil {
-		return err
-	}
-
-	encryptedKey, err := encrypt(apiKey, string(passphrase))
-	if err != nil {
-		return err
-	}
-
-	store, err := loadKeyStore()
-	if err != nil {
-		return err
-	}
-
-	store.Keys[provider] = encryptedKey
-	return saveKeyStore(store)
-}
-
-func GetAPIKeyFromStore(provider string) (string, error) {
-	store, err := loadKeyStore()
-	if err != nil {
-		return "", err
-	}
-
-	encryptedKey, exists := store.Keys[provider]
-	if !exists {
-		return "", nil
-	}
-
-	fmt.Fprintf(os.Stderr, "Enter passphrase to decrypt %s API key: ", provider)
-	passphrase, err := term.ReadPassword(int(syscall.Stdin))
-	fmt.Fprintln(os.Stderr)
-	if err != nil {
-		return "", err
-	}
-
-	return decrypt(encryptedKey, string(passphrase))
-}
-
-func ListKeys() ([]string, error) {
-	store, err := loadKeyStore()
-	if err != nil {
-		return nil, err
-	}
-
 	var providers []string
-	for provider := range store.Keys {
-		providers = append(providers, provider)
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		if line != "" && strings.Contains(line, "=") {
+			provider := strings.Split(line, "=")[0]
+			providers = append(providers, provider)
+		}
 	}
+
 	return providers, nil
 }
 
 func DeleteKey(provider string) error {
-	store, err := loadKeyStore()
+	configDir, err := getHinataDir("config")
 	if err != nil {
 		return err
 	}
 
-	if _, exists := store.Keys[provider]; !exists {
-		return fmt.Errorf("no key found for provider: %s", provider)
+	keysPath := filepath.Join(configDir, "keys")
+	content, err := os.ReadFile(keysPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("key '%s' not found", provider)
+		}
+		return err
 	}
 
-	delete(store.Keys, provider)
-	return saveKeyStore(store)
+	keyPrefix := provider + "="
+	lines := strings.Split(string(content), "\n")
+	var newLines []string
+	found := false
+
+	for _, line := range lines {
+		if line != "" && !strings.HasPrefix(line, keyPrefix) {
+			newLines = append(newLines, line)
+		} else if strings.HasPrefix(line, keyPrefix) {
+			found = true
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("key '%s' not found", provider)
+	}
+
+	newContent := strings.Join(newLines, "\n") + "\n"
+	if err := os.WriteFile(keysPath, []byte(newContent), 0600); err != nil {
+		return err
+	}
+
+	return setPermissions(keysPath)
 }
 
 func HandleSaveKey(provider string) error {
@@ -220,7 +242,7 @@ func HandleSaveKey(provider string) error {
 		return err
 	}
 
-	fmt.Printf("API key for '%s' saved successfully.\n", provider)
+	fmt.Printf("Saved key '%s'.\n", provider)
 	return nil
 }
 
@@ -231,13 +253,13 @@ func HandleListKeys() error {
 	}
 
 	if len(providers) == 0 {
-		fmt.Println("No saved API keys found.")
+		fmt.Println("No keys saved.")
 		return nil
 	}
 
-	fmt.Println("Saved API keys for:")
+	fmt.Println("Saved API keys:")
 	for _, provider := range providers {
-		fmt.Printf("  - %s\n", provider)
+		fmt.Printf("- %s\n", provider)
 	}
 	return nil
 }
@@ -251,6 +273,6 @@ func HandleDeleteKey(provider string) error {
 		return err
 	}
 
-	fmt.Printf("API key for '%s' deleted successfully.\n", provider)
+	fmt.Printf("Deleted key '%s'.\n", provider)
 	return nil
 }
