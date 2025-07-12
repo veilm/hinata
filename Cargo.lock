@@ -754,6 +754,7 @@ dependencies = [
  "anyhow",
  "clap",
  "hnt-pack",
+ "tempfile",
 ]
 
 [[package]]

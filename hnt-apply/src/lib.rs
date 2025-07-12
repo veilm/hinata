@@ -59,74 +59,65 @@ pub fn apply_changes(
     Ok(())
 }
 
-fn parse_one_block(input: &str) -> Result<(ChangeBlock, &str)> {
-    let (before_target, after_path) = input.split_once("<<<<<<< TARGET").with_context(|| {
-        format!(
-            "Invalid block: missing '<<<<<<< TARGET' after path in remaining input near: '{}'",
-            &input[..100.min(input.len())]
-        )
-    })?;
 
-    // The file path is the last non-empty line before the TARGET marker.
-    // This is robust against conversational text from the LLM.
-    let path = before_target
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .last()
-        .with_context(|| "Missing file path for change block")?;
-
-    anyhow::ensure!(
-        path.lines().count() == 1,
-        "File path contains newlines: {}",
-        path
-    );
-
-    let after_target_marker = after_path.strip_prefix('\n').unwrap_or(after_path);
-
-    let (target, after_target) =
-        if let Some(after_equals) = after_target_marker.strip_prefix("=======\n") {
-            // This handles the case of an empty target, where the marker is immediately
-            // followed by a newline.
-            // `after_target_marker` would be `=======\n<replace content>...`
-            ("", after_equals)
-        } else {
-            // This handles a target with content.
-            // `after_target_marker` would be `<target content>\n=======\n<replace content>...`
-            after_target_marker
-                .split_once("\n=======")
-                .with_context(|| format!("Unterminated TARGET section for path: {}", path))?
-        };
-
-    let (replace, after_replace) = after_target
-        .split_once("\n>>>>>>> REPLACE")
-        .with_context(|| format!("Unterminated REPLACE section for path: {}", path))?;
-
-    let block = ChangeBlock {
-        relative_path: path.to_string(),
-        target: target.to_string(),
-        replace: replace.to_string(),
-    };
-
-    Ok((block, after_replace))
-}
 
 fn parse_blocks(input: &str) -> Result<Vec<ChangeBlock>> {
     let mut blocks = Vec::new();
-    let mut remaining = input.trim();
+    let lines: Vec<String> = input.lines().map(|l| format!("{}\n", l)).collect();
+    let mut i = 0;
 
-    while !remaining.is_empty() {
-        match parse_one_block(remaining) {
-            Ok((block, rest)) => {
-                blocks.push(block);
-                remaining = rest.trim_start();
-            }
-            Err(_) => {
-                // If we can't parse a block, assume we're done.
-                // This makes the parsing robust to trailing text.
-                break;
-            }
-        }
+    while i < lines.len() {
+        // 1. Find the start of a block.
+        // This is robust to conversational text before, between, and after blocks.
+        let start_marker_idx =
+            match lines[i..]
+                .iter()
+                .position(|line| line.trim() == "<<<<<<< TARGET")
+            {
+                Some(pos) => i + pos,
+                None => break, // No more blocks, we're done.
+            };
+
+        // 2. The file path is the last non-empty line before the TARGET marker.
+        let path = if let Some(path_line_idx) = lines[i..start_marker_idx]
+            .iter()
+            .rposition(|line| !line.trim().is_empty())
+        {
+            lines[i + path_line_idx].trim()
+        } else {
+            // Found a TARGET marker but no file path before it.
+            // This is a malformed block, so we stop parsing gracefully.
+            break;
+        };
+
+        // 3. Collect the `target` content.
+        i = start_marker_idx + 1;
+        let equals_marker_idx =
+            match lines[i..].iter().position(|line| line.trim() == "=======") {
+                Some(pos) => i + pos,
+                None => break, // Malformed block, no separator.
+            };
+        let target = lines[i..equals_marker_idx].join("");
+
+        // 4. Collect the `replace` content.
+        i = equals_marker_idx + 1;
+        let end_marker_idx = match lines[i..]
+            .iter()
+            .position(|line| line.trim() == ">>>>>>> REPLACE")
+        {
+            Some(pos) => i + pos,
+            None => break, // Malformed block, no end marker.
+        };
+        let replace = lines[i..end_marker_idx].join("");
+
+        // 5. Store the block and prepare for the next one.
+        blocks.push(ChangeBlock {
+            relative_path: path.to_string(),
+            target,
+            replace,
+        });
+
+        i = end_marker_idx + 1;
     }
 
     Ok(blocks)
@@ -254,4 +245,118 @@ fn apply_change_block(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    // Helper to build the marker strings to avoid them being literally in the source file,
+    // which could confuse future hnt-edit operations on this file.
+    fn t_marker() -> String { "<<<<<<< TARGET".to_string() }
+    fn s_marker() -> String { "=======".to_string() }
+    fn r_marker() -> String { ">>>>>>> REPLACE".to_string() }
+
+    #[test]
+    fn test_simple_replace() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("file.txt");
+        fs::write(&file_path, "Hello world!\n").unwrap();
+
+        let changes = format!(
+            "file.txt\n{}\nHello world!\n{}\nHello Rust!\n{}",
+            t_marker(),
+            s_marker(),
+            r_marker()
+        );
+
+        apply_changes(vec![file_path.clone()], false, false, false, &changes).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "Hello Rust!\n");
+    }
+
+    #[test]
+    fn test_multiline_replace() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("file.txt");
+        let initial_content = "line1\nline2\nline3\n";
+        fs::write(&file_path, initial_content).unwrap();
+
+        let changes = format!(
+            "file.txt\n{}\nline2\nline3\n{}\nnew_line2\nnew_line3\n{}",
+            t_marker(),
+            s_marker(),
+            r_marker()
+        );
+
+        apply_changes(vec![file_path.clone()], false, false, false, &changes).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "line1\nnew_line2\nnew_line3\n");
+    }
+
+    #[test]
+    fn test_file_creation() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("new_file.txt");
+
+        // We need a file in the source_files to establish a common root.
+        let dummy_file = dir.path().join("dummy.txt");
+        fs::write(&dummy_file, "dummy content").unwrap();
+
+
+        let changes = format!(
+            "new_file.txt\n{}\n{}\nThis is a new file.\nWith two lines.\n{}",
+            t_marker(),
+            s_marker(),
+            r_marker()
+        );
+
+        apply_changes(vec![dummy_file], false, false, false, &changes).unwrap();
+
+        assert!(file_path.exists());
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "This is a new file.\nWith two lines.\n");
+    }
+
+    #[test]
+    fn test_single_newline_target() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("file.txt");
+
+        fs::write(&file_path, "first\nsecond").unwrap();
+
+        let changes = format!(
+            "file.txt\n{}\n\n{}\n---\n{}",
+            t_marker(),
+            s_marker(),
+            r_marker()
+        );
+
+        apply_changes(vec![file_path.clone()], false, false, false, &changes).unwrap();
+
+        let content = fs::read_to_string(file_path).unwrap();
+        assert_eq!(content, "first\n---\nsecond");
+    }
+
+    #[test]
+    fn test_robust_to_conversational_text() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("file.txt");
+        fs::write(&file_path, "line one\nline two\n").unwrap();
+
+        let changes = format!(
+            "Sure, here is the change you requested:\n\nfile.txt\n{}\nline one\n{}\nline 1\n{}\n\nI have replaced \"line one\" with \"line 1\".\nLet me know if there is anything else.",
+            t_marker(),
+            s_marker(),
+            r_marker()
+        );
+        apply_changes(vec![file_path.clone()], false, false, false, &changes).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "line 1\nline two\n");
+    }
 }
