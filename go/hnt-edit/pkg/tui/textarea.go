@@ -79,7 +79,7 @@ func PromptForInput() (string, error) {
 		textarea: ta,
 	}
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {
 		return "", err

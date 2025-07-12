@@ -329,7 +329,6 @@ func Run(opts Options) error {
 	var contentBuffer strings.Builder
 	var reasoningBuffer strings.Builder
 	inReasoningBlock := false
-	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 
 	for {
 		select {
@@ -356,7 +355,8 @@ func Run(opts Options) error {
 
 			if event.Reasoning != "" && !opts.IgnoreReasoning {
 				inReasoningBlock = true
-				fmt.Print(yellowStyle.Render(event.Reasoning))
+				// Print reasoning with yellow color without lipgloss padding
+				fmt.Print("\033[33m" + event.Reasoning + "\033[0m")
 				reasoningBuffer.WriteString(event.Reasoning)
 			}
 
