@@ -138,6 +138,15 @@ func PackConversation(convDir string, writer io.Writer, merge bool) error {
 		return err
 	}
 
+	// Filter out assistant-reasoning messages - they're internal only
+	var filteredMessages []ChatMessage
+	for _, msg := range messages {
+		if msg.Role != RoleAssistantReasoning {
+			filteredMessages = append(filteredMessages, msg)
+		}
+	}
+	messages = filteredMessages
+
 	if merge {
 		i := 0
 		for i < len(messages) {
