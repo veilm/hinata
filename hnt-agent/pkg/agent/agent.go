@@ -362,6 +362,10 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	var contentBuffer strings.Builder
 	var reasoningChunkBuffer strings.Builder
 
+	// Hide cursor before streaming starts
+	hideCursor()
+	defer showCursor()
+
 	for {
 		select {
 		case event, ok := <-eventChan:
@@ -839,4 +843,12 @@ func getTerminalWidth() int {
 		return 80
 	}
 	return width
+}
+
+func hideCursor() {
+	fmt.Print("\033[?25l")
+}
+
+func showCursor() {
+	fmt.Print("\033[?25h")
 }
