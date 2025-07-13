@@ -113,9 +113,9 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create agent: %w", err)
 	}
 
-	if session == "" {
-		fmt.Fprintf(os.Stderr, "Created conversation: %s\n", ag.ConversationDir)
-	}
+	// if session == "" {
+	// 	fmt.Fprintf(os.Stderr, "Created conversation: %s\n", ag.ConversationDir)
+	// }
 
 	return ag.Run(userMessage)
 }

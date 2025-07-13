@@ -134,8 +134,7 @@ func GetRandomLoadingMessage() string {
 }
 
 func Run(spinner Spinner, message string, margin string, stopCh <-chan bool) {
-	fmt.Printf("%s%s", margin, message)
-
+	startTime := time.Now()
 	frameIndex := 0
 	ticker := time.NewTicker(spinner.Speed)
 	defer ticker.Stop()
@@ -143,14 +142,45 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool) {
 	hideCursor()
 	defer showCursor()
 
+	// Initial display
+	fmt.Printf("%s%s", margin, message)
+
 	for {
 		select {
 		case <-stopCh:
 			clearLine()
 			return
 		case <-ticker.C:
+			// Calculate elapsed time
+			elapsedSeconds := int64(time.Since(startTime).Seconds())
+
+			// Format timer with spacing rules matching Rust implementation
+			timeStr := fmt.Sprintf("(%ds)", elapsedSeconds)
+			var prefix string
+			if elapsedSeconds < 10 {
+				prefix = "  " // 2 spaces for single digit
+			} else {
+				prefix = " " // 1 space for double digit
+			}
+
+			// Total width for time display block is 10 characters
+			totalWidth := 10
+			currentWidth := len(prefix) + len(timeStr)
+
+			var timeDisplayBlock string
+			if currentWidth < totalWidth {
+				suffix := strings.Repeat(" ", totalWidth-currentWidth)
+				timeDisplayBlock = fmt.Sprintf("%s%s%s", prefix, timeStr, suffix)
+			} else {
+				timeDisplayBlock = fmt.Sprintf("%s%s ", prefix, timeStr)
+			}
+
+			// Get current frame
 			frame := spinner.Frames[frameIndex]
-			fmt.Printf("\r%s%s %s", margin, frame, message)
+
+			// Display format: [margin][message][time][frame]
+			fmt.Printf("\r%s%s%s%s", margin, message, timeDisplayBlock, frame)
+
 			frameIndex = (frameIndex + 1) % len(spinner.Frames)
 		}
 	}
