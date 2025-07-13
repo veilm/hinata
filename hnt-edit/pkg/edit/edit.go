@@ -97,7 +97,6 @@ func PrintUserInstructions(instruction string) error {
 	footer := strings.Repeat("─", width)
 
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
-	fmt.Println()
 	fmt.Println(headerStyle.Render(header))
 	fmt.Println(strings.TrimRight(instruction, "\n"))
 	fmt.Println(headerStyle.Render(footer))

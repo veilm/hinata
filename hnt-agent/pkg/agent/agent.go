@@ -201,7 +201,7 @@ func (a *Agent) Run(userMessage string) error {
 
 		shellCommands := extractShellCommands(llmResponse)
 		if len(shellCommands) == 0 {
-			fmt.Fprintf(os.Stderr, "\n%sHinata did not suggest a shell block.\n", marginStr())
+			fmt.Fprintf(os.Stderr, "\n%s-> Hinata did not suggest a shell block.\n", marginStr())
 
 			newMessage := a.promptForMessage()
 			if newMessage == "" {
@@ -651,7 +651,8 @@ func (a *Agent) promptExecute() executeChoice {
 }
 
 func (a *Agent) promptForMessage() string {
-	// fmt.Printf("\n%sPlease provide new instructions:\n", marginStr())
+	// Print a blank line before showing the textarea during conversation
+	fmt.Println()
 
 	instruction, err := prompt.GetUserInstruction("", a.UseEditor)
 	if err != nil {

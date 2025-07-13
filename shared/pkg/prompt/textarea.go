@@ -53,7 +53,6 @@ func (m textareaModel) View() string {
 		Render("• Ctrl+D or Esc to submit • Ctrl+C to cancel")
 
 	return strings.Join([]string{
-		"",
 		header,
 		m.textarea.View(),
 		"",
