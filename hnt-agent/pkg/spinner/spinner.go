@@ -51,14 +51,19 @@ func loadSpinnersFromConfig() error {
 	// Try multiple locations for the config file
 	configDirs := []string{
 		"/etc/hinata/spinners",
-		filepath.Join(os.Getenv("HOME"), ".config", "hinata", "spinners"),
-		"./spinners",
 	}
+
+	// Check XDG_CONFIG_HOME first, then fall back to ~/.config
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		configDirs = append(configDirs, filepath.Join(xdgConfig, "hinata", "spinners"))
+	}
+	configDirs = append(configDirs, filepath.Join(os.Getenv("HOME"), ".config", "hinata", "spinners"))
+	configDirs = append(configDirs, "./spinners")
 
 	var configDir string
 	var configData []byte
 	var err error
-	
+
 	// Find the spinners directory
 	for _, dir := range configDirs {
 		configPath := filepath.Join(dir, "spinners.json")
@@ -68,7 +73,7 @@ func loadSpinnersFromConfig() error {
 			break
 		}
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to read config file from any location: %w", err)
 	}
@@ -85,20 +90,20 @@ func loadSpinnersFromConfig() error {
 		if sc.Interval <= 0 || sc.Filename == "" {
 			continue
 		}
-		
+
 		// Read frames from text file
 		framesPath := filepath.Join(configDir, sc.Filename)
 		framesData, err := os.ReadFile(framesPath)
 		if err != nil {
 			continue
 		}
-		
+
 		// Split into lines
 		lines := strings.Split(strings.TrimSpace(string(framesData)), "\n")
 		if len(lines) == 0 {
 			continue
 		}
-		
+
 		SPINNERS = append(SPINNERS, Spinner{
 			Name:   sc.Filename,
 			Frames: lines,
