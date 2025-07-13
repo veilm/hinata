@@ -11,7 +11,7 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 ### [`hnt-agent`](./hnt-agent/)
 simple [`hnt-chat`](./hnt-chat/) wrapper for letting an LLM operate a persistent shell
 
-```
+```sh
 $ git log --oneline | head -1
 b8b305b refactor: Handle recoil animations during enemy fade-out state
 
@@ -40,7 +40,7 @@ not as aesthetic as Claude Code. UX is WIP
 simple [`hnt-chat`](./hnt-chat/) wrapper for editing source code or other
 plaintext files
 
-```
+```sh
 $ hnt-edit \
 	-m "please enable debugging in the config" \
 	--model "deepseek/deepseek-chat" \
@@ -70,7 +70,7 @@ differences: system prompt and design of TARGET/REPLACE parser)
 ### [`hnt-chat`](./hnt-chat/)
 simple [`hnt-llm`](./hnt-llm/) wrapper, for chat history management using
 plaintext files and conversation directories
-```
+```sh
 $ conversation=$(hnt-chat new)
 $ echo "please write a 2-line stanza about the user's given theme" | hnt-chat add system
 $ echo "iteration" | hnt-chat add user
@@ -91,20 +91,29 @@ $ ls $conversation
 
 ### [`hnt-llm`](./hnt-llm/)
 basic LLM API in/out. significantly faster startup than openai-python
-```
+```sh
 $ echo "hello Claude! ❄️" | hnt-llm --model openrouter/anthropic/claude-3-opus
 Hello! It's great to meet you. I hope you're having a wonderful day! ❄️☃️
 ```
 
 has optional ~encrypted credential management using `hnt-llm save-key`
 
-# build and install everything
-```
-git clone https://github.com/veilm/hinata
-./hinata/install.sh
+# build and install
+### system requirements
+- [Go](https://go.dev/) installed
+- Linux or macOS
+
+### recommended
+```sh
+curl hnt-agent.org/install | sh
 ```
 
-system dependencies: [Go](https://go.dev/)
+### alternative: manual clone (yuck!)
+```sh
+git clone --depth 1 https://github.com/veilm/hinata
+cd hinata
+./install.sh
+```
 
 # full architecture
 - [`hnt-llm`](./hnt-llm/): simple, performant text backend. pipe text input
@@ -127,7 +136,8 @@ sufficient for my own casual usage and mobile/{filesystem storage} requirement
 GUI Chromium-based browser programmatically. intended for LLM web browsing
 
 # bugs / support
-feel free to @ me on X or make a GitHub issue, for literally any reason
+feel free to [@ me on X](https://x.com/sucralose__) or make a GitHub issue. for
+**literally any reason**
 
 you don't need to read any documentation or even try installing. I'd be happy to
 answer any possible questions
@@ -147,10 +157,16 @@ features (e.g. memory)
 iqd, etc.) for reference and for maliciously farming and baiting engagement on X
 - Be reasonable in the design of backends. like Aider not like Open WebUI
 
-## credit
-other projects used for inspiration:
+# credit
+### other projects used for inspiration
+- [Claude Code](https://www.anthropic.com/claude-code)
 - [Aider](https://aider.chat/)
 - [Cursor](https://www.cursor.com/)
 - [openai-python](https://github.com/openai/openai-python)
 - [simonw/llm](https://github.com/simonw/llm)
 - [Streamdown](https://github.com/day50-dev/Streamdown)
+
+### staff
+- designed by [sucralose](https://x.com/sucralose__)
+- written mostly by Gemini 2.5 Pro, o3, and Claude 4 Opus
+- inspired by a certain reserve course student
