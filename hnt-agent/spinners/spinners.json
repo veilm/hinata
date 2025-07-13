@@ -1,104 +1,216 @@
 {
     "loadingMessages": [
-        "Ministering",
-        "Communing",
-        "Beckoning",
-        "Dreaming",
-        "Crossing",
-        "Ascending",
-        "Evolving",
-        "Conjuring",
-        "Weaving",
-        "Summoning",
-        "Channeling",
-        "Deciphering",
-        "Illuminating",
-        "Kindling",
-        "Gathering",
-        "Listening",
-        "Scribing",
-        "Painting",
-        "Rousing",
-        "Stirring",
-        "Flickering",
-        "Spiraling",
-        "Incanting",
-        "Awakening",
-        "Manifesting",
-        "Transcending",
-        "Hurling",
-        "Revolving",
-        "Enchanting",
-        "Levitating",
-        "Hypnotizing",
-        "Dissolving",
-        "Discerning",
-        "Shattering",
-        "Crystallizing",
-        "Cascading",
-        "Twisting",
-        "Teleporting",
-        "Inverting",
-        "Charming",
-        "Bewitching",
-        "Unraveling"
+        "Ministering...",
+        "Communing...",
+        "Beckoning...",
+        "Dreaming...",
+        "Crossing...",
+        "Ascending...",
+        "Evolving...",
+        "Conjuring...",
+        "Weaving...",
+        "Summoning...",
+        "Channeling...",
+        "Deciphering...",
+        "Illuminating...",
+        "Kindling...",
+        "Gathering...",
+        "Listening...",
+        "Scribing...",
+        "Painting...",
+        "Rousing...",
+        "Stirring...",
+        "Flickering...",
+        "Spiraling...",
+        "Incanting...",
+        "Awakening...",
+        "Manifesting...",
+        "Transcending...",
+        "Hurling...",
+        "Revolving...",
+        "Enchanting...",
+        "Levitating...",
+        "Hypnotizing...",
+        "Dissolving...",
+        "Discerning...",
+        "Shattering...",
+        "Crystallizing...",
+        "Cascading...",
+        "Twisting...",
+        "Teleporting...",
+        "Inverting...",
+        "Charming...",
+        "Bewitching...",
+        "Unraveling..."
     ],
     "spinners": [
         {
-            "filename": "1752389390082.txt",
-            "interval": 80
+            "filename": "1752432393853_0.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390073.txt",
-            "interval": 80
+            "filename": "1752432393854_1.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390077.txt",
-            "interval": 80
+            "filename": "1752432393855_2.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390096.txt",
+            "filename": "1752432393856_3.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393857_4.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393858_5.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393859_6.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393861_7.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393862_8.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393863_9.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393864_10.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393865_11.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393866_12.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393868_13.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393869_14.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393870_15.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393871_16.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393872_17.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393873_18.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393875_19.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393876_20.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393877_21.txt",
             "interval": 100
         },
         {
-            "filename": "1752389390105.txt",
+            "filename": "1752432393878_22.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393879_23.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393880_24.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393881_25.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393883_26.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393884_27.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393885_28.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393886_29.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393887_30.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393888_31.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393890_32.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393891_33.txt",
+            "interval": 150
+        },
+        {
+            "filename": "1752432393892_34.txt",
             "interval": 100
         },
         {
-            "filename": "1752389390110.txt",
-            "interval": 70
+            "filename": "1752432393893_35.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390114.txt",
-            "interval": 250
+            "filename": "1752432393894_36.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390055.txt",
-            "interval": 100
+            "filename": "1752432393895_37.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390064.txt",
-            "interval": 120
+            "filename": "1752432393897_38.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390059.txt",
-            "interval": 80
+            "filename": "1752432393898_39.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390101.txt",
-            "interval": 200
+            "filename": "1752432393899_40.txt",
+            "interval": 150
         },
         {
-            "filename": "1752389390091.txt",
-            "interval": 100
-        },
-        {
-            "filename": "1752389390068.txt",
-            "interval": 100
-        },
-        {
-            "filename": "1752389390086.txt",
-            "interval": 180
+            "filename": "1752432393900_41.txt",
+            "interval": 150
         }
     ]
 }
