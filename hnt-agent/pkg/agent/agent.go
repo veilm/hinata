@@ -348,7 +348,7 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	var response strings.Builder
 	var reasoningBuffer strings.Builder
 	termWidth := getTerminalWidth()
-	wrapAt := termWidth - MARGIN
+	wrapAt := termWidth - (MARGIN * 2)
 	if wrapAt < 20 {
 		wrapAt = 20 // Minimum wrap width
 	}

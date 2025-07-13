@@ -1,0 +1,72 @@
+{
+  "spinners": [
+    {
+      "filename": "1752389390082.txt",
+      "interval": 80
+    },
+    {
+      "filename": "1752389390073.txt",
+      "interval": 80
+    },
+    {
+      "filename": "1752389390077.txt",
+      "interval": 80
+    },
+    {
+      "filename": "1752389390096.txt",
+      "interval": 100
+    },
+    {
+      "filename": "1752389390105.txt",
+      "interval": 100
+    },
+    {
+      "filename": "1752389390110.txt",
+      "interval": 70
+    },
+    {
+      "filename": "1752389390114.txt",
+      "interval": 250
+    },
+    {
+      "filename": "1752389390055.txt",
+      "interval": 100
+    },
+    {
+      "filename": "1752389390064.txt",
+      "interval": 120
+    },
+    {
+      "filename": "1752389390059.txt",
+      "interval": 80
+    },
+    {
+      "filename": "1752389390101.txt",
+      "interval": 200
+    },
+    {
+      "filename": "1752389390091.txt",
+      "interval": 100
+    },
+    {
+      "filename": "1752389390068.txt",
+      "interval": 100
+    },
+    {
+      "filename": "1752389390086.txt",
+      "interval": 180
+    }
+  ],
+  "loadingMessages": [
+    "Pondering the query",
+    "Processing request",
+    "Consulting the shell",
+    "Working on it",
+    "Computing response",
+    "Analyzing input",
+    "Thinking deeply",
+    "Formulating answer",
+    "Executing logic",
+    "Preparing output"
+  ]
+}

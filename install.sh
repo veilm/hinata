@@ -9,6 +9,16 @@ cp -r prompts/* "$prompts_dir"
 echo "hinata: created $prompts_dir"
 echo "hinata: installed agent system prompts"
 
+# Install spinner config
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata
+mkdir -p "$config_dir"
+if [ -d "hnt-agent/spinners" ]; then
+    cp -r hnt-agent/spinners "$config_dir/"
+    echo "hinata: installed spinner config to $config_dir/spinners/"
+else
+    echo "hinata: warning: spinners directory not found in ./hnt-agent/"
+fi
+
 # Build binaries
 ./build.sh
 
