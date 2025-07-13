@@ -201,7 +201,7 @@ func (a *Agent) Run(userMessage string) error {
 
 		shellCommands := extractShellCommands(llmResponse)
 		if len(shellCommands) == 0 {
-			fmt.Printf("\n%sLLM provided no command. Please provide new instructions.\n", marginStr())
+			fmt.Fprintf(os.Stderr, "\n%sHinata did not suggest a shell block.\n", marginStr())
 
 			newMessage := a.promptForMessage()
 			if newMessage == "" {
@@ -227,12 +227,18 @@ func (a *Agent) Run(userMessage string) error {
 			}
 
 			if !a.NoConfirm {
-				fmt.Printf("\n%sHinata wants to execute a shell block. Proceed?\n", marginStr())
+				fmt.Fprintf(os.Stderr, "\n%sHinata wants to execute a shell block. Proceed?\n", marginStr())
 				choice := a.promptExecute()
+
+				// Clear the prompt message and selection menu
+				// Move up 1 line and clear from cursor to end
+				fmt.Fprint(os.Stderr, "\033[1A\033[J")
+
 				switch choice {
 				case executeExit:
 					return nil
 				case executeSkip:
+					fmt.Fprintf(os.Stderr, "%s-> Chose to provide new instructions.\n", marginStr())
 					newMessage := a.promptForMessage()
 					if newMessage == "" {
 						return fmt.Errorf("no message provided")
@@ -250,6 +256,7 @@ func (a *Agent) Run(userMessage string) error {
 					}
 					continue
 				case executeYes:
+					fmt.Fprintf(os.Stderr, "%s-> Executing command.\n", marginStr())
 					// Continue with execution
 				}
 			}
@@ -644,7 +651,7 @@ func (a *Agent) promptExecute() executeChoice {
 }
 
 func (a *Agent) promptForMessage() string {
-	fmt.Printf("\n%sPlease provide new instructions:\n", marginStr())
+	// fmt.Printf("\n%sPlease provide new instructions:\n", marginStr())
 
 	instruction, err := prompt.GetUserInstruction("", a.UseEditor)
 	if err != nil {
