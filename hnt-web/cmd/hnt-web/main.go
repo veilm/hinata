@@ -412,6 +412,10 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 	// Extract just the ID from the full path
 	convID := filepath.Base(convDir)
 
+	// Log the conversation creation
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("New conversation created (%s) (ID: %s)\n", timestamp, convID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": convID})
 }
@@ -460,6 +464,15 @@ func forkConversation(w http.ResponseWriter, convID string) {
 	}
 
 	newID := filepath.Base(newConvDir)
+
+	// Log the fork operation
+	sourceTitle := getConversationTitle(sourceDir)
+	if sourceTitle == "" {
+		sourceTitle = convID
+	}
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("Conversation forked (%s) (%s) -> new ID: %s\n", timestamp, sourceTitle, newID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": newID})
 }
@@ -476,10 +489,28 @@ func togglePin(w http.ResponseWriter, convID string) {
 	if _, err := os.Stat(pinPath); err == nil {
 		// Unpin
 		os.Remove(pinPath)
+
+		// Log the unpin operation
+		title := getConversationTitle(filepath.Join(baseDir, convID))
+		if title == "" {
+			title = convID
+		}
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		log.Printf("Conversation unpinned (%s) (%s)\n", timestamp, title)
+
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "unpinned", "is_pinned": false})
 	} else {
 		// Pin
 		os.WriteFile(pinPath, []byte(""), 0644)
+
+		// Log the pin operation
+		title := getConversationTitle(filepath.Join(baseDir, convID))
+		if title == "" {
+			title = convID
+		}
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		log.Printf("Conversation pinned (%s) (%s)\n", timestamp, title)
+
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "pinned", "is_pinned": true})
 	}
 }
@@ -522,6 +553,14 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 		http.Error(w, "Failed to write message", http.StatusInternalServerError)
 		return
 	}
+
+	// Log the message addition
+	title := getConversationTitle(convDir)
+	if title == "" {
+		title = convID
+	}
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("%s message added to conversation (%s) (%s)\n", strings.Title(req.Role), timestamp, title)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"filename": filename})
@@ -611,6 +650,14 @@ done:
 			flusher.Flush()
 			return
 		}
+
+		// Log the assistant message addition
+		title := getConversationTitle(convDir)
+		if title == "" {
+			title = convID
+		}
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		log.Printf("Assistant message generated for conversation (%s) (%s)\n", timestamp, title)
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -637,6 +684,10 @@ func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
+	// Log the title update
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("Conversation title updated (%s) (%s) -> (%s)\n", timestamp, convID, req.Title)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
@@ -660,6 +711,14 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 		http.Error(w, "Failed to update model", http.StatusInternalServerError)
 		return
 	}
+
+	// Log the model update
+	title := getConversationTitle(filepath.Join(baseDir, convID))
+	if title == "" {
+		title = convID
+	}
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("Conversation model updated (%s) (%s) -> %s\n", timestamp, title, req.Model)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
@@ -703,6 +762,14 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 		return
 	}
 
+	// Log the message edit
+	title := getConversationTitle(filepath.Join(baseDir, convID))
+	if title == "" {
+		title = convID
+	}
+	editTimestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("Message edited in conversation (%s) (%s) - file: %s\n", editTimestamp, title, filename)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
@@ -737,6 +804,14 @@ func archiveMessage(w http.ResponseWriter, convID string, filename string) {
 		return
 	}
 
+	// Log the message archive
+	title := getConversationTitle(filepath.Join(baseDir, convID))
+	if title == "" {
+		title = convID
+	}
+	archiveTimestamp := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("Message archived from conversation (%s) (%s) - file: %s\n", archiveTimestamp, title, filename)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "archived"})
 }
@@ -752,4 +827,12 @@ func containsNull(data []byte) bool {
 
 func isValidUTF8(s string) bool {
 	return utf8.ValidString(s)
+}
+
+func getConversationTitle(convDir string) string {
+	titlePath := filepath.Join(convDir, "title.txt")
+	if data, err := os.ReadFile(titlePath); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	return ""
 }
