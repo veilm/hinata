@@ -66,15 +66,24 @@ func getWebDir() string {
 func main() {
 	mux := http.NewServeMux()
 
-	// Static file serving
-	webDir := getWebDir()
-	fs := http.FileServer(http.Dir(webDir))
-	mux.Handle("/", fs)
-
 	// API endpoints
 	mux.HandleFunc("/api/conversations", handleConversations)
 	mux.HandleFunc("/api/conversation/", handleConversation)
 	mux.HandleFunc("/api/conversations/create", handleCreateConversation)
+
+	// Static file serving with custom handler for conversation pages
+	webDir := getWebDir()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Handle conversation-page routes
+		if strings.HasPrefix(r.URL.Path, "/conversation-page/") {
+			http.ServeFile(w, r, filepath.Join(webDir, "conversation.html"))
+			return
+		}
+
+		// Serve static files
+		fs := http.FileServer(http.Dir(webDir))
+		fs.ServeHTTP(w, r)
+	})
 
 	log.Println("Starting server on :2027")
 	log.Fatal(http.ListenAndServe(":2027", corsMiddleware(mux)))
