@@ -130,8 +130,8 @@ uses `llm-pack` to format source code. sends it along with user instructions to
 `hnt-chat`. then uses `hnt-apply` to parse the LLM's desired edits
 - [`hnt-agent`](./hnt-agent/): allows an LLM to use a persistent shell and
 receive output, in a feedback loop
-- [`hnt-web`](./web/): simple 80/20 web app wrapping `hnt-chat`.
-sufficient for my own casual usage and mobile/{filesystem storage} requirement
+- [`hnt-web`](./hnt-web/): simple 80/20 web app wrapping `hnt-chat`. sufficient
+for my own casual usage and mobile/{filesystem storage} requirement
 - [`browse`](./util/browse/): CLI for navigating your (not headless)
 GUI Chromium-based browser programmatically. intended for LLM web browsing
 

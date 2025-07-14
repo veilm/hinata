@@ -29,20 +29,35 @@ type Config struct {
 var (
 	SPINNERS        []Spinner
 	loadingMessages []string
+	unicodeSupport  UnicodeSupport
 )
 
-// Fallback spinner - hardcoded as requested
-var fallbackSpinner = Spinner{
-	Name:   "fallback",
+// Fallback spinners for different Unicode support levels
+var asciiSpinner = Spinner{
+	Name:   "ascii",
+	Frames: []string{"|", "/", "-", "\\"},
+	Speed:  150 * time.Millisecond,
+}
+
+var basicUnicodeSpinner = Spinner{
+	Name:   "basic-unicode",
 	Frames: []string{"│╱", "╱─", "─╲", "╲│"},
 	Speed:  150 * time.Millisecond,
 }
 
 func init() {
+	// Detect Unicode support level
+	unicodeSupport = DetectUnicodeSupport()
+
 	// Try to load spinners from config file
 	if err := loadSpinnersFromConfig(); err != nil {
-		// If loading fails, use fallback spinner
-		SPINNERS = []Spinner{fallbackSpinner}
+		// If loading fails, use appropriate fallback spinner
+		switch unicodeSupport {
+		case UnicodeNone:
+			SPINNERS = []Spinner{asciiSpinner}
+		default:
+			SPINNERS = []Spinner{basicUnicodeSpinner}
+		}
 		loadingMessages = []string{"Working..."}
 	}
 }
@@ -111,9 +126,43 @@ func loadSpinnersFromConfig() error {
 		})
 	}
 
+	// Filter spinners based on Unicode support
+	if unicodeSupport < UnicodeFull {
+		filteredSpinners := []Spinner{}
+		for _, spinner := range SPINNERS {
+			// Check if spinner contains complex Unicode
+			hasComplexChars := false
+			for _, frame := range spinner.Frames {
+				for _, r := range frame {
+					if IsComplexUnicodeChar(r) {
+						hasComplexChars = true
+						break
+					}
+				}
+				if hasComplexChars {
+					break
+				}
+			}
+
+			// Only include spinners without complex chars for limited Unicode support
+			if !hasComplexChars {
+				filteredSpinners = append(filteredSpinners, spinner)
+			}
+		}
+
+		if len(filteredSpinners) > 0 {
+			SPINNERS = filteredSpinners
+		}
+	}
+
 	// If no valid spinners in config, use fallback
 	if len(SPINNERS) == 0 {
-		SPINNERS = []Spinner{fallbackSpinner}
+		switch unicodeSupport {
+		case UnicodeNone:
+			SPINNERS = []Spinner{asciiSpinner}
+		default:
+			SPINNERS = []Spinner{basicUnicodeSpinner}
+		}
 	}
 
 	// Load messages
@@ -196,4 +245,23 @@ func showCursor() {
 
 func clearLine() {
 	fmt.Print("\r\033[K")
+}
+
+// GetUnicodeSupport returns the detected Unicode support level
+func GetUnicodeSupport() UnicodeSupport {
+	return unicodeSupport
+}
+
+// GetUnicodeSupportString returns a human-readable description of the Unicode support level
+func GetUnicodeSupportString() string {
+	switch unicodeSupport {
+	case UnicodeNone:
+		return "ASCII only"
+	case UnicodeBasic:
+		return "Basic Unicode (box drawing)"
+	case UnicodeFull:
+		return "Full Unicode (including complex symbols)"
+	default:
+		return "Unknown"
+	}
 }
