@@ -1,4 +1,37 @@
 document.addEventListener("DOMContentLoaded", () => {
+	// Check if logged in
+	if (!localStorage.getItem("username") || !localStorage.getItem("password")) {
+		window.location.href = "/login.html";
+		return;
+	}
+
+	// Add auth headers to all fetch requests
+	const authFetch = (url, options = {}) => {
+		const username = localStorage.getItem("username");
+		const password = localStorage.getItem("password");
+
+		if (!username || !password) {
+			window.location.href = "/login.html";
+			return Promise.reject(new Error("Not authenticated"));
+		}
+
+		const headers = {
+			"X-Username": username,
+			"X-Password": password,
+			...options.headers,
+		};
+
+		return fetch(url, { ...options, headers }).then((response) => {
+			if (response.status === 401) {
+				// Clear credentials and redirect to login
+				localStorage.removeItem("username");
+				localStorage.removeItem("password");
+				window.location.href = "/login.html";
+				return Promise.reject(new Error("Authentication failed"));
+			}
+			return response;
+		});
+	};
 	document.addEventListener("click", (event) => {
 		const menu = document.getElementById("action-dropdown-menu");
 		if (!menu || menu.classList.contains("hidden")) return;
@@ -21,6 +54,24 @@ document.addEventListener("DOMContentLoaded", () => {
 	const ICON_ARCHIVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`;
 	const ICON_SAVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save-icon lucide-save"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>`;
 	const ICON_X = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+	const ICON_SHARE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-share-2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>`;
+
+	// Display username
+	const username = localStorage.getItem("username");
+	const usernameDisplay = document.getElementById("username-display");
+	if (usernameDisplay) {
+		usernameDisplay.textContent = `Logged in as: ${username}`;
+	}
+
+	// Setup logout button
+	const logoutBtn = document.getElementById("logout-btn");
+	if (logoutBtn) {
+		logoutBtn.addEventListener("click", () => {
+			localStorage.removeItem("username");
+			localStorage.removeItem("password");
+			window.location.href = "/login.html";
+		});
+	}
 
 	const path = window.location.pathname;
 
@@ -55,7 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	async function loadConversationsList() {
 		const container = document.getElementById("conversation-list-container");
 		try {
-			const response = await fetch("/api/conversations");
+			const response = await authFetch("/api/conversations");
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
@@ -112,7 +163,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 
 		try {
-			const response = await fetch("/api/conversations/create", {
+			const response = await authFetch("/api/conversations/create", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json", // Though not sending a body, good practice
@@ -196,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}`,
 			);
 			if (!response.ok) {
@@ -429,6 +480,18 @@ document.addEventListener("DOMContentLoaded", () => {
 				});
 			} else {
 				console.warn("Fork button (#fork-conversation-btn) not found in DOM.");
+			}
+
+			// Setup Share button listener
+			const shareButton = document.getElementById("share-conversation-btn");
+			if (shareButton) {
+				const newShareButton = shareButton.cloneNode(true);
+				shareButton.parentNode.replaceChild(newShareButton, shareButton);
+				newShareButton.disabled = false;
+
+				newShareButton.addEventListener("click", () => {
+					showShareModal(conversationId);
+				});
 			}
 
 			// Setup Jump to Latest button listener
@@ -827,7 +890,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(filename)}/archive`,
 				{
 					method: "POST",
@@ -878,7 +941,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		setButtonsDisabledState(Array.from(saveCancelButtons), true);
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(filename)}/edit`,
 				{
 					method: "PUT",
@@ -926,7 +989,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		clearErrorMessages(document.getElementById("message-input-area"));
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/add-message`,
 				{
 					method: "POST",
@@ -1001,7 +1064,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		// Removed: placeholderDiv.scrollIntoView({ behavior: "smooth", block: "end" });
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/gen-assistant`,
 				{
 					method: "POST",
@@ -1063,7 +1126,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		clearErrorMessages(inputElement.closest("li"));
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/title`,
 				{
 					method: "PUT",
@@ -1116,7 +1179,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		);
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/model`,
 				{
 					method: "PUT",
@@ -1259,7 +1322,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		if (titleSection) clearErrorMessages(titleSection);
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/pin-toggle`,
 				{
 					method: "POST",
@@ -1306,7 +1369,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		if (titleSection) clearErrorMessages(titleSection);
 
 		try {
-			const response = await fetch(
+			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/fork`,
 				{
 					method: "POST",
@@ -1346,5 +1409,125 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			if (forkBtn) forkBtn.disabled = false; // Re-enable on error
 		}
+	}
+
+	async function showShareModal(conversationId) {
+		const overlay = document.createElement("div");
+		overlay.className = "share-modal-overlay";
+
+		const modalContent = document.createElement("div");
+		modalContent.className = "share-modal-content";
+
+		modalContent.innerHTML = `
+			<h2>Share Conversation</h2>
+			<div id="share-error" class="error-message" style="display: none;"></div>
+			<div id="current-users">
+				<h3>Current Users with Access:</h3>
+				<p>Loading...</p>
+			</div>
+			<div class="share-form">
+				<h3>Add Users:</h3>
+				<input type="text" id="share-users-input" placeholder="Enter usernames separated by commas">
+				<div class="share-modal-buttons">
+					<button type="button" id="share-save-btn" class="btn-primary">Update Access</button>
+					<button type="button" id="share-cancel-btn" class="btn-secondary">Cancel</button>
+				</div>
+			</div>
+		`;
+
+		const closeModal = () => {
+			overlay.remove();
+		};
+
+		overlay.appendChild(modalContent);
+		document.body.appendChild(overlay);
+
+		// Load current access list
+		try {
+			const response = await authFetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/access`,
+			);
+			if (response.ok) {
+				const data = await response.json();
+				const currentUsersDiv = document.getElementById("current-users");
+				if (data.users && data.users.length > 0) {
+					currentUsersDiv.innerHTML = `
+						<h3>Current Users with Access:</h3>
+						<ul>${data.users.map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul>
+					`;
+					// Pre-fill the input with current users
+					document.getElementById("share-users-input").value =
+						data.users.join(", ");
+				}
+			}
+		} catch (error) {
+			console.error("Error loading access list:", error);
+		}
+
+		// Setup buttons
+		document
+			.getElementById("share-cancel-btn")
+			.addEventListener("click", closeModal);
+		overlay.addEventListener("click", (e) => {
+			if (e.target === overlay) closeModal();
+		});
+
+		document
+			.getElementById("share-save-btn")
+			.addEventListener("click", async () => {
+				const input = document.getElementById("share-users-input");
+				const errorDiv = document.getElementById("share-error");
+				const saveBtn = document.getElementById("share-save-btn");
+
+				const usersText = input.value.trim();
+				if (!usersText) {
+					errorDiv.textContent = "Please enter at least one username";
+					errorDiv.style.display = "block";
+					return;
+				}
+
+				const users = usersText
+					.split(",")
+					.map((u) => u.trim())
+					.filter((u) => u);
+
+				saveBtn.disabled = true;
+				errorDiv.style.display = "none";
+
+				try {
+					const response = await authFetch(
+						`/api/conversation/${encodeURIComponent(conversationId)}/share`,
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ users }),
+						},
+					);
+
+					if (response.ok) {
+						const data = await response.json();
+						// Update the display
+						const currentUsersDiv = document.getElementById("current-users");
+						if (data.users && data.users.length > 0) {
+							currentUsersDiv.innerHTML = `
+							<h3>Current Users with Access:</h3>
+							<ul>${data.users.map((u) => `<li>${escapeHtml(u)}</li>`).join("")}</ul>
+						`;
+						}
+						// Success feedback
+						errorDiv.textContent = "Access updated successfully!";
+						errorDiv.style.display = "block";
+						errorDiv.style.backgroundColor = "#204a20";
+						errorDiv.style.color = "#6bff6b";
+						setTimeout(closeModal, 1500);
+					} else {
+						throw new Error("Failed to update access");
+					}
+				} catch (error) {
+					errorDiv.textContent = `Error: ${error.message}`;
+					errorDiv.style.display = "block";
+					saveBtn.disabled = false;
+				}
+			});
 	}
 });

@@ -740,3 +740,137 @@ html {
 .info-modal-close:hover {
 	color: #ffffff;
 }
+
+/* User info and logout */
+.header-with-user {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+}
+
+.user-info {
+	display: flex;
+	align-items: center;
+	gap: 15px;
+	font-size: 0.9em;
+}
+
+#username-display {
+	color: #aaaaaa;
+}
+
+.logout-btn {
+	background-color: #4a4a4a;
+	color: #e0e0e0;
+	border: 1px solid #666;
+	padding: 5px 15px;
+	cursor: pointer;
+	font-size: 0.9em;
+}
+
+.logout-btn:hover {
+	background-color: #5a5a5a;
+}
+
+/* Share modal */
+.share-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.8);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.share-modal-content {
+	background-color: #1a1a1a;
+	border: 1px solid #444;
+	padding: 25px;
+	max-width: 500px;
+	width: 90%;
+	max-height: 80vh;
+	overflow-y: auto;
+}
+
+.share-modal-content h2 {
+	margin-top: 0;
+	color: #4a9eff;
+}
+
+.share-modal-content h3 {
+	color: #e0e0e0;
+	font-size: 1.1em;
+	margin-top: 20px;
+	margin-bottom: 10px;
+}
+
+#current-users ul {
+	list-style-type: none;
+	padding-left: 20px;
+}
+
+#current-users li {
+	color: #c0c0c0;
+	margin-bottom: 5px;
+}
+
+#current-users li::before {
+	content: "• ";
+	color: #666;
+}
+
+.share-form {
+	margin-top: 20px;
+}
+
+#share-users-input {
+	width: 100%;
+	padding: 8px;
+	background-color: #0a0a0a;
+	border: 1px solid #444;
+	color: #e0e0e0;
+	font-family: monospace;
+	margin-bottom: 15px;
+	box-sizing: border-box;
+}
+
+.share-modal-buttons {
+	display: flex;
+	gap: 10px;
+	justify-content: flex-end;
+}
+
+.share-modal-buttons button {
+	padding: 8px 20px;
+	border: none;
+	cursor: pointer;
+	font-family: monospace;
+}
+
+.btn-primary {
+	background-color: #4a9eff;
+	color: white;
+}
+
+.btn-primary:hover {
+	background-color: #3a8eef;
+}
+
+.btn-primary:disabled {
+	background-color: #666;
+	cursor: not-allowed;
+}
+
+.btn-secondary {
+	background-color: #666;
+	color: white;
+}
+
+.btn-secondary:hover {
+	background-color: #777;
+}

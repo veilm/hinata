@@ -19,7 +19,15 @@
 	</head>
 	<body>
 		<div class="container">
-			<a href="/" class="back-link">&larr; Back to Conversations List</a>
+			<div class="header-with-user">
+				<a href="/" class="back-link">&larr; Back to Conversations List</a>
+				<div class="user-info">
+					<span id="username-display"></span>
+					<button type="button" id="logout-btn" class="logout-btn">
+						Logout
+					</button>
+				</div>
+			</div>
 			<div class="title-section">
 				<h1 id="conversation-id-display">Loading conversation...</h1>
 				<div class="title-edit-container">
@@ -42,6 +50,13 @@
 						Pin
 					</button>
 					<!-- Pin button text (Pin/Unpin) dynamically set by JS -->
+					<button
+						type="button"
+						id="share-conversation-btn"
+						class="page-action-button"
+					>
+						Share
+					</button>
 					<button
 						type="button"
 						id="jump-to-latest-btn"

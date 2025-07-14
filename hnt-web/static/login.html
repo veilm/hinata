@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" >
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" >
+		<title>Login - Hinata Web</title>
+		<style>
+        body {
+            font-family: monospace;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .login-container {
+            background-color: #2a2a2a;
+            padding: 30px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4a9eff;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #a0a0a0;
+        }
+        
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            background-color: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            font-family: monospace;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 10px;
+            background-color: #4a9eff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #3a8eef;
+        }
+        
+        button.secondary {
+            background-color: #666;
+        }
+        
+        button.secondary:hover {
+            background-color: #777;
+        }
+        
+        .error {
+            background-color: #4a2020;
+            color: #ff6b6b;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .success {
+            background-color: #204a20;
+            color: #6bff6b;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            display: none;
+        }
+    </style>
+	</head>
+	<body>
+		<div class="login-container">
+			<h1>Hinata Web</h1>
+			<div id="error" class="error"></div>
+			<div id="success" class="success"></div>
+
+			<form id="loginForm">
+				<div class="form-group">
+					<label for="username">Username</label>
+					<input type="text" id="username" name="username" required autofocus >
+				</div>
+
+				<div class="form-group">
+					<label for="password">Password</label>
+					<input type="password" id="password" name="password" required >
+				</div>
+
+				<div class="button-group">
+					<button type="submit">Login</button>
+					<button type="button" class="secondary" onclick="showRegister()">
+						Register
+					</button>
+				</div>
+			</form>
+		</div>
+
+		<script>
+        // Check if already logged in
+        if (localStorage.getItem('username') && localStorage.getItem('password')) {
+            window.location.href = '/';
+        }
+
+        const form = document.getElementById('loginForm');
+        const errorDiv = document.getElementById('error');
+        const successDiv = document.getElementById('success');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        // Store credentials in localStorage
+                        localStorage.setItem('username', username);
+                        localStorage.setItem('password', password);
+                        
+                        // Redirect to main page
+                        window.location.href = '/';
+                    }
+                } else {
+                    showError('Invalid username or password');
+                }
+            } catch (error) {
+                showError('Connection error: ' + error.message);
+            }
+        });
+
+        function showRegister() {
+            const button = event.target;
+            if (button.textContent === 'Register') {
+                button.textContent = 'Cancel';
+                form.removeEventListener('submit', form.onsubmit);
+                form.addEventListener('submit', handleRegister);
+                document.querySelector('button[type="submit"]').textContent = 'Create Account';
+                successDiv.style.display = 'none';
+                errorDiv.style.display = 'none';
+            } else {
+                button.textContent = 'Register';
+                form.removeEventListener('submit', handleRegister);
+                form.addEventListener('submit', form.onsubmit);
+                document.querySelector('button[type="submit"]').textContent = 'Login';
+                successDiv.style.display = 'none';
+                errorDiv.style.display = 'none';
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        showSuccess('Account created successfully! You can now login.');
+                        // Switch back to login mode
+                        document.querySelector('button.secondary').click();
+                    }
+                } else {
+                    const text = await response.text();
+                    showError(text || 'Registration failed');
+                }
+            } catch (error) {
+                showError('Connection error: ' + error.message);
+            }
+        }
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            successDiv.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+        }
+    </script>
+	</body>
+</html>
