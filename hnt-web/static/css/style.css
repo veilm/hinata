@@ -1,0 +1,742 @@
+body {
+	font-family:
+		"Roboto Mono", "Consolas", "Menlo", "Courier New", Courier, monospace; /* Monospace font */
+	margin: 0;
+	/* Default padding for mobile, split for clarity: */
+	padding-left: 0;
+	padding-right: 0;
+	padding-top: 0;
+
+	padding-bottom: 300px; /* Generous space for the fixed message input area */
+	background-color: #000000; /* Dark background */
+	color: #e0e0e0; /* Light text */
+}
+
+/* Apply padding for desktop screens */
+@media (min-width: 768px) {
+	body {
+		padding-top: 20px;
+		padding-left: 22%;
+		padding-right: 22%;
+		/* Override padding-bottom to ensure space for fixed input area + original 20px margin */
+		/* 300px for input area + 20px desired original bottom spacing for content */
+		padding-bottom: 320px;
+	}
+}
+
+h1,
+h2 {
+	color: #e0e0e0;
+	border-bottom: 1px solid #222222;
+	padding-bottom: 8px;
+	margin-top: 0;
+}
+h1 {
+	font-size: 1.8em;
+}
+h2 {
+	font-size: 1.5em;
+}
+
+.hidden {
+	display: none !important;
+}
+
+a {
+	color: #6ec8ff; /* Icy-blue theme color */
+	text-decoration: none;
+}
+a:hover {
+	text-decoration: underline;
+}
+
+.container {
+	background-color: #000000; /* Slightly lighter dark for container */
+	padding: 20px;
+	border-radius: 0; /* Minimal: no rounded corners */
+}
+ul {
+	list-style-type: none;
+	padding: 0;
+}
+li {
+	margin-bottom: 8px;
+}
+
+.message {
+	background-color: #080808; /* Background for each message block */
+	border: 1px solid #222222; /* Subtle border */
+	margin-bottom: 15px;
+	padding: 12px;
+	border-radius: 0; /* Minimal */
+	word-wrap: break-word;
+	white-space: pre-wrap; /* Preserve whitespace and newlines */
+}
+
+.message-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 10px;
+	padding-top: 8px;
+}
+
+.message-info {
+	display: flex;
+	gap: 0.5em;
+	align-items: baseline;
+	font-size: 0.85em;
+	color: #aaaaaa;
+}
+.message-role {
+	text-transform: capitalize;
+	font-weight: bold; /* Role should remain distinguishable */
+	color: #c0c0c0;
+}
+
+.message-system {
+	border-left: 4px solid #fcddf2; /* Light pink */
+}
+
+.message-user {
+	border-left: 4px solid #9d81ae; /* Soft purple */
+}
+.message-assistant {
+	border-left: 4px solid #6ec8ff; /* Icy-blue */
+}
+
+.message-assistant-reasoning {
+	border-left: 4px solid #4b3c6d; /* Cooler purple */
+	background-color: #101010; /* Slightly different background for reasoning block */
+	font-size: 0.9em;
+	padding: 10px;
+}
+.message-unknown {
+	border-left: 4px solid #5c6370; /* Darker gray */
+}
+.back-link {
+	display: inline-block;
+	margin-bottom: 20px;
+	padding: 6px 12px;
+	border: none; /* Removed border */
+	color: #6ec8ff;
+	font-family: inherit; /* Ensure monospace font */
+}
+
+.back-link:hover {
+	background-color: #151515;
+	text-decoration: none;
+}
+
+.other-files-divider {
+	border: 0;
+	border-top: 1px solid #333333;
+	margin-top: 25px;
+	margin-bottom: 20px;
+}
+
+.other-file-entry {
+	background-color: #101010;
+	border: 1px solid #282828;
+	padding: 10px;
+	margin-bottom: 10px;
+	border-radius: 0;
+}
+.other-file-entry strong {
+	/* Filename */
+	display: block;
+	margin-bottom: 5px;
+	color: #c0c0c0;
+}
+
+.other-file-content {
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	background-color: #050505;
+	padding: 8px;
+	max-height: 400px;
+	overflow-y: auto;
+	border: 1px solid #222222;
+	font-size: 0.9em;
+}
+
+.other-file-content-binary {
+	/* Used for info messages about non-text files */
+	color: #888888;
+	font-style: italic;
+	/* No pre-wrap, as the message is short and simple */
+	white-space: normal;
+	background-color: #101010; /* Match entry background perhaps, or keep distinct */
+	padding: 8px;
+	border: 1px solid #222222;
+}
+
+/* Styles for conversation list with title inputs */
+#conversation-list-container ul li {
+	display: flex;
+	align-items: center;
+	margin-bottom: 10px;
+	padding: 5px 0; /* Add some padding for better spacing */
+}
+
+#conversation-list-container ul li a {
+	margin-right: 15px; /* More space between ID and input */
+	white-space: nowrap; /* Prevent ID from wrapping if it's very long */
+	/* existing 'a' styles will apply for color etc. */
+}
+
+.conversation-list-title {
+	margin-left: 10px; /* Space from the ID link */
+	color: #c0c0c0;
+}
+
+/* Style for the conversation title H1 on the conversation page */
+#conversation-id-display {
+	display: flex;
+	align-items: center;
+	word-break: break-all; /* In case of very long title without spaces */
+	/* Existing h1 styles from general rules will apply for font-size, color etc. */
+	margin-bottom: 10px; /* Space it out from the input */
+}
+
+.title-section {
+	margin-bottom: 20px;
+}
+
+.title-edit-container,
+.model-edit-container {
+	display: flex;
+	align-items: center;
+	margin-bottom: 10px; /* Add some space between title and model rows */
+}
+
+.title-edit-container label,
+.model-edit-container label {
+	margin-right: 10px;
+	font-weight: bold;
+	color: #c0c0c0;
+	min-width: 50px; /* Ensure labels align nicely */
+}
+
+#conversation-title-input,
+#conversation-model-input {
+	flex-grow: 1;
+	padding: 8px 10px;
+	background-color: #181818;
+	color: #e0e0e0;
+	border: 1px solid #333333;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1.1em; /* Make it a bit prominent */
+}
+
+#conversation-title-input:focus,
+#conversation-model-input:focus {
+	outline: none;
+	border-color: #6ec8ff;
+	background-color: #151515;
+}
+
+.error-message {
+	color: #ff6b6b; /* A more vibrant red for errors */
+	background-color: #1a0c0c;
+	border: 1px solid #552222;
+	padding: 8px;
+	margin-top: 10px;
+	margin-bottom: 10px;
+}
+
+/* Styles for the "Create New Conversation" button section */
+.create-conversation-section {
+	margin-bottom: 20px; /* Space below the button/section */
+}
+
+#create-conversation-btn {
+	padding: 10px 15px;
+	background-color: #6ec8ff; /* Icy-blue theme color */
+	color: #000000; /* Dark text for contrast on the button */
+	border: none;
+	border-radius: 0; /* Consistent with minimal theme */
+	font-family: inherit;
+	font-size: 1em;
+	cursor: pointer;
+	transition: background-color 0.2s ease;
+}
+
+#create-conversation-btn:hover {
+	background-color: #4da3e0; /* Slightly darker icy-blue on hover */
+}
+
+#create-conversation-btn:disabled {
+	background-color: #222222; /* Disabled look */
+	color: #888888;
+	cursor: not-allowed;
+}
+
+/* Styles for the message input area at the bottom of conversation page */
+
+#message-input-area {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	/* width: auto; implicitly, controlled by left/right offsets */
+
+	box-sizing: border-box;
+	background-color: #000000; /* Match .container background or a suitable bar color */
+	padding: 10px 20px; /* Vertical 10px, horizontal 20px for content inside the bar. Desktop will adjust left/right. */
+	z-index: 1000; /* Ensure it's above other content */
+	border-top: 1px solid #222222; /* Consistent border color for separation */
+}
+
+/* Adjust #message-input-area positioning on desktop to align with body padding */
+@media (min-width: 768px) {
+	#message-input-area {
+		left: 22%; /* Align with body's own padding */
+		right: 22%; /* Align with body's own padding */
+	}
+}
+
+#new-message-content {
+	width: 100%;
+	box-sizing: border-box; /* Include padding and border in the element's total width and height */
+	padding: 10px;
+	margin-bottom: 10px;
+	background-color: #181818;
+	color: #e0e0e0;
+	border: 1px solid #333333;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1em;
+	min-height: 80px; /* Ensure a decent starting height */
+}
+
+#new-message-content:focus {
+	outline: none;
+	border-color: #9d81ae;
+	background-color: #151515;
+}
+
+#message-buttons {
+	display: flex;
+	/* gap: 10px; */ /* Space between buttons */
+	flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+	position: relative;
+}
+
+/* Base style for action buttons at the bottom of the page */
+#message-buttons button {
+	padding: 10px 15px;
+	border: none;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1em;
+	cursor: pointer;
+	transition: background-color 0.2s ease;
+}
+
+/* Default: "Gen Assistant" uses the theme color */
+
+.btn-gen-assistant {
+	background-color: #6ec8ff;
+	color: #000000;
+}
+.btn-gen-assistant:hover {
+	background-color: #4da3e0;
+}
+
+/* "Add System" and "Add Assistant" buttons: background like textarea (#2c2c2c) */
+
+.btn-add-system,
+.btn-add-assistant {
+	background-color: #101010; /* Match textarea background */
+	color: #e0e0e0; /* Light text */
+}
+.btn-add-system:hover,
+.btn-add-assistant:hover {
+	background-color: #191919; /* Slightly lighter version of #2c2c2c for hover */
+}
+
+/* "Add User" button: purple */
+
+.btn-add-user {
+	background-color: #9d81ae; /* Purple from .message-user border */
+	color: #000000; /* Dark text for contrast */
+}
+.btn-add-user:hover {
+	background-color: #89709c; /* Darker purple on hover */
+}
+
+#primary-action-btn {
+	border-radius: 4px 0 0 4px;
+	flex-grow: 1; /* Take up remaining space */
+}
+
+#dropdown-toggle-btn {
+	border-radius: 0 4px 4px 0;
+	padding-left: 8px;
+	padding-right: 8px;
+	/* color must be set for the arrow to be visible after removing background */
+	color: #e0e0e0;
+}
+
+#primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn {
+	background-color: #4da3e0; /* Darker blue, matches main button hover */
+	color: #000000; /* Match main button text color */
+}
+#primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn:hover {
+	background-color: #3b8ac0; /* Even darker blue */
+}
+
+#primary-action-btn.btn-add-user + #dropdown-toggle-btn {
+	background-color: #89709c; /* Darker purple, matches main button hover */
+	color: #000000; /* Match main button text color */
+}
+#primary-action-btn.btn-add-user + #dropdown-toggle-btn:hover {
+	background-color: #755f88; /* Even darker purple */
+}
+
+/* When the primary action button is disabled (e.g., during generation), style the an-ddjacent dropdown toggle to match. */
+#primary-action-btn:disabled + #dropdown-toggle-btn {
+	background-color: #222222;
+	color: #e0e0e0;
+}
+
+#action-dropdown-menu {
+	position: absolute;
+	bottom: 100%;
+	right: 0;
+	z-index: 1001;
+	background-color: #101010;
+	border: 1px solid #333333;
+	box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.2);
+	border-radius: 4px;
+	margin-bottom: 5px;
+	min-width: 180px;
+	overflow: hidden; /* To apply border-radius to children */
+}
+
+#action-dropdown-menu button {
+	display: block;
+	width: 100%;
+	text-align: left;
+	background-color: transparent;
+	color: #e0e0e0;
+}
+
+#action-dropdown-menu button:hover {
+	background-color: #191919;
+}
+/* Disabled state for all buttons in this group */
+#message-buttons button:disabled {
+	background-color: #222222;
+	color: #e0e0e0;
+	cursor: not-allowed;
+	border: none;
+}
+
+/* Styles for Edit/Archive buttons within messages */
+.message-actions {
+	/* margin-top, padding-top, and border-top are now handled by .message-footer */
+	display: flex;
+	gap: 8px; /* Space between buttons */
+	align-items: center;
+	justify-content: flex-end; /* Align buttons to the right */
+}
+
+.message-actions button {
+	padding: 6px 10px; /* Smaller buttons */
+	font-size: 0.85em; /* Will be overridden by emoji size mostly, but good for consistency */
+	/* background-color: #4a4a4a; Original, but overridden by transparent below */
+	/* color: #e0e0e0; Original, but overridden by theme color below */
+	/* border: none; Original, but overridden by theme color border below */
+	border-radius: 0;
+	cursor: pointer;
+	transition:
+		background-color 0.2s ease,
+		color 0.2s ease,
+		border-color 0.2s ease;
+	/* font-family: inherit; -- Not essential for icon-only buttons */
+	/* filter: grayscale(100%); REMOVED */
+	display: inline-flex; /* Helps center SVG if it's the only child */
+	align-items: center;
+	justify-content: center;
+	line-height: 1; /* Prevents extra space if button just has icon */
+	background-color: transparent; /* Keep transparent background */
+	border-width: 1px;
+	border-style: solid;
+	/* Default icon/border color (matches assistant, acts as fallback for unknown message types) */
+	color: #6ec8ff;
+	border-color: #6ec8ff;
+}
+.message-actions button:hover {
+	/* Default hover background (matches assistant, acts as fallback) */
+	background-color: rgba(110, 200, 255, 0.1);
+}
+
+/* User Message Icons */
+.message-user .message-actions button {
+	/* Purple */
+	color: #9d81ae;
+	border-color: #9d81ae;
+}
+.message-user .message-actions button:hover {
+	background-color: rgba(177, 157, 255, 0.1); /* Purplish tint */
+}
+
+/* Assistant Message Icons (explicitly sets the default, good for clarity) */
+.message-assistant .message-actions button {
+	color: #6ec8ff; /* Icy-blue */
+	border-color: #6ec8ff;
+}
+.message-assistant .message-actions button:hover {
+	background-color: rgba(110, 200, 255, 0.1); /* Icy-blue tint */
+}
+
+/* System Message Icons */
+.message-system .message-actions button {
+	color: #e0e0e0; /* White-ish */
+	border-color: #e0e0e0;
+}
+.message-system .message-actions button:hover {
+	background-color: rgba(224, 224, 224, 0.1); /* White-ish tint */
+}
+
+/* Assistant Reasoning Message Icons */
+.message-assistant-reasoning .message-actions button {
+	color: #b19dff; /* Light purple */
+	border-color: #b19dff;
+}
+.message-assistant-reasoning .message-actions button:hover {
+	background-color: rgba(187, 57, 103, 0.1); /* Purple tint */
+}
+
+.message-actions button svg {
+	width: 1em; /* Scales with button's font-size */
+	height: 1em; /* Scales with button's font-size */
+}
+
+/* Specific class styles for .btn-edit, .btn-archive, .btn-save, .btn-cancel are now mostly covered by the base .message-actions button style above.
+   If any specific tweaks become necessary (e.g. for emoji alignment if it differs), they can be added back.
+   For now, we achieve "all gray" by removing their specific background and border colors. */
+
+.message-actions .btn-edit {
+	/* Placeholder if specific style is needed */
+}
+
+.message-actions .btn-archive {
+	/* Was red, now inherits gray */
+}
+.message-actions .btn-archive:hover {
+	/* Inherits gray hover */
+}
+
+.message-actions .btn-save {
+	/* Was green, now inherits gray */
+}
+.message-actions .btn-save:hover {
+	/* Inherits gray hover */
+}
+
+.message-actions .btn-cancel {
+	/* Was a different gray, now inherits standard gray */
+}
+.message-actions .btn-cancel:hover {
+	/* Inherits gray hover */
+}
+
+/* Textarea for editing message content within a message block */
+
+.message-content-wrapper textarea {
+	/* Target textarea inside the content wrapper */
+	width: 100%;
+	box-sizing: border-box;
+	padding: 8px;
+	margin: 0; /* Remove margin if it's replacing content directly */
+	background-color: #101010; /* Match new message textarea */
+	color: #e0e0e0;
+	border: 1px solid #333333;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1em; /* Should match the message's font size */
+	min-height: 100px; /* Or dynamically set based on content */
+}
+
+.message-content-wrapper textarea:focus {
+	outline: none;
+	border-color: #6ec8ff; /* Theme color for focus */
+	background-color: #151515; /* Slightly lighter background on focus */
+}
+
+.message-user .message-content-wrapper textarea:focus {
+	border-color: #9d81ae;
+}
+
+.message-system .message-content-wrapper textarea:focus {
+	border-color: #fcddf2; /* Match system message theme */
+}
+
+.message-assistant-reasoning .message-content-wrapper textarea:focus {
+	border-color: #b19dff; /* Match assistant reasoning theme */
+}
+
+/* Fork Conversation Button Style */
+/* Grouping for page-level action buttons */
+.page-actions-group {
+	display: flex;
+	align-items: flex-start; /* Align items to the start of the cross axis */
+	gap: 10px; /* Spacing between buttons in the group */
+	margin-top: 10px; /* Top margin for the group */
+}
+
+/* General style for page-level action buttons like Pin/Fork */
+.page-action-button {
+	padding: 10px 15px;
+	border: none;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1em;
+	cursor: pointer;
+	transition: background-color 0.2s ease;
+	display: block; /* Behaves as flex item; width determined by content */
+	width: fit-content;
+	/* Margins are handled by the parent flex container (.page-actions-group) if applicable */
+}
+
+.page-action-button:disabled {
+	background-color: #222222 !important; /* Use !important to override specific styles if needed */
+	color: #888888 !important;
+	cursor: not-allowed;
+}
+
+/* Specific style for Fork Conversation Button */
+
+#fork-conversation-btn {
+	background-color: #101010;
+	color: #6ec8ff;
+}
+#fork-conversation-btn:hover {
+	background-color: #191919;
+}
+
+/* Specific style for Pin/Unpin Toggle Button */
+
+#pin-toggle-btn {
+	background-color: #101010;
+	color: #6ec8ff;
+}
+#pin-toggle-btn:hover {
+	background-color: #191919;
+}
+
+/* Specific style for Jump to Latest Message Button */
+
+#jump-to-latest-btn {
+	background-color: #101010; /* Match 'Add System' button background */
+	color: #6ec8ff;
+}
+#jump-to-latest-btn:hover {
+	background-color: #191919; /* Match 'Add System' button hover background */
+}
+
+/* Styling for pinned items in the conversation list */
+#conversation-list-container ul li.pinned-conversation a,
+#conversation-list-container
+	ul
+	li.pinned-conversation
+	.conversation-list-title {
+	font-weight: bold;
+}
+
+.pin-emoji {
+	/* filter: grayscale(100%); REMOVED */
+	display: inline-block; /* Better control over styling if needed */
+	margin-left: 4px; /* Space from title */
+	color: white; /* For SVG stroke="currentColor" */
+}
+
+.pin-emoji svg {
+	width: 1em; /* Scale with surrounding text font-size */
+	height: 1em;
+	vertical-align: -0.15em; /* Fine-tune baseline alignment */
+}
+
+/* Custom Scrollbars */
+/* For Webkit-based browsers (Chrome, Safari, Edge, Opera) */
+::-webkit-scrollbar {
+	width: 8px; /* Width of vertical scrollbar */
+	height: 8px; /* Height of horizontal scrollbar */
+}
+
+::-webkit-scrollbar-track {
+	background: #000000; /* Background of the scrollbar track, match container bg */
+	border-radius: 4px; /* Optional: rounding for the track */
+}
+
+::-webkit-scrollbar-thumb {
+	background-color: #333333; /* Color of the scrollbar thumb */
+	border-radius: 4px; /* Rounded corners for the thumb */
+	/* Create a "padding" effect by making the border same color as the track */
+	border: 2px solid #000000;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background-color: #555555; /* Color of the thumb on hover */
+}
+
+/* For Firefox */
+html {
+	scrollbar-width: thin; /* "auto" or "thin" */
+	scrollbar-color: #333333 #000000; /* thumbColor trackColor */
+}
+
+/* Ensure specific elements with potential overflow also respect this, if needed, though html rule should be enough */
+.other-file-content,
+#new-message-content {
+	/* TextArea might show scrollbar if JS max-height is reached */
+	/* Firefox scrollbar styles should be inherited from html */
+}
+
+/* Modal styles for message info */
+.info-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	z-index: 2000;
+}
+
+.info-modal-content {
+	background: #080808;
+	color: #e0e0e0;
+	padding: 25px 50px 25px 25px;
+	border: 1px solid #333;
+	position: relative;
+	min-width: 300px;
+	max-width: 500px;
+	font-size: 1.1em;
+}
+.info-modal-content p {
+	margin: 0 0 10px 0;
+}
+.info-modal-content strong {
+	color: #6ec8ff;
+}
+.info-modal-close {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	background: transparent;
+	border: none;
+	color: #aaaaaa;
+	cursor: pointer;
+	padding: 5px;
+}
+.info-modal-close:hover {
+	color: #ffffff;
+}

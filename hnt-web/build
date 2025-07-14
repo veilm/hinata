@@ -15,7 +15,7 @@ fi
 # Install web assets
 web="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/web"
 mkdir -p "$web"
-cp -r ../web/static/* "$web/"
+cp -r static/* "$web/"
 
 echo "hnt-web/build: installed hnt-web assets in $web"
 

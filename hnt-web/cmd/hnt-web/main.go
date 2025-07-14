@@ -1,17 +1,22 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/veilm/hinata/hnt-chat/pkg/chat"
+	"github.com/veilm/hinata/hnt-llm/pkg/llm"
 )
 
 type ConversationInfo struct {
@@ -50,14 +55,6 @@ type MessageAddRequest struct {
 
 type MessageContentUpdateRequest struct {
 	Content string `json:"content"`
-}
-
-func getDataDir() string {
-	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
-		return filepath.Join(xdgData, "hinata", "conversations")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "hinata", "conversations")
 }
 
 func getWebDir() string {
@@ -106,8 +103,13 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataDir := getDataDir()
-	entries, err := os.ReadDir(dataDir)
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	entries, err := os.ReadDir(baseDir)
 	if err != nil {
 		json.NewEncoder(w).Encode([]ConversationInfo{})
 		return
@@ -125,13 +127,13 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check for .title file
-		titlePath := filepath.Join(dataDir, entry.Name(), ".title")
+		titlePath := filepath.Join(baseDir, entry.Name(), ".title")
 		if data, err := os.ReadFile(titlePath); err == nil {
 			conv.Title = strings.TrimSpace(string(data))
 		}
 
 		// Check for .pin file
-		pinPath := filepath.Join(dataDir, entry.Name(), ".pin")
+		pinPath := filepath.Join(baseDir, entry.Name(), ".pin")
 		if _, err := os.Stat(pinPath); err == nil {
 			conv.IsPinned = true
 		}
@@ -248,8 +250,13 @@ func handleConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func getConversationDetail(w http.ResponseWriter, convID string) {
-	dataDir := getDataDir()
-	convDir := filepath.Join(dataDir, convID)
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	convDir := filepath.Join(baseDir, convID)
 
 	if _, err := os.Stat(convDir); os.IsNotExist(err) {
 		http.Error(w, "Conversation not found", http.StatusNotFound)
@@ -279,45 +286,56 @@ func getConversationDetail(w http.ResponseWriter, convID string) {
 		detail.IsPinned = true
 	}
 
-	// Read message files
+	// Use chat.ListMessages to get messages
+	messages, err := chat.ListMessages(convDir)
+	if err != nil {
+		http.Error(w, "Failed to list messages", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert messages and read content
+	for _, msg := range messages {
+		// Skip assistant-reasoning messages from the web UI
+		if msg.Role == chat.RoleAssistantReasoning {
+			continue
+		}
+
+		content, err := os.ReadFile(msg.Path)
+		if err != nil {
+			continue
+		}
+
+		// Extract filename from path
+		filename := filepath.Base(msg.Path)
+
+		// Format content based on role prefix in original Python
+		contentStr := string(content)
+		role := string(msg.Role)
+
+		// Remove role prefixes if they exist (for backward compatibility)
+		if strings.HasPrefix(contentStr, "Human: ") {
+			contentStr = strings.TrimPrefix(contentStr, "Human: ")
+		} else if strings.HasPrefix(contentStr, "Assistant: ") {
+			contentStr = strings.TrimPrefix(contentStr, "Assistant: ")
+		} else if strings.HasPrefix(contentStr, "System: ") {
+			contentStr = strings.TrimPrefix(contentStr, "System: ")
+		}
+
+		detail.Messages = append(detail.Messages, MessageFile{
+			Filename: filename,
+			Role:     role,
+			Content:  strings.TrimSpace(contentStr),
+		})
+	}
+
+	// Get other files
 	entries, _ := os.ReadDir(convDir)
 	for _, entry := range entries {
 		name := entry.Name()
-		if strings.HasSuffix(name, ".md") && !strings.HasPrefix(name, ".") {
-			msgPath := filepath.Join(convDir, name)
-			content, err := os.ReadFile(msgPath)
-			if err != nil {
-				continue
-			}
-
-			// Determine role from content
-			role := "user"
-			contentStr := string(content)
-			if strings.HasPrefix(contentStr, "Human: ") {
-				role = "user"
-				contentStr = strings.TrimPrefix(contentStr, "Human: ")
-			} else if strings.HasPrefix(contentStr, "Assistant: ") {
-				role = "assistant"
-				contentStr = strings.TrimPrefix(contentStr, "Assistant: ")
-			} else if strings.HasPrefix(contentStr, "System: ") {
-				role = "system"
-				contentStr = strings.TrimPrefix(contentStr, "System: ")
-			}
-
-			detail.Messages = append(detail.Messages, MessageFile{
-				Filename: name,
-				Role:     role,
-				Content:  strings.TrimSpace(contentStr),
-			})
-		} else if !strings.HasPrefix(name, ".") && !entry.IsDir() {
+		if !strings.HasPrefix(name, ".") && !entry.IsDir() && !strings.HasSuffix(name, ".md") {
 			detail.Files = append(detail.Files, name)
 		}
 	}
-
-	// Sort messages by filename
-	sort.Slice(detail.Messages, func(i, j int) bool {
-		return detail.Messages[i].Filename < detail.Messages[j].Filename
-	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(detail)
@@ -329,34 +347,81 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("hnt-chat", "new")
-	output, err := cmd.CombinedOutput()
+	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create conversation: %s", output), http.StatusInternalServerError)
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
 		return
 	}
 
-	convID := strings.TrimSpace(string(output))
+	convDir, err := chat.CreateNewConversation(baseDir)
+	if err != nil {
+		http.Error(w, "Failed to create conversation", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract just the ID from the full path
+	convID := filepath.Base(convDir)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": convID})
 }
 
 func forkConversation(w http.ResponseWriter, convID string) {
-	cmd := exec.Command("hnt-chat", "fork", convID)
-	output, err := cmd.CombinedOutput()
+	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to fork conversation: %s", output), http.StatusInternalServerError)
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
 		return
 	}
 
-	newID := strings.TrimSpace(string(output))
+	sourceDir := filepath.Join(baseDir, convID)
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		http.Error(w, "Source conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// Create new conversation
+	newConvDir, err := chat.CreateNewConversation(baseDir)
+	if err != nil {
+		http.Error(w, "Failed to create new conversation", http.StatusInternalServerError)
+		return
+	}
+
+	// Copy all files from source to new conversation
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		http.Error(w, "Failed to read source conversation", http.StatusInternalServerError)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		srcPath := filepath.Join(sourceDir, entry.Name())
+		dstPath := filepath.Join(newConvDir, entry.Name())
+
+		srcData, err := os.ReadFile(srcPath)
+		if err != nil {
+			continue
+		}
+
+		os.WriteFile(dstPath, srcData, 0644)
+	}
+
+	newID := filepath.Base(newConvDir)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": newID})
 }
 
 func togglePin(w http.ResponseWriter, convID string) {
-	dataDir := getDataDir()
-	pinPath := filepath.Join(dataDir, convID, ".pin")
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	pinPath := filepath.Join(baseDir, convID, ".pin")
 
 	if _, err := os.Stat(pinPath); err == nil {
 		// Unpin
@@ -376,38 +441,34 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	dataDir := getDataDir()
-	convDir := filepath.Join(dataDir, convID)
-
-	// Find next message number
-	entries, _ := os.ReadDir(convDir)
-	maxNum := 0
-	for _, entry := range entries {
-		name := entry.Name()
-		if strings.HasSuffix(name, ".md") && len(name) > 3 {
-			if num := 0; fmt.Sscanf(name[:3], "%03d", &num) == 1 {
-				if num > maxNum {
-					maxNum = num
-				}
-			}
-		}
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
 	}
 
-	filename := fmt.Sprintf("%03d.md", maxNum+1)
-	msgPath := filepath.Join(convDir, filename)
+	convDir := filepath.Join(baseDir, convID)
 
-	// Format content based on role
+	// Parse role
+	role, err := chat.ParseRole(req.Role)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid role: %s", req.Role), http.StatusBadRequest)
+		return
+	}
+
+	// Format content based on role (for backward compatibility)
 	content := req.Content
-	switch req.Role {
-	case "user":
+	switch role {
+	case chat.RoleUser:
 		content = "Human: " + content
-	case "assistant":
+	case chat.RoleAssistant:
 		content = "Assistant: " + content
-	case "system":
+	case chat.RoleSystem:
 		content = "System: " + content
 	}
 
-	if err := os.WriteFile(msgPath, []byte(content), 0644); err != nil {
+	filename, err := chat.WriteMessageFile(convDir, role, content)
+	if err != nil {
 		http.Error(w, "Failed to write message", http.StatusInternalServerError)
 		return
 	}
@@ -417,17 +478,35 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 }
 
 func generateAssistant(w http.ResponseWriter, convID string) {
-	cmd := exec.Command("hnt-chat", "gen", convID)
-	stdout, err := cmd.StdoutPipe()
+	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
-		http.Error(w, "Failed to create pipe", http.StatusInternalServerError)
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
 		return
 	}
 
-	if err := cmd.Start(); err != nil {
-		http.Error(w, "Failed to start command", http.StatusInternalServerError)
+	convDir := filepath.Join(baseDir, convID)
+
+	// Read model from .model file
+	model := "openrouter/deepseek/deepseek-chat-v3-0324:free"
+	if data, err := os.ReadFile(filepath.Join(convDir, ".model")); err == nil {
+		model = strings.TrimSpace(string(data))
+	}
+
+	// Pack conversation
+	var buf bytes.Buffer
+	if err := chat.PackConversation(convDir, &buf, true); err != nil {
+		http.Error(w, "Failed to pack conversation", http.StatusInternalServerError)
 		return
 	}
+
+	config := llm.Config{
+		Model:            model,
+		SystemPrompt:     "",
+		IncludeReasoning: false,
+	}
+
+	ctx := context.Background()
+	eventChan, errChan := llm.StreamLLMResponse(ctx, config, buf.String())
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -439,19 +518,51 @@ func generateAssistant(w http.ResponseWriter, convID string) {
 		return
 	}
 
-	buf := make([]byte, 1024)
+	var contentBuffer strings.Builder
+	var reasoningBuffer strings.Builder
+
 	for {
-		n, err := stdout.Read(buf)
-		if n > 0 {
-			fmt.Fprintf(w, "data: %s\n\n", string(buf[:n]))
-			flusher.Flush()
-		}
-		if err != nil {
-			break
+		select {
+		case event, ok := <-eventChan:
+			if !ok {
+				goto done
+			}
+
+			if event.Content != "" {
+				fmt.Fprintf(w, "data: %s\n\n", event.Content)
+				flusher.Flush()
+				contentBuffer.WriteString(event.Content)
+			}
+
+			if event.Reasoning != "" {
+				reasoningBuffer.WriteString(event.Reasoning)
+			}
+
+		case err := <-errChan:
+			if err != nil {
+				fmt.Fprintf(w, "data: [ERROR] %s\n\n", err.Error())
+				flusher.Flush()
+				return
+			}
 		}
 	}
 
-	cmd.Wait()
+done:
+	// Write the assistant message to file
+	fullResponse := contentBuffer.String()
+	if reasoningBuffer.Len() > 0 {
+		fullResponse = fmt.Sprintf("<think>%s</think>\n%s", reasoningBuffer.String(), contentBuffer.String())
+	}
+
+	if fullResponse != "" {
+		_, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, fullResponse)
+		if err != nil {
+			fmt.Fprintf(w, "data: [ERROR] Failed to save message\n\n")
+			flusher.Flush()
+			return
+		}
+	}
+
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 }
@@ -463,8 +574,13 @@ func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	dataDir := getDataDir()
-	titlePath := filepath.Join(dataDir, convID, ".title")
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	titlePath := filepath.Join(baseDir, convID, ".title")
 
 	if err := os.WriteFile(titlePath, []byte(req.Title), 0644); err != nil {
 		http.Error(w, "Failed to update title", http.StatusInternalServerError)
@@ -482,8 +598,13 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	dataDir := getDataDir()
-	modelPath := filepath.Join(dataDir, convID, ".model")
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	modelPath := filepath.Join(baseDir, convID, ".model")
 
 	if err := os.WriteFile(modelPath, []byte(req.Model), 0644); err != nil {
 		http.Error(w, "Failed to update model", http.StatusInternalServerError)
@@ -501,8 +622,13 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 		return
 	}
 
-	dataDir := getDataDir()
-	msgPath := filepath.Join(dataDir, convID, filename)
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	msgPath := filepath.Join(baseDir, convID, filename)
 
 	// Archive current version
 	content, err := os.ReadFile(msgPath)
@@ -511,7 +637,7 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 		return
 	}
 
-	archiveDir := filepath.Join(dataDir, convID, "archive")
+	archiveDir := filepath.Join(baseDir, convID, "archive")
 	os.MkdirAll(archiveDir, 0755)
 
 	timestamp := time.Now().Unix()
@@ -532,8 +658,13 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 }
 
 func archiveMessage(w http.ResponseWriter, convID string, filename string) {
-	dataDir := getDataDir()
-	msgPath := filepath.Join(dataDir, convID, filename)
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return
+	}
+
+	msgPath := filepath.Join(baseDir, convID, filename)
 
 	content, err := os.ReadFile(msgPath)
 	if err != nil {
@@ -541,7 +672,7 @@ func archiveMessage(w http.ResponseWriter, convID string, filename string) {
 		return
 	}
 
-	archiveDir := filepath.Join(dataDir, convID, "archive")
+	archiveDir := filepath.Join(baseDir, convID, "archive")
 	os.MkdirAll(archiveDir, 0755)
 
 	timestamp := time.Now().Unix()
