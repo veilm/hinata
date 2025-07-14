@@ -11,7 +11,7 @@ fi
 echo "hinata: building binaries..."
 
 # List of all Go binaries to build
-bins="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-agent shell-exec tui-select"
+bins="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-agent shell-exec tui-select hnt-web"
 
 # Download dependencies for each module
 echo "hinata: downloading dependencies..."

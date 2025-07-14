@@ -29,7 +29,7 @@ INSTALL_DIR="/usr/local/bin/"
 mkdir -p bin
 
 # List of binaries to install (in order similar to Rust version)
-bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-agent shell-exec tui-select"
+bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-agent shell-exec tui-select hnt-web"
 
 echo "hinata: installing binaries to $INSTALL_DIR..."
 
@@ -41,3 +41,11 @@ for bin in $bins; do
         echo "hinata: warning: $bin.out not found in ./bin/"
     fi
 done
+
+# Install web assets
+if [ -d "hnt-web/static" ]; then
+    web="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/web"
+    mkdir -p "$web"
+    cp -r hnt-web/static/* "$web/"
+    echo "hinata: installed web assets to $web"
+fi
