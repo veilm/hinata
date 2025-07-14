@@ -30,12 +30,12 @@ type MessageFile struct {
 }
 
 type ConversationDetail struct {
-	ID       string        `json:"id"`
-	Title    string        `json:"title"`
-	Model    string        `json:"model"`
-	Messages []MessageFile `json:"messages"`
-	Files    []string      `json:"files"`
-	IsPinned bool          `json:"is_pinned"`
+	ID         string        `json:"conversation_id"`
+	Title      string        `json:"title"`
+	Model      string        `json:"model"`
+	Messages   []MessageFile `json:"messages"`
+	OtherFiles []string      `json:"other_files"`
+	IsPinned   bool          `json:"is_pinned"`
 }
 
 type TitleUpdateRequest struct {
@@ -125,13 +125,13 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check for .title file
-		titlePath := filepath.Join(baseDir, entry.Name(), ".title")
+		titlePath := filepath.Join(baseDir, entry.Name(), "title.txt")
 		if data, err := os.ReadFile(titlePath); err == nil {
 			conv.Title = strings.TrimSpace(string(data))
 		}
 
 		// Check for .pin file
-		pinPath := filepath.Join(baseDir, entry.Name(), ".pin")
+		pinPath := filepath.Join(baseDir, entry.Name(), "pinned.txt")
 		if _, err := os.Stat(pinPath); err == nil {
 			conv.IsPinned = true
 		}
@@ -148,7 +148,9 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(conversations)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"conversations": conversations,
+	})
 }
 
 func handleConversation(w http.ResponseWriter, r *http.Request) {
@@ -262,25 +264,25 @@ func getConversationDetail(w http.ResponseWriter, convID string) {
 	}
 
 	detail := ConversationDetail{
-		ID:       convID,
-		Title:    convID,
-		Model:    "openrouter/deepseek/deepseek-chat-v3-0324:free",
-		Messages: []MessageFile{},
-		Files:    []string{},
+		ID:         convID,
+		Title:      convID,
+		Model:      "openrouter/deepseek/deepseek-chat-v3-0324:free",
+		Messages:   []MessageFile{},
+		OtherFiles: []string{},
 	}
 
 	// Read title
-	if data, err := os.ReadFile(filepath.Join(convDir, ".title")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(convDir, "title.txt")); err == nil {
 		detail.Title = strings.TrimSpace(string(data))
 	}
 
 	// Read model
-	if data, err := os.ReadFile(filepath.Join(convDir, ".model")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(convDir, "model.txt")); err == nil {
 		detail.Model = strings.TrimSpace(string(data))
 	}
 
 	// Check pin status
-	if _, err := os.Stat(filepath.Join(convDir, ".pin")); err == nil {
+	if _, err := os.Stat(filepath.Join(convDir, "pinned.txt")); err == nil {
 		detail.IsPinned = true
 	}
 
@@ -331,7 +333,7 @@ func getConversationDetail(w http.ResponseWriter, convID string) {
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, ".") && !entry.IsDir() && !strings.HasSuffix(name, ".md") {
-			detail.Files = append(detail.Files, name)
+			detail.OtherFiles = append(detail.OtherFiles, name)
 		}
 	}
 
@@ -419,7 +421,7 @@ func togglePin(w http.ResponseWriter, convID string) {
 		return
 	}
 
-	pinPath := filepath.Join(baseDir, convID, ".pin")
+	pinPath := filepath.Join(baseDir, convID, "pinned.txt")
 
 	if _, err := os.Stat(pinPath); err == nil {
 		// Unpin
@@ -486,7 +488,7 @@ func generateAssistant(w http.ResponseWriter, convID string) {
 
 	// Read model from .model file
 	model := "openrouter/deepseek/deepseek-chat-v3-0324:free"
-	if data, err := os.ReadFile(filepath.Join(convDir, ".model")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(convDir, "model.txt")); err == nil {
 		model = strings.TrimSpace(string(data))
 	}
 
@@ -578,7 +580,7 @@ func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	titlePath := filepath.Join(baseDir, convID, ".title")
+	titlePath := filepath.Join(baseDir, convID, "title.txt")
 
 	if err := os.WriteFile(titlePath, []byte(req.Title), 0644); err != nil {
 		http.Error(w, "Failed to update title", http.StatusInternalServerError)
@@ -602,7 +604,7 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	modelPath := filepath.Join(baseDir, convID, ".model")
+	modelPath := filepath.Join(baseDir, convID, "model.txt")
 
 	if err := os.WriteFile(modelPath, []byte(req.Model), 0644); err != nil {
 		http.Error(w, "Failed to update model", http.StatusInternalServerError)
