@@ -3,26 +3,27 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"hnt-agent/pkg/spinner"
 	"os"
 	"os/exec"
 	"strings"
 
-	"hnt-agent/pkg/spinner"
+	"github.com/spf13/cobra"
 )
 
-func main() {
+func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	fmt.Println("=== UNICODE DETECTION SYSTEM TEST ===\n")
 
 	// 1. Environment Variables
 	fmt.Println("1. ENVIRONMENT VARIABLES:")
 	fmt.Println("-------------------------")
-	envVars := []string{"NO_UNICODE", "TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"}
+	envVars := []string{"HINATA_ENABLE_UNICODE_DETECTION", "NO_UNICODE", "TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"}
 	for _, v := range envVars {
 		val := os.Getenv(v)
 		if val == "" {
-			fmt.Printf("%-12s: (not set)\n", v)
+			fmt.Printf("%-35s: (not set)\n", v)
 		} else {
-			fmt.Printf("%-12s: %s\n", v, val)
+			fmt.Printf("%-35s: %s\n", v, val)
 		}
 	}
 
@@ -33,8 +34,8 @@ func main() {
 	utf8Found := false
 	for _, v := range localeVars {
 		if locale := os.Getenv(v); locale != "" {
-			isUTF8 := strings.Contains(strings.ToLower(locale), "utf-8") || 
-			          strings.Contains(strings.ToLower(locale), "utf8")
+			isUTF8 := strings.Contains(strings.ToLower(locale), "utf-8") ||
+				strings.Contains(strings.ToLower(locale), "utf8")
 			fmt.Printf("%-12s: %s (UTF-8: %v)\n", v, locale, isUTF8)
 			if isUTF8 {
 				utf8Found = true
@@ -48,9 +49,9 @@ func main() {
 	fmt.Println("----------------------")
 	term := strings.ToLower(os.Getenv("TERM"))
 	fmt.Printf("TERM value: %s\n", os.Getenv("TERM"))
-	fmt.Printf("Is Linux console: %v\n", 
+	fmt.Printf("Is Linux console: %v\n",
 		strings.Contains(term, "linux") && !strings.Contains(term, "xterm"))
-	
+
 	// Check modern terminal list
 	modernTerms := []string{
 		"xterm-256color", "screen-256color", "tmux-256color",
@@ -72,13 +73,13 @@ func main() {
 	// 4. Font Detection
 	fmt.Println("\n4. FONT DETECTION (fc-list):")
 	fmt.Println("----------------------------")
-	
+
 	// Check if fc-list exists
 	if _, err := exec.LookPath("fc-list"); err != nil {
 		fmt.Println("fc-list: NOT AVAILABLE")
 	} else {
 		fmt.Println("fc-list: Available")
-		
+
 		// Phase 1: Check for U+1FB90
 		fmt.Println("\nPhase 1 - Querying fonts with U+1FB90:")
 		cmd := exec.Command("fc-list", ":charset=1fb90")
@@ -96,7 +97,7 @@ func main() {
 						fmt.Printf("  [%d] %s\n", i+1, font)
 					}
 				}
-				
+
 				// Check for known good fonts
 				fmt.Println("\nChecking for known good fonts:")
 				goodFonts := []string{
@@ -119,19 +120,19 @@ func main() {
 				}
 			}
 		}
-		
+
 		// Phase 2: Multiple character testing
 		fmt.Println("\nPhase 2 - Testing multiple Legacy Computing characters:")
 		testChars := []string{"1fb90", "1fb95", "1fba0", "1fbb0"}
 		supportCount := 0
-		
+
 		for _, char := range testChars {
 			cmd := exec.Command("fc-list", ":charset="+char, "family", "style")
 			output, err := cmd.Output()
 			if err == nil && len(bytes.TrimSpace(output)) > 0 {
 				supportCount++
 				families := strings.Split(strings.TrimSpace(string(output)), "\n")
-				fmt.Printf("  ✓ U+%s supported (%d fonts)\n", 
+				fmt.Printf("  ✓ U+%s supported (%d fonts)\n",
 					strings.ToUpper(char), len(families))
 			} else {
 				fmt.Printf("  ✗ U+%s not supported\n", strings.ToUpper(char))
@@ -144,18 +145,20 @@ func main() {
 	// 5. Detection Flow
 	fmt.Println("\n5. DETECTION FLOW:")
 	fmt.Println("------------------")
-	
+
 	// Show step-by-step what happened
-	if os.Getenv("NO_UNICODE") != "" {
+	if os.Getenv("HINATA_ENABLE_UNICODE_DETECTION") == "" {
+		fmt.Println("Step 0: HINATA_ENABLE_UNICODE_DETECTION not set → SKIP DETECTION (default: Full Unicode)")
+	} else if os.Getenv("NO_UNICODE") != "" {
 		fmt.Println("Step 1: NO_UNICODE is set → STOP (ASCII only)")
 	} else {
 		fmt.Println("Step 1: NO_UNICODE not set → continue")
-		
+
 		if !utf8Found {
 			fmt.Println("Step 2: No UTF-8 locale → STOP (ASCII only)")
 		} else {
 			fmt.Println("Step 2: UTF-8 locale found → continue")
-			
+
 			if strings.Contains(term, "linux") && !strings.Contains(term, "xterm") {
 				fmt.Println("Step 3: Linux console detected → STOP (Basic Unicode)")
 			} else {
@@ -176,7 +179,7 @@ func main() {
 	fmt.Println("\n7. SPINNER FILTERING:")
 	fmt.Println("--------------------")
 	fmt.Printf("Total spinners available: %d\n", len(spinner.SPINNERS))
-	
+
 	// Count complex Unicode spinners
 	complexCount := 0
 	exampleComplex := ""
@@ -209,8 +212,8 @@ func main() {
 	fmt.Println("\n8. TEST OTHER SCENARIOS:")
 	fmt.Println("------------------------")
 	fmt.Println("To test different scenarios, run with environment variables:")
-	fmt.Println("  NO_UNICODE=1 unicode-check              # Force ASCII")
-	fmt.Println("  TERM=linux unicode-check                # Linux console")
-	fmt.Println("  LC_ALL=C LANG=C unicode-check           # Non-UTF8 locale")
-	fmt.Println("  TERM=xterm-mono unicode-check           # Unknown terminal")
+	fmt.Println("  NO_UNICODE=1 hnt-agent unicode-check    # Force ASCII")
+	fmt.Println("  TERM=linux hnt-agent unicode-check      # Linux console")
+	fmt.Println("  LC_ALL=C LANG=C hnt-agent unicode-check # Non-UTF8 locale")
+	fmt.Println("  TERM=xterm-mono hnt-agent unicode-check # Unknown terminal")
 }

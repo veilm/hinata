@@ -39,6 +39,9 @@ func main() {
 		SilenceErrors: true,
 	}
 
+	// Add subcommands
+	rootCmd.AddCommand(newUnicodeCheckCmd())
+
 	rootCmd.Flags().StringVar(&systemPrompt, "system", "", "System message string or path to system message file")
 	rootCmd.Flags().StringVarP(&message, "message", "m", "", "User instruction message")
 	rootCmd.Flags().StringVarP(&session, "session", "s", "", "Path to conversation directory to resume a session")
@@ -163,4 +166,15 @@ func loadDefaultPrompt() (string, error) {
 
 func promptForMessage(useEditor bool) (string, error) {
 	return prompt.GetUserInstruction("", useEditor)
+}
+
+func newUnicodeCheckCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unicode-check",
+		Short: "Check Unicode detection and font support for spinners",
+		Long: `Diagnostic tool for the hnt-agent spinner Unicode detection system.
+Shows environment variables, locale detection, terminal detection,
+font support, and the final Unicode support level determination.`,
+		Run: runUnicodeCheck,
+	}
 }

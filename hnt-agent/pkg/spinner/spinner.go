@@ -46,8 +46,16 @@ var basicUnicodeSpinner = Spinner{
 }
 
 func init() {
-	// Detect Unicode support level
-	unicodeSupport = DetectUnicodeSupport()
+	// Always check NO_UNICODE first (highest priority)
+	if os.Getenv("NO_UNICODE") != "" {
+		unicodeSupport = UnicodeNone
+	} else if os.Getenv("HINATA_ENABLE_UNICODE_DETECTION") != "" {
+		// If detection is enabled, run full detection
+		unicodeSupport = DetectUnicodeSupport()
+	} else {
+		// Default behavior - assume full Unicode support
+		unicodeSupport = UnicodeFull
+	}
 
 	// Try to load spinners from config file
 	if err := loadSpinnersFromConfig(); err != nil {
