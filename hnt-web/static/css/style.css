@@ -746,7 +746,6 @@ html {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 20px;
 }
 
 .user-info {
@@ -761,16 +760,19 @@ html {
 }
 
 .logout-btn {
-	background-color: #4a4a4a;
-	color: #e0e0e0;
-	border: 1px solid #666;
-	padding: 5px 15px;
+	background-color: #101010;
+	color: #6ec8ff;
+	border: none;
+	padding: 10px 15px;
 	cursor: pointer;
-	font-size: 0.9em;
+	font-size: 1em;
+	font-family: inherit;
+	border-radius: 0;
+	transition: background-color 0.2s ease;
 }
 
 .logout-btn:hover {
-	background-color: #5a5a5a;
+	background-color: #191919;
 }
 
 /* Share modal */
@@ -834,7 +836,7 @@ html {
 	background-color: #0a0a0a;
 	border: 1px solid #444;
 	color: #e0e0e0;
-	font-family: monospace;
+	font-family: inherit;
 	margin-bottom: 15px;
 	box-sizing: border-box;
 }
@@ -849,7 +851,7 @@ html {
 	padding: 8px 20px;
 	border: none;
 	cursor: pointer;
-	font-family: monospace;
+	font-family: inherit;
 }
 
 .btn-primary {
