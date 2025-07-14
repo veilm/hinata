@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/veilm/hinata/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/hnt-llm/pkg/llm"
@@ -29,12 +30,19 @@ type MessageFile struct {
 	Content  string `json:"content"`
 }
 
+type OtherFile struct {
+	Filename     string  `json:"filename"`
+	IsText       bool    `json:"is_text"`
+	Content      *string `json:"content"`
+	ErrorMessage *string `json:"error_message"`
+}
+
 type ConversationDetail struct {
 	ID         string        `json:"conversation_id"`
 	Title      string        `json:"title"`
 	Model      string        `json:"model"`
 	Messages   []MessageFile `json:"messages"`
-	OtherFiles []string      `json:"other_files"`
+	OtherFiles []OtherFile   `json:"other_files"`
 	IsPinned   bool          `json:"is_pinned"`
 }
 
@@ -277,7 +285,7 @@ func getConversationDetail(w http.ResponseWriter, convID string) {
 		Title:      convID,
 		Model:      "openrouter/deepseek/deepseek-chat-v3-0324:free",
 		Messages:   []MessageFile{},
-		OtherFiles: []string{},
+		OtherFiles: []OtherFile{},
 	}
 
 	// Read title
@@ -342,7 +350,40 @@ func getConversationDetail(w http.ResponseWriter, convID string) {
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, ".") && !entry.IsDir() && !strings.HasSuffix(name, ".md") {
-			detail.OtherFiles = append(detail.OtherFiles, name)
+			file := OtherFile{
+				Filename: name,
+				IsText:   false,
+			}
+
+			// Try to read file content
+			filePath := filepath.Join(convDir, name)
+			if data, err := os.ReadFile(filePath); err == nil {
+				// Check if it's likely text (no null bytes in first 4096 bytes)
+				peekSize := 4096
+				if len(data) < peekSize {
+					peekSize = len(data)
+				}
+
+				if peekSize > 0 && !containsNull(data[:peekSize]) {
+					// Try to decode as UTF-8
+					content := string(data)
+					if isValidUTF8(content) {
+						file.IsText = true
+						file.Content = &content
+					} else {
+						errMsg := "[File content not displayed: not valid UTF-8]"
+						file.ErrorMessage = &errMsg
+					}
+				} else {
+					errMsg := "[File content not displayed: likely binary]"
+					file.ErrorMessage = &errMsg
+				}
+			} else {
+				errMsg := fmt.Sprintf("[Error accessing file: %s]", err.Error())
+				file.ErrorMessage = &errMsg
+			}
+
+			detail.OtherFiles = append(detail.OtherFiles, file)
 		}
 	}
 
@@ -698,4 +739,17 @@ func archiveMessage(w http.ResponseWriter, convID string, filename string) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "archived"})
+}
+
+func containsNull(data []byte) bool {
+	for _, b := range data {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidUTF8(s string) bool {
+	return utf8.ValidString(s)
 }
