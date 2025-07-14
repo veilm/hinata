@@ -16,6 +16,7 @@ import (
 
 	"github.com/veilm/hinata/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/hnt-llm/pkg/llm"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type ConversationInfo struct {
@@ -63,6 +64,20 @@ type MessageContentUpdateRequest struct {
 	Content string `json:"content"`
 }
 
+type RegisterRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	Username string `json:"username"`
+	Success  bool   `json:"success"`
+}
+
+type ShareRequest struct {
+	Users []string `json:"users"`
+}
+
 func getWebDir() string {
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
 		return filepath.Join(xdgData, "hinata", "web")
@@ -71,13 +86,40 @@ func getWebDir() string {
 	return filepath.Join(home, ".local", "share", "hinata", "web")
 }
 
+func getUsersDir() string {
+	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+		return filepath.Join(xdgData, "hinata", "users")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "hinata", "users")
+}
+
+func getDefaultOwner() string {
+	return os.Getenv("USER")
+}
+
 func main() {
+	// Initialize default admin user if needed
+	usersDir := getUsersDir()
+	if _, err := os.Stat(usersDir); os.IsNotExist(err) {
+		defaultUser := getDefaultOwner()
+		if defaultUser != "" {
+			if err := createUser(defaultUser, defaultUser); err == nil {
+				log.Printf("Created default admin user: %s (password: %s)\n", defaultUser, defaultUser)
+			}
+		}
+	}
+
 	mux := http.NewServeMux()
 
-	// API endpoints
-	mux.HandleFunc("/api/conversations", handleConversations)
-	mux.HandleFunc("/api/conversation/", handleConversation)
-	mux.HandleFunc("/api/conversations/create", handleCreateConversation)
+	// Auth endpoints (no auth required)
+	mux.HandleFunc("/api/auth/register", handleRegister)
+	mux.HandleFunc("/api/auth/login", handleLogin)
+
+	// Protected API endpoints
+	mux.HandleFunc("/api/conversations", authMiddleware(handleConversations))
+	mux.HandleFunc("/api/conversation/", authMiddleware(handleConversation))
+	mux.HandleFunc("/api/conversations/create", authMiddleware(handleCreateConversation))
 
 	// Static file serving with custom handler for conversation pages
 	webDir := getWebDir()
@@ -101,7 +143,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Username, X-Password")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -112,11 +154,34 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Skip auth for login/register endpoints
+		if strings.HasPrefix(r.URL.Path, "/api/auth/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		username := r.Header.Get("X-Username")
+		password := r.Header.Get("X-Password")
+
+		if !validateUser(username, password) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "username", username)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
 func handleConversations(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	username := r.Context().Value("username").(string)
 
 	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
@@ -136,19 +201,26 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		convDir := filepath.Join(baseDir, entry.Name())
+
+		// Check if user has access
+		if !hasAccess(convDir, username) {
+			continue
+		}
+
 		conv := ConversationInfo{
 			ID:    entry.Name(),
 			Title: entry.Name(),
 		}
 
 		// Check for .title file
-		titlePath := filepath.Join(baseDir, entry.Name(), "title.txt")
+		titlePath := filepath.Join(convDir, "title.txt")
 		if data, err := os.ReadFile(titlePath); err == nil {
 			conv.Title = strings.TrimSpace(string(data))
 		}
 
 		// Check for .pin file
-		pinPath := filepath.Join(baseDir, entry.Name(), "pinned.txt")
+		pinPath := filepath.Join(convDir, "pinned.txt")
 		if _, err := os.Stat(pinPath); err == nil {
 			conv.IsPinned = true
 		}
@@ -187,7 +259,7 @@ func handleConversation(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		getConversationDetail(w, convID)
+		getConversationDetail(w, r, convID)
 		return
 	}
 
@@ -197,14 +269,14 @@ func handleConversation(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		forkConversation(w, convID)
+		forkConversation(w, r, convID)
 
 	case "pin-toggle":
 		if r.Method != "POST" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		togglePin(w, convID)
+		togglePin(w, r, convID)
 
 	case "add-message":
 		if r.Method != "POST" {
@@ -218,7 +290,7 @@ func handleConversation(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		generateAssistant(w, convID)
+		generateAssistant(w, r, convID)
 
 	case "title":
 		if r.Method != "PUT" {
@@ -255,18 +327,26 @@ func handleConversation(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			archiveMessage(w, convID, filename)
+			archiveMessage(w, r, convID, filename)
 
 		default:
 			http.Error(w, "Unknown action", http.StatusBadRequest)
 		}
+
+	case "share":
+		handleShare(w, r, convID)
+
+	case "access":
+		handleGetAccess(w, r, convID)
 
 	default:
 		http.Error(w, "Unknown endpoint", http.StatusNotFound)
 	}
 }
 
-func getConversationDetail(w http.ResponseWriter, convID string) {
+func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string) {
+	username := r.Context().Value("username").(string)
+
 	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
 		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
@@ -277,6 +357,12 @@ func getConversationDetail(w http.ResponseWriter, convID string) {
 
 	if _, err := os.Stat(convDir); os.IsNotExist(err) {
 		http.Error(w, "Conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// Check access
+	if !hasAccess(convDir, username) {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -397,6 +483,8 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	username := r.Context().Value("username").(string)
+
 	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
 		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
@@ -409,26 +497,30 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set access for the creator
+	if err := setAccess(convDir, []string{username}); err != nil {
+		log.Printf("Warning: Failed to set access for new conversation: %v", err)
+	}
+
 	// Extract just the ID from the full path
 	convID := filepath.Base(convDir)
 
 	// Log the conversation creation
-	log.Printf("New conversation created (ID: %s)\n", convID)
+	log.Printf("New conversation created by %s (ID: %s)\n", username, convID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": convID})
 }
 
-func forkConversation(w http.ResponseWriter, convID string) {
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
+	username, sourceDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
 		return
 	}
 
-	sourceDir := filepath.Join(baseDir, convID)
-	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-		http.Error(w, "Source conversation not found", http.StatusNotFound)
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
 		return
 	}
 
@@ -451,6 +543,11 @@ func forkConversation(w http.ResponseWriter, convID string) {
 			continue
 		}
 
+		// Skip access.txt - we'll set our own
+		if entry.Name() == "access.txt" {
+			continue
+		}
+
 		srcPath := filepath.Join(sourceDir, entry.Name())
 		dstPath := filepath.Join(newConvDir, entry.Name())
 
@@ -460,6 +557,11 @@ func forkConversation(w http.ResponseWriter, convID string) {
 		}
 
 		os.WriteFile(dstPath, srcData, 0644)
+	}
+
+	// Set access for the user who forked
+	if err := setAccess(newConvDir, []string{username}); err != nil {
+		log.Printf("Warning: Failed to set access for forked conversation: %v", err)
 	}
 
 	newID := filepath.Base(newConvDir)
@@ -475,21 +577,20 @@ func forkConversation(w http.ResponseWriter, convID string) {
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": newID})
 }
 
-func togglePin(w http.ResponseWriter, convID string) {
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
 		return
 	}
 
-	pinPath := filepath.Join(baseDir, convID, "pinned.txt")
+	pinPath := filepath.Join(convDir, "pinned.txt")
 
 	if _, err := os.Stat(pinPath); err == nil {
 		// Unpin
 		os.Remove(pinPath)
 
 		// Log the unpin operation
-		title := getConversationTitle(filepath.Join(baseDir, convID))
+		title := getConversationTitle(convDir)
 		if title == "" {
 			title = convID
 		}
@@ -501,7 +602,7 @@ func togglePin(w http.ResponseWriter, convID string) {
 		os.WriteFile(pinPath, []byte(""), 0644)
 
 		// Log the pin operation
-		title := getConversationTitle(filepath.Join(baseDir, convID))
+		title := getConversationTitle(convDir)
 		if title == "" {
 			title = convID
 		}
@@ -512,19 +613,16 @@ func togglePin(w http.ResponseWriter, convID string) {
 }
 
 func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
 	var req MessageAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
-		return
-	}
-
-	convDir := filepath.Join(baseDir, convID)
 
 	// Parse role
 	role, err := chat.ParseRole(req.Role)
@@ -561,14 +659,11 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 	json.NewEncoder(w).Encode(map[string]string{"filename": filename})
 }
 
-func generateAssistant(w http.ResponseWriter, convID string) {
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
 		return
 	}
-
-	convDir := filepath.Join(baseDir, convID)
 
 	// Read model from .model file
 	model := "openrouter/deepseek/deepseek-chat-v3-0324:free"
@@ -659,19 +754,18 @@ done:
 }
 
 func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
 	var req TitleUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
-		return
-	}
-
-	titlePath := filepath.Join(baseDir, convID, "title.txt")
+	titlePath := filepath.Join(convDir, "title.txt")
 
 	if err := os.WriteFile(titlePath, []byte(req.Title), 0644); err != nil {
 		http.Error(w, "Failed to update title", http.StatusInternalServerError)
@@ -686,19 +780,18 @@ func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
 }
 
 func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
 	var req ModelUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
-		return
-	}
-
-	modelPath := filepath.Join(baseDir, convID, "model.txt")
+	modelPath := filepath.Join(convDir, "model.txt")
 
 	if err := os.WriteFile(modelPath, []byte(req.Model), 0644); err != nil {
 		http.Error(w, "Failed to update model", http.StatusInternalServerError)
@@ -706,7 +799,7 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 	// Log the model update
-	title := getConversationTitle(filepath.Join(baseDir, convID))
+	title := getConversationTitle(convDir)
 	if title == "" {
 		title = convID
 	}
@@ -717,19 +810,18 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 }
 
 func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
 	var req MessageContentUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
-		return
-	}
-
-	msgPath := filepath.Join(baseDir, convID, filename)
+	msgPath := filepath.Join(convDir, filename)
 
 	// Archive current version
 	content, err := os.ReadFile(msgPath)
@@ -738,7 +830,7 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 		return
 	}
 
-	archiveDir := filepath.Join(baseDir, convID, "archive")
+	archiveDir := filepath.Join(convDir, "archive")
 	os.MkdirAll(archiveDir, 0755)
 
 	timestamp := time.Now().Unix()
@@ -755,7 +847,7 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 	}
 
 	// Log the message edit
-	title := getConversationTitle(filepath.Join(baseDir, convID))
+	title := getConversationTitle(convDir)
 	if title == "" {
 		title = convID
 	}
@@ -765,14 +857,13 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
-func archiveMessage(w http.ResponseWriter, convID string, filename string) {
-	baseDir, err := chat.GetConversationsDir()
-	if err != nil {
-		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+func archiveMessage(w http.ResponseWriter, r *http.Request, convID string, filename string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
 		return
 	}
 
-	msgPath := filepath.Join(baseDir, convID, filename)
+	msgPath := filepath.Join(convDir, filename)
 
 	content, err := os.ReadFile(msgPath)
 	if err != nil {
@@ -780,7 +871,7 @@ func archiveMessage(w http.ResponseWriter, convID string, filename string) {
 		return
 	}
 
-	archiveDir := filepath.Join(baseDir, convID, "archive")
+	archiveDir := filepath.Join(convDir, "archive")
 	os.MkdirAll(archiveDir, 0755)
 
 	timestamp := time.Now().Unix()
@@ -796,7 +887,7 @@ func archiveMessage(w http.ResponseWriter, convID string, filename string) {
 	}
 
 	// Log the message archive
-	title := getConversationTitle(filepath.Join(baseDir, convID))
+	title := getConversationTitle(convDir)
 	if title == "" {
 		title = convID
 	}
@@ -825,4 +916,224 @@ func getConversationTitle(convDir string) string {
 		return strings.TrimSpace(string(data))
 	}
 	return ""
+}
+
+func createUser(username, password string) error {
+	usersDir := getUsersDir()
+	if err := os.MkdirAll(usersDir, 0755); err != nil {
+		return fmt.Errorf("failed to create users directory: %w", err)
+	}
+
+	userPath := filepath.Join(usersDir, username+".txt")
+	if _, err := os.Stat(userPath); err == nil {
+		return fmt.Errorf("user already exists")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	return os.WriteFile(userPath, hash, 0600)
+}
+
+func validateUser(username, password string) bool {
+	if username == "" || password == "" {
+		return false
+	}
+
+	userPath := filepath.Join(getUsersDir(), username+".txt")
+	hash, err := os.ReadFile(userPath)
+	if err != nil {
+		return false
+	}
+
+	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
+	return err == nil
+}
+
+func hasAccess(convDir, username string) bool {
+	accessPath := filepath.Join(convDir, "access.txt")
+	data, err := os.ReadFile(accessPath)
+	if err != nil {
+		// No access.txt means only default owner has access
+		return username == getDefaultOwner()
+	}
+
+	users := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for _, u := range users {
+		if strings.TrimSpace(u) == username {
+			return true
+		}
+	}
+	return false
+}
+
+func setAccess(convDir string, users []string) error {
+	accessPath := filepath.Join(convDir, "access.txt")
+	content := strings.Join(users, "\n")
+	return os.WriteFile(accessPath, []byte(content), 0644)
+}
+
+func getAccess(convDir string) []string {
+	accessPath := filepath.Join(convDir, "access.txt")
+	data, err := os.ReadFile(accessPath)
+	if err != nil {
+		// Default to owner only
+		return []string{getDefaultOwner()}
+	}
+
+	var users []string
+	for _, u := range strings.Split(string(data), "\n") {
+		if u = strings.TrimSpace(u); u != "" {
+			users = append(users, u)
+		}
+	}
+	return users
+}
+
+func checkConversationAccess(w http.ResponseWriter, r *http.Request, convID string) (string, string, bool) {
+	username := r.Context().Value("username").(string)
+
+	baseDir, err := chat.GetConversationsDir()
+	if err != nil {
+		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
+		return "", "", false
+	}
+
+	convDir := filepath.Join(baseDir, convID)
+
+	if _, err := os.Stat(convDir); os.IsNotExist(err) {
+		http.Error(w, "Conversation not found", http.StatusNotFound)
+		return "", "", false
+	}
+
+	if !hasAccess(convDir, username) {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return "", "", false
+	}
+
+	return username, convDir, true
+}
+
+func handleRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "Username and password are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := createUser(req.Username, req.Password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("New user registered: %s\n", req.Username)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(LoginResponse{
+		Username: req.Username,
+		Success:  true,
+	})
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RegisterRequest // Same structure as register
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if !validateUser(req.Username, req.Password) {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(LoginResponse{
+		Username: req.Username,
+		Success:  true,
+	})
+}
+
+func handleShare(w http.ResponseWriter, r *http.Request, convID string) {
+	username, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ShareRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Always include the owner in the access list
+	users := append([]string{username}, req.Users...)
+
+	// Remove duplicates
+	seen := make(map[string]bool)
+	unique := []string{}
+	for _, u := range users {
+		if !seen[u] {
+			seen[u] = true
+			unique = append(unique, u)
+		}
+	}
+
+	if err := setAccess(convDir, unique); err != nil {
+		http.Error(w, "Failed to update access", http.StatusInternalServerError)
+		return
+	}
+
+	title := getConversationTitle(convDir)
+	if title == "" {
+		title = convID
+	}
+	log.Printf("Conversation shared (%s) with users: %v\n", title, unique)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "success",
+		"users":  unique,
+	})
+}
+
+func handleGetAccess(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	users := getAccess(convDir)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"users": users,
+	})
 }
