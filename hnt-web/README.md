@@ -28,9 +28,9 @@ build and then served from there
 it uses hnt-chat as the LLM backend, so all of your messages are plaintext and
 simple to manage externally
 
-## ss (as of 2025-06-17)
-![1](https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1750216968-hnt-web.png)
+## ss
+![ss 1](https://sucralose.moe/static/hnt-web-0.png)
 
-![2](https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1750217113-hnt-web.png)
+![ss 2](https://sucralose.moe/static/hnt-web-1.png)
 
-![3](https://raw.githubusercontent.com/veilm/veilm.github.io/refs/heads/master/static/1750217128-hnt-web.png)
+![ss 3](https://sucralose.moe/static/hnt-web-2.png)
