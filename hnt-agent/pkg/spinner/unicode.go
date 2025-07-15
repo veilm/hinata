@@ -27,6 +27,17 @@ func DetectUnicodeSupport() UnicodeSupport {
 		return UnicodeNone
 	}
 
+	// Check if we're in an SSH session - cap at Basic Unicode
+	if isSSHSession() {
+		// SSH sessions often have font rendering issues with complex Unicode
+		// 1752554096 well it's more because it feels possible that you'd ssh
+		// into a host that has fonts, without having fonts yourself. having fonts
+		// yourself but not on the remote host would already fail regardless of
+		// this check. and then having fonts on both seems less likely than only
+		// having on the machine, I think
+		return UnicodeBasic
+	}
+
 	// Check terminal type
 	term := strings.ToLower(os.Getenv("TERM"))
 
@@ -48,6 +59,13 @@ func DetectUnicodeSupport() UnicodeSupport {
 
 	// Conservative default for unknown terminals
 	return UnicodeBasic
+}
+
+func isSSHSession() bool {
+	// Check common SSH environment variables
+	return os.Getenv("SSH_CLIENT") != "" ||
+		os.Getenv("SSH_TTY") != "" ||
+		os.Getenv("SSH_CONNECTION") != ""
 }
 
 func isUTF8Locale() bool {

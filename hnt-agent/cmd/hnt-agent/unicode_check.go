@@ -17,7 +17,7 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	// 1. Environment Variables
 	fmt.Println("1. ENVIRONMENT VARIABLES:")
 	fmt.Println("-------------------------")
-	envVars := []string{"HINATA_ENABLE_UNICODE_DETECTION", "NO_UNICODE", "TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE"}
+	envVars := []string{"HINATA_ENABLE_UNICODE_DETECTION", "NO_UNICODE", "TERM", "COLORTERM", "LANG", "LC_ALL", "LC_CTYPE", "SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION"}
 	for _, v := range envVars {
 		val := os.Getenv(v)
 		if val == "" {
@@ -27,8 +27,23 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// 2. Locale Detection
-	fmt.Println("\n2. LOCALE DETECTION:")
+	// 2. SSH Session Detection
+	fmt.Println("\n2. SSH SESSION DETECTION:")
+	fmt.Println("-------------------------")
+	sshClient := os.Getenv("SSH_CLIENT")
+	sshTTY := os.Getenv("SSH_TTY")
+	sshConnection := os.Getenv("SSH_CONNECTION")
+	isSSH := sshClient != "" || sshTTY != "" || sshConnection != ""
+	fmt.Printf("SSH_CLIENT:     %v\n", sshClient != "")
+	fmt.Printf("SSH_TTY:        %v\n", sshTTY != "")
+	fmt.Printf("SSH_CONNECTION: %v\n", sshConnection != "")
+	fmt.Printf("In SSH session: %v\n", isSSH)
+	if isSSH {
+		fmt.Println("NOTE: Unicode support capped at Basic in SSH sessions")
+	}
+
+	// 3. Locale Detection
+	fmt.Println("\n3. LOCALE DETECTION:")
 	fmt.Println("--------------------")
 	localeVars := []string{"LC_ALL", "LC_CTYPE", "LANG"}
 	utf8Found := false
@@ -44,8 +59,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 	fmt.Printf("UTF-8 locale detected: %v\n", utf8Found)
 
-	// 3. Terminal Detection
-	fmt.Println("\n3. TERMINAL DETECTION:")
+	// 4. Terminal Detection
+	fmt.Println("\n4. TERMINAL DETECTION:")
 	fmt.Println("----------------------")
 	term := strings.ToLower(os.Getenv("TERM"))
 	fmt.Printf("TERM value: %s\n", os.Getenv("TERM"))
@@ -70,8 +85,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		fmt.Println("No modern terminal match")
 	}
 
-	// 4. Font Detection
-	fmt.Println("\n4. FONT DETECTION (fc-list):")
+	// 5. Font Detection
+	fmt.Println("\n5. FONT DETECTION (fc-list):")
 	fmt.Println("----------------------------")
 
 	// Check if fc-list exists
@@ -142,8 +157,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		fmt.Printf("Multiple character test: %v\n", supportCount >= 3)
 	}
 
-	// 5. Detection Flow
-	fmt.Println("\n5. DETECTION FLOW:")
+	// 6. Detection Flow
+	fmt.Println("\n6. DETECTION FLOW:")
 	fmt.Println("------------------")
 
 	// Show step-by-step what happened
@@ -159,24 +174,30 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		} else {
 			fmt.Println("Step 2: UTF-8 locale found → continue")
 
-			if strings.Contains(term, "linux") && !strings.Contains(term, "xterm") {
-				fmt.Println("Step 3: Linux console detected → STOP (Basic Unicode)")
+			if isSSH {
+				fmt.Println("Step 3: SSH session detected → STOP (Basic Unicode)")
 			} else {
-				fmt.Println("Step 3: Not Linux console → continue")
-				fmt.Println("Step 4: Check font support → determines Full vs Basic Unicode")
+				fmt.Println("Step 3: Not in SSH session → continue")
+
+				if strings.Contains(term, "linux") && !strings.Contains(term, "xterm") {
+					fmt.Println("Step 4: Linux console detected → STOP (Basic Unicode)")
+				} else {
+					fmt.Println("Step 4: Not Linux console → continue")
+					fmt.Println("Step 5: Check font support → determines Full vs Basic Unicode")
+				}
 			}
 		}
 	}
 
-	// 6. Final Detection Result
-	fmt.Println("\n6. FINAL DETECTION RESULT:")
+	// 7. Final Detection Result
+	fmt.Println("\n7. FINAL DETECTION RESULT:")
 	fmt.Println("--------------------------")
 	support := spinner.GetUnicodeSupport()
 	fmt.Printf("Detected Unicode Support Level: %s\n", spinner.GetUnicodeSupportString())
 	fmt.Printf("Raw value: %d (0=None, 1=Basic, 2=Full)\n", support)
 
-	// 7. Spinner Filtering
-	fmt.Println("\n7. SPINNER FILTERING:")
+	// 8. Spinner Filtering
+	fmt.Println("\n8. SPINNER FILTERING:")
 	fmt.Println("--------------------")
 	fmt.Printf("Total spinners available: %d\n", len(spinner.SPINNERS))
 
@@ -208,8 +229,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		fmt.Printf("Example: %s\n", exampleComplex)
 	}
 
-	// 8. Test Scenarios
-	fmt.Println("\n8. TEST OTHER SCENARIOS:")
+	// 9. Test Scenarios
+	fmt.Println("\n9. TEST OTHER SCENARIOS:")
 	fmt.Println("------------------------")
 	fmt.Println("To test different scenarios, run with environment variables:")
 	fmt.Println("  NO_UNICODE=1 hnt-agent unicode-check    # Force ASCII")
