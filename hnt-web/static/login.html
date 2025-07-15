@@ -143,13 +143,19 @@
         if (localStorage.getItem('username') && localStorage.getItem('password')) {
             window.location.href = '/';
         }
+        
+        // Flag to prevent auto-login during mode switches
+        let isModeSwitching = false;
 
         const form = document.getElementById('loginForm');
         const errorDiv = document.getElementById('error');
         const successDiv = document.getElementById('success');
-
-        form.addEventListener('submit', async (e) => {
+        
+        // Store the login handler as a named function
+        async function handleLogin(e) {
             e.preventDefault();
+            
+            if (isModeSwitching) return;
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
@@ -179,13 +185,18 @@
             } catch (error) {
                 showError('Connection error: ' + error.message);
             }
-        });
+        }
+
+        // Initially set up login mode
+        form.addEventListener('submit', handleLogin);
 
         function showRegister() {
             const button = event.target;
+            isModeSwitching = true;
+            
             if (button.textContent === 'Register') {
                 button.textContent = 'Cancel';
-                form.removeEventListener('submit', form.onsubmit);
+                form.removeEventListener('submit', handleLogin);
                 form.addEventListener('submit', handleRegister);
                 document.querySelector('button[type="submit"]').textContent = 'Create Account';
                 successDiv.style.display = 'none';
@@ -193,15 +204,21 @@
             } else {
                 button.textContent = 'Register';
                 form.removeEventListener('submit', handleRegister);
-                form.addEventListener('submit', form.onsubmit);
+                form.addEventListener('submit', handleLogin);
                 document.querySelector('button[type="submit"]').textContent = 'Login';
                 successDiv.style.display = 'none';
                 errorDiv.style.display = 'none';
             }
+            
+            setTimeout(() => {
+                isModeSwitching = false;
+            }, 100);
         }
 
         async function handleRegister(e) {
             e.preventDefault();
+            
+            if (isModeSwitching) return;
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
@@ -219,8 +236,13 @@
                     const data = await response.json();
                     if (data.success) {
                         showSuccess('Account created successfully! You can now login.');
-                        // Switch back to login mode
-                        document.querySelector('button.secondary').click();
+                        // Clear the form
+                        form.reset();
+                        // Switch back to login mode after a short delay
+                        setTimeout(() => {
+                            isModeSwitching = true;
+                            document.querySelector('button.secondary').click();
+                        }, 1500);
                     }
                 } else {
                     const text = await response.text();
