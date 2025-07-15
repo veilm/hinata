@@ -11,7 +11,7 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 ### [`hnt-agent`](./hnt-agent/)
 simple [`hnt-chat`](./hnt-chat/) wrapper for letting an LLM operate a persistent shell
 
-```sh
+```
 $ git log --oneline | head -1
 b8b305b refactor: Handle recoil animations during enemy fade-out state
 
@@ -40,7 +40,7 @@ not as aesthetic as Claude Code. UX is WIP
 simple [`hnt-chat`](./hnt-chat/) wrapper for editing source code or other
 plaintext files
 
-```sh
+```
 $ hnt-edit \
 	-m "please enable debugging in the config" \
 	--model "deepseek/deepseek-chat" \
@@ -70,7 +70,7 @@ differences: system prompt and design of TARGET/REPLACE parser)
 ### [`hnt-chat`](./hnt-chat/)
 simple [`hnt-llm`](./hnt-llm/) wrapper, for chat history management using
 plaintext files and conversation directories
-```sh
+```
 $ conversation=$(hnt-chat new)
 $ echo "please write a 2-line stanza about the user's given theme" | hnt-chat add system
 $ echo "iteration" | hnt-chat add user
@@ -91,25 +91,32 @@ $ ls $conversation
 
 ### [`hnt-llm`](./hnt-llm/)
 basic LLM API in/out. significantly faster startup than openai-python
-```sh
+```
 $ echo "hello Claude! ❄️" | hnt-llm --model openrouter/anthropic/claude-3-opus
 Hello! It's great to meet you. I hope you're having a wonderful day! ❄️☃️
 ```
 
 has optional ~encrypted credential management using `hnt-llm save-key`
 
-# build and install
+# getting started
 ### system requirements
 - [Go](https://go.dev/) installed
 - Linux or macOS
 
 ### recommended
-```sh
-curl hnt-agent.org/install | sh
+```
+$ curl hnt-agent.org/install | sh
+...
+
+$ hnt-agent --help
+...
+
+$ hnt-agent
+> my brother, can you please spare me any help with ...
 ```
 
-### alternative: manual clone (yuck!)
-```sh
+### alternative installation (yucky manual clone)
+```
 git clone --depth 1 https://github.com/veilm/hinata
 cd hinata
 ./install.sh
@@ -167,6 +174,6 @@ iqd, etc.) for reference and for maliciously farming and baiting engagement on X
 - [Streamdown](https://github.com/day50-dev/Streamdown)
 
 ### staff
-- designed by [sucralose](https://x.com/sucralose__)
+- designed by [sucralose](https://veilm.github.io)
 - written mostly by Gemini 2.5 Pro, o3, and Claude 4 Opus
 - inspired by a certain reserve course student
