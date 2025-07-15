@@ -15,12 +15,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/mattn/go-runewidth"
+	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/cmd/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/llm"
-	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
-	"github.com/veilm/hinata/pkg/prompt"
 	"github.com/veilm/hinata/cmd/shell-exec/pkg/shell"
 	"github.com/veilm/hinata/cmd/tui-select/pkg/selector"
+	"github.com/veilm/hinata/pkg/prompt"
 	"golang.org/x/term"
 )
 
@@ -148,7 +148,8 @@ func (a *Agent) Run(userMessage string) error {
 
 		configDir := os.Getenv("XDG_CONFIG_HOME")
 		if configDir == "" {
-			configDir, _ = os.UserConfigDir()
+			homeDir, _ := os.UserHomeDir()
+			configDir = filepath.Join(homeDir, ".config")
 		}
 		hinataMdPath := filepath.Join(configDir, "hinata/agent/HINATA.md")
 		if content, err := os.ReadFile(hinataMdPath); err == nil && len(content) > 0 {

@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-edit/pkg/edit"
 	"github.com/veilm/hinata/pkg/terminal"
+	"os"
 )
 
 func main() {

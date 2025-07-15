@@ -173,11 +173,11 @@ func loadDefaultPrompt() (string, error) {
 	// Fall back to XDG_CONFIG_HOME/hinata/prompts
 	configDir := os.Getenv("XDG_CONFIG_HOME")
 	if configDir == "" {
-		var err error
-		configDir, err = os.UserConfigDir()
+		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
+		configDir = filepath.Join(homeDir, ".config")
 	}
 
 	promptPath := filepath.Join(configDir, "hinata/prompts/hnt-agent/main-shell_agent.md")

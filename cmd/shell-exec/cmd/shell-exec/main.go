@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/veilm/hinata/cmd/shell-exec/pkg/shell"
 	"io"
 	"os"
-	"github.com/veilm/hinata/cmd/shell-exec/pkg/shell"
 	"strings"
 )
 

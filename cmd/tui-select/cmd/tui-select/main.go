@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/veilm/hinata/pkg/terminal"
 	"github.com/veilm/hinata/cmd/tui-select/pkg/selector"
+	"github.com/veilm/hinata/pkg/terminal"
 )
 
 var (
