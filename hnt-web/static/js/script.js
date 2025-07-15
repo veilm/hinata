@@ -800,6 +800,12 @@ document.addEventListener("DOMContentLoaded", () => {
 			contentWrapperDiv.textContent = originalContent; // Restore/set content
 
 			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
+
+			const infoButton = createActionButton(ICON_INFO, "btn-info", () =>
+				showMessageInfoModal(filename, originalContent),
+			);
+			infoButton.title = "Info";
+
 			const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
 				toggleEditState(
 					messageElement,
@@ -819,6 +825,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			archiveButton.title = "Archive";
 
+			actionsDiv.appendChild(infoButton);
 			actionsDiv.appendChild(editButton);
 			actionsDiv.appendChild(archiveButton);
 
@@ -1050,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		roleSpan.textContent = "Assistant";
 		const filenameSpan = document.createElement("span");
 		filenameSpan.className = "message-filename";
-		filenameSpan.textContent = "Generating..."; // Placeholder text
+		filenameSpan.textContent = " - Generating..."; // Placeholder text with separator
 		headerDiv.appendChild(roleSpan);
 		headerDiv.appendChild(filenameSpan);
 
@@ -1084,13 +1091,43 @@ document.addEventListener("DOMContentLoaded", () => {
 			const decoder = new TextDecoder(); // Defaults to 'utf-8'
 
 			let done = false;
+			let buffer = "";
 			while (!done) {
 				const { value, done: readerDone } = await reader.read();
 				done = readerDone;
 				if (value) {
 					const chunk = decoder.decode(value, { stream: !done });
-					contentWrapperDiv.textContent += chunk;
+					buffer += chunk;
+
+					// Process SSE format if present
+					const lines = buffer.split("\n");
+					buffer = lines.pop() || ""; // Keep the last incomplete line in buffer
+
+					for (const line of lines) {
+						if (line.startsWith("data: ")) {
+							const data = line.slice(6); // Remove 'data: ' prefix
+							// Skip the [DONE] token that signals end of stream
+							if (data.trim() && data.trim() !== "[DONE]") {
+								contentWrapperDiv.textContent += data;
+							}
+						} else if (line.trim() && !line.startsWith(":")) {
+							// If it's not SSE format, just append the line
+							contentWrapperDiv.textContent += line;
+						}
+					}
 					// Removed: placeholderDiv.scrollIntoView({ block: "end" });
+				}
+			}
+			// Process any remaining data in buffer
+			if (buffer.trim()) {
+				if (buffer.startsWith("data: ")) {
+					const data = buffer.slice(6);
+					// Skip the [DONE] token
+					if (data.trim() !== "[DONE]") {
+						contentWrapperDiv.textContent += data;
+					}
+				} else {
+					contentWrapperDiv.textContent += buffer;
 				}
 			}
 			// Stream finished
@@ -1147,7 +1184,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			}
 
 			const responseData = await response.json();
-			const savedTitle = responseData.new_title;
+			// Backend only returns {"status": "success"}, so use the title we sent
+			const savedTitle = newTitle;
 
 			// Visually indicate success briefly (optional)
 			inputElement.style.borderColor = "#81ae9d"; // New: green
@@ -1197,7 +1235,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				);
 			}
 			const responseData = await response.json();
-			const savedModel = responseData.new_model; // Backend returns actual saved model (e.g. default)
+			// Backend only returns {"status": "success"}, so use the model we sent
+			// If empty string was sent, backend will use default, so we should too
+			const savedModel = newModel || DEFAULT_MODEL_NAME;
 
 			inputElement.style.borderColor = "#81ae9d"; // New: green
 			setTimeout(() => {
@@ -1345,9 +1385,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				throw new Error(errorDetail);
 			}
 
-			const responseData = await response.json(); // Expects {"pinned": boolean, "message": "..."}
+			const responseData = await response.json(); // Expects {"is_pinned": boolean, "status": "..."}
 			if (buttonElement) {
-				buttonElement.textContent = responseData.pinned ? "Unpin" : "Pin";
+				buttonElement.textContent = responseData.is_pinned ? "Unpin" : "Pin";
 			}
 			// Optionally, provide a success message, though button text change is often enough.
 		} catch (error) {
