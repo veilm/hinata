@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		if (createBtn) {
 			createBtn.addEventListener("click", handleCreateConversation);
 		}
-	} else if (path.startsWith("/conversation-page/")) {
+	} else if (path.startsWith("/c/")) {
 		const parts = path.split("/");
 		const conversationId = parts[parts.length - 1];
 		if (conversationId) {
@@ -121,7 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					}
 
 					const a = document.createElement("a");
-					a.href = `/conversation-page/${encodeURIComponent(conv.id)}`;
+					a.href = `/c/${encodeURIComponent(conv.id)}`;
 					a.textContent = escapeHtml(conv.id);
 					li.appendChild(a);
 
@@ -187,7 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			const responseData = await response.json();
 			if (responseData && responseData.conversation_id) {
 				// Success! Navigate to the new conversation page.
-				window.location.href = `/conversation-page/${encodeURIComponent(responseData.conversation_id)}`;
+				window.location.href = `/c/${encodeURIComponent(responseData.conversation_id)}`;
 			} else {
 				// Fallback if conversation_id is not in response, though backend should ensure it
 				throw new Error(
@@ -1394,7 +1394,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			const responseData = await response.json();
 			if (responseData && responseData.new_conversation_id) {
-				window.location.href = `/conversation-page/${encodeURIComponent(responseData.new_conversation_id)}`;
+				window.location.href = `/c/${encodeURIComponent(responseData.new_conversation_id)}`;
 			} else {
 				throw new Error(
 					"Fork successful, but new conversation ID was not returned.",

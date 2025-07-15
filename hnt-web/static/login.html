@@ -11,29 +11,25 @@
 		<style>
         body {
             font-family: "Roboto Mono", "Consolas", "Menlo", "Courier New", Courier, monospace;
-            background-color: #1a1a1a;
+            background-color: #000000;
             color: #e0e0e0;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            margin-top: 200px;
         }
         
         .login-container {
-            background-color: #2a2a2a;
-            padding: 30px;
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            background-color: #000000;
+            padding: 20px;
+            border-radius: 0;
             width: 100%;
             max-width: 400px;
+            margin: 0 auto;
         }
         
         h1 {
             text-align: center;
-            color: #4a9eff;
+            color: #e0e0e0;
             margin-bottom: 30px;
+            font-size: 2em;
         }
         
         .form-group {
@@ -43,15 +39,16 @@
         label {
             display: block;
             margin-bottom: 5px;
-            color: #a0a0a0;
+            color: #aaaaaa;
         }
         
         input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 10px;
-            background-color: #1a1a1a;
-            border: 1px solid #444;
+            background-color: #101010;
+            border: 1px solid #333333;
+            border-radius: 0;
             color: #e0e0e0;
             font-family: inherit;
             font-size: 14px;
@@ -61,7 +58,7 @@
         input[type="text"]:focus,
         input[type="password"]:focus {
             outline: none;
-            border-color: #4a9eff;
+            border-color: #6ec8ff;
         }
         
         .button-group {
@@ -72,26 +69,28 @@
         
         button {
             flex: 1;
-            padding: 10px;
-            background-color: #4a9eff;
-            color: white;
+            padding: 10px 15px;
+            background-color: #6ec8ff;
+            color: #101010;
             border: none;
+            border-radius: 0;
             cursor: pointer;
             font-family: inherit;
-            font-size: 14px;
-            transition: background-color 0.3s;
+            font-size: 1em;
+            transition: background-color 0.2s ease;
         }
         
         button:hover {
-            background-color: #3a8eef;
+            background-color: #5bb9ff;
         }
         
         button.secondary {
-            background-color: #666;
+            background-color: #101010;
+            color: #6ec8ff;
         }
         
         button.secondary:hover {
-            background-color: #777;
+            background-color: #191919;
         }
         
         .error {
@@ -99,7 +98,7 @@
             color: #ff6b6b;
             padding: 10px;
             margin-bottom: 20px;
-            border-radius: 4px;
+            border-radius: 0;
             display: none;
         }
         
@@ -108,7 +107,7 @@
             color: #6bff6b;
             padding: 10px;
             margin-bottom: 20px;
-            border-radius: 4px;
+            border-radius: 0;
             display: none;
         }
     </style>

@@ -639,6 +639,16 @@ li {
 	background-color: #191919; /* Match 'Add System' button hover background */
 }
 
+/* Specific style for Share Button */
+
+#share-conversation-btn {
+	background-color: #101010;
+	color: #6ec8ff;
+}
+#share-conversation-btn:hover {
+	background-color: #191919;
+}
+
 /* Styling for pinned items in the conversation list */
 #conversation-list-container ul li.pinned-conversation a,
 #conversation-list-container
