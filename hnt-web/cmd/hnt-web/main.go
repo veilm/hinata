@@ -11,12 +11,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
 	"github.com/veilm/hinata/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/hnt-llm/pkg/llm"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/term"
 )
 
 type ConversationInfo struct {
@@ -98,14 +100,66 @@ func getDefaultOwner() string {
 	return os.Getenv("USER")
 }
 
+func isTerminal() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+func promptPassword(prompt string) (string, error) {
+	fmt.Print(prompt)
+	password, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println() // New line after password input
+	if err != nil {
+		return "", err
+	}
+	return string(password), nil
+}
+
 func main() {
 	// Initialize default admin user if needed
 	usersDir := getUsersDir()
 	if _, err := os.Stat(usersDir); os.IsNotExist(err) {
 		defaultUser := getDefaultOwner()
 		if defaultUser != "" {
-			if err := createUser(defaultUser, defaultUser); err == nil {
-				log.Printf("Created default admin user: %s (password: %s)\n", defaultUser, defaultUser)
+			var password string
+			if isTerminal() {
+				// Prompt for password if connected to terminal
+				fmt.Printf("Creating admin account for user '%s'\n", defaultUser)
+				for {
+					pwd1, err := promptPassword("Enter password: ")
+					if err != nil {
+						log.Printf("Error reading password: %v\n", err)
+						continue
+					}
+					if pwd1 == "" {
+						fmt.Println("Password cannot be empty")
+						continue
+					}
+					pwd2, err := promptPassword("Confirm password: ")
+					if err != nil {
+						log.Printf("Error reading password: %v\n", err)
+						continue
+					}
+					if pwd1 != pwd2 {
+						fmt.Println("Passwords do not match")
+						continue
+					}
+					password = pwd1
+					break
+				}
+			} else {
+				// Use username as password if not connected to terminal
+				password = defaultUser
+				log.Printf("Not connected to terminal, using username as password for admin user: %s\n", defaultUser)
+			}
+
+			if err := createUser(defaultUser, password); err == nil {
+				if isTerminal() {
+					log.Printf("Created admin user: %s\n", defaultUser)
+				} else {
+					log.Printf("Created default admin user: %s (password: %s)\n", defaultUser, password)
+				}
+			} else {
+				log.Printf("Failed to create admin user: %v\n", err)
 			}
 		}
 	}
@@ -124,8 +178,8 @@ func main() {
 	// Static file serving with custom handler for conversation pages
 	webDir := getWebDir()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Handle conversation-page routes
-		if strings.HasPrefix(r.URL.Path, "/conversation-page/") {
+		// Handle conversation routes
+		if strings.HasPrefix(r.URL.Path, "/c/") {
 			http.ServeFile(w, r, filepath.Join(webDir, "conversation.html"))
 			return
 		}
