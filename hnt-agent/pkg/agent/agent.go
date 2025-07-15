@@ -37,6 +37,7 @@ type Agent struct {
 	UseJSON         bool
 	SpinnerIndex    *int
 	UseEditor       bool
+	AutoExit        bool
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -56,6 +57,7 @@ type Config struct {
 	UseJSON         bool
 	SpinnerIndex    *int
 	UseEditor       bool
+	AutoExit        bool
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -126,6 +128,7 @@ func New(cfg Config) (*Agent, error) {
 		UseJSON:          cfg.UseJSON,
 		SpinnerIndex:     cfg.SpinnerIndex,
 		UseEditor:        cfg.UseEditor,
+		AutoExit:         cfg.AutoExit,
 		shellExecutor:    executor,
 		turnCounter:      1,
 		humanTurnCounter: 1,
@@ -202,6 +205,10 @@ func (a *Agent) Run(userMessage string) error {
 		shellCommands := extractShellCommands(llmResponse)
 		if len(shellCommands) == 0 {
 			fmt.Fprintf(os.Stderr, "\n%s-> Hinata did not suggest a shell block.\n", marginStr())
+
+			if a.AutoExit {
+				return nil
+			}
 
 			newMessage := a.promptForMessage()
 			if newMessage == "" {

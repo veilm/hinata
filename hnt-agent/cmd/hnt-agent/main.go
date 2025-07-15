@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"hnt-agent/pkg/agent"
+	"io"
 	"os"
 	"path/filepath"
 	"shared/pkg/prompt"
 	"shared/pkg/terminal"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,8 @@ var (
 	spinnerIndex    int
 	useSpinner      bool
 	useEditor       bool
+	useStdin        bool
+	autoExit        bool
 )
 
 func main() {
@@ -49,11 +53,14 @@ func main() {
 	rootCmd.Flags().StringVar(&model, "model", "", "LLM model to use")
 	rootCmd.Flags().BoolVar(&ignoreReasoning, "ignore-reasoning", false, "Do not display or save LLM reasoning")
 	rootCmd.Flags().BoolVar(&noConfirm, "no-confirm", false, "Skip confirmation steps")
+	rootCmd.Flags().BoolVarP(&noConfirm, "yes", "y", false, "Skip confirmation steps (alias for --no-confirm)")
 	rootCmd.Flags().BoolVar(&noEscape, "no-escape-backticks", false, "Do not escape backticks in shell commands")
 	rootCmd.Flags().BoolVar(&shellDisplay, "shell-results-display-xml", false, "Display shell command results")
 	rootCmd.Flags().BoolVar(&useJSON, "json", false, "Output shell results as JSON")
 	rootCmd.Flags().IntVar(&spinnerIndex, "spinner", -1, "Use specific spinner by index")
 	rootCmd.Flags().BoolVar(&useEditor, "use-editor", false, "Use an external editor ($EDITOR) for the user instruction message")
+	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read message from stdin")
+	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -82,8 +89,25 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	var userMessage string
-	if message != "" {
+	var stdinContent string
+
+	// Read from stdin if requested
+	if useStdin {
+		bytes, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("failed to read from stdin: %w", err)
+		}
+		stdinContent = strings.TrimSpace(string(bytes))
+	}
+
+	// Handle message input based on flags
+	if message != "" && useStdin {
+		// Combine -m flag and stdin content
+		userMessage = message + "\n\n" + stdinContent
+	} else if message != "" {
 		userMessage = message
+	} else if useStdin {
+		userMessage = stdinContent
 	} else {
 		msg, err := promptForMessage(useEditor)
 		if err != nil {
@@ -109,6 +133,7 @@ func run(cmd *cobra.Command, args []string) error {
 		UseJSON:         useJSON,
 		SpinnerIndex:    spinnerPtr,
 		UseEditor:       useEditor,
+		AutoExit:        autoExit,
 	}
 
 	ag, err := agent.New(cfg)
