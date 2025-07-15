@@ -12,11 +12,11 @@ echo "hinata: installed agent system prompts"
 # Install spinner config
 config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata
 mkdir -p "$config_dir"
-if [ -d "hnt-agent/spinners" ]; then
-    cp -r hnt-agent/spinners "$config_dir/"
+if [ -d "cmd/hnt-agent/spinners" ]; then
+    cp -r cmd/hnt-agent/spinners "$config_dir/"
     echo "hinata: installed spinner config to $config_dir/spinners/"
 else
-    echo "hinata: warning: spinners directory not found in ./hnt-agent/"
+    echo "hinata: warning: spinners directory not found in ./cmd/hnt-agent/"
 fi
 
 # Build binaries
@@ -43,9 +43,9 @@ for bin in $bins; do
 done
 
 # Install web assets
-if [ -d "hnt-web/static" ]; then
+if [ -d "cmd/hnt-web/static" ]; then
     web="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/web"
     mkdir -p "$web"
-    cp -r hnt-web/static/* "$web/"
+    cp -r cmd/hnt-web/static/* "$web/"
     echo "hinata: installed web assets to $web"
 fi

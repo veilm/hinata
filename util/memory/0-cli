@@ -1,0 +1,17 @@
+#!/bin/sh
+
+f="/home/oboro/src/hinata/util/memory/MEMORY.md"
+
+case "$1" in
+	add|save)
+		shift
+		echo "$@" >> "$f" ;;
+
+	read)
+		echo "<memory>"
+		cat "$f"
+		echo "</memory>"
+
+		echo "Memory read on $(date +%s)." >> "$f"
+		;;
+esac
