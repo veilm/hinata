@@ -224,6 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		const modelEditInput = document.getElementById("conversation-model-input");
 		const pinToggleButton = document.getElementById("pin-toggle-btn");
 		const jumpToLatestBtn = document.getElementById("jump-to-latest-btn");
+		const toggleReasoningBtn = document.getElementById("toggle-reasoning-btn");
 		const messagesContainer = document.getElementById("messages-container");
 		const otherFilesContainer = document.getElementById(
 			"other-files-container",
@@ -352,10 +353,57 @@ document.addEventListener("DOMContentLoaded", () => {
 			// Render messages
 			messagesContainer.innerHTML = ""; // Clear potential loading/error states
 			if (data.messages && data.messages.length > 0) {
-				data.messages.forEach((msg) => {
+				// Group messages to associate reasoning with assistant messages
+				const processedMessages = [];
+				let currentAssistantMessage = null;
+
+				for (let i = 0; i < data.messages.length; i++) {
+					const msg = data.messages[i];
+
+					if (msg.role === "assistant-reasoning") {
+						// Find the next assistant message to attach this reasoning to
+						for (let j = i + 1; j < data.messages.length; j++) {
+							if (data.messages[j].role === "assistant") {
+								// Attach reasoning to the next assistant message
+								data.messages[j].reasoning = msg;
+								break;
+							}
+						}
+					} else {
+						processedMessages.push(msg);
+					}
+				}
+
+				processedMessages.forEach((msg) => {
 					const messageDiv = document.createElement("div");
 					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
 					messageDiv.dataset.filename = msg.filename; // Store filename for actions
+
+					// If this message has associated reasoning, display it first
+					if (msg.reasoning) {
+						const reasoningDiv = document.createElement("div");
+						reasoningDiv.className = "message-reasoning";
+						reasoningDiv.style.backgroundColor = "#f0f0f0";
+						reasoningDiv.style.padding = "10px";
+						reasoningDiv.style.margin = "10px 0";
+						reasoningDiv.style.borderRadius = "5px";
+						reasoningDiv.style.fontStyle = "italic";
+						reasoningDiv.style.color = "#666";
+						reasoningDiv.style.display = "none"; // Hidden by default
+
+						// Extract content from <think> tags if present
+						let reasoningContent = msg.reasoning.content;
+						const thinkMatch = msg.reasoning.content.match(
+							/^<think>([\s\S]*?)<\/think>$/,
+						);
+						if (thinkMatch) {
+							reasoningContent = thinkMatch[1];
+						}
+
+						reasoningDiv.innerHTML =
+							"<strong>Reasoning:</strong><br>" + escapeHtml(reasoningContent);
+						messageDiv.appendChild(reasoningDiv);
+					}
 
 					// Wrapper for content to allow easy replacement (text <-> textarea)
 					const contentWrapperDiv = document.createElement("div");
@@ -492,6 +540,33 @@ document.addEventListener("DOMContentLoaded", () => {
 				newShareButton.addEventListener("click", () => {
 					showShareModal(conversationId);
 				});
+			}
+
+			// Setup Toggle Reasoning button listener
+			if (toggleReasoningBtn) {
+				const newToggleReasoningBtn = toggleReasoningBtn.cloneNode(true);
+				toggleReasoningBtn.parentNode.replaceChild(
+					newToggleReasoningBtn,
+					toggleReasoningBtn,
+				);
+				newToggleReasoningBtn.disabled = false;
+
+				// Track reasoning visibility state
+				let reasoningVisible = false;
+
+				newToggleReasoningBtn.addEventListener("click", () => {
+					reasoningVisible = !reasoningVisible;
+					const reasoningDivs = document.querySelectorAll(".message-reasoning");
+					reasoningDivs.forEach((div) => {
+						div.style.display = reasoningVisible ? "block" : "none";
+					});
+					newToggleReasoningBtn.textContent = reasoningVisible
+						? "Hide Reasoning"
+						: "Show Reasoning";
+				});
+
+				// Initialize button text
+				newToggleReasoningBtn.textContent = "Show Reasoning";
 			}
 
 			// Setup Jump to Latest button listener
@@ -1065,7 +1140,19 @@ document.addEventListener("DOMContentLoaded", () => {
 		contentWrapperDiv.className = "message-content-wrapper";
 		// contentWrapperDiv.style.whiteSpace = "pre-wrap"; // Ensure pre-wrap for streaming
 
+		// Create a separate div for reasoning content
+		const reasoningDiv = document.createElement("div");
+		reasoningDiv.className = "message-reasoning";
+		reasoningDiv.style.display = "none"; // Hidden by default
+		reasoningDiv.style.backgroundColor = "#f0f0f0";
+		reasoningDiv.style.padding = "10px";
+		reasoningDiv.style.margin = "10px 0";
+		reasoningDiv.style.borderRadius = "5px";
+		reasoningDiv.style.fontStyle = "italic";
+		reasoningDiv.style.color = "#666";
+
 		placeholderDiv.appendChild(headerDiv);
+		placeholderDiv.appendChild(reasoningDiv);
 		placeholderDiv.appendChild(contentWrapperDiv);
 		messagesContainer.appendChild(placeholderDiv);
 		// Removed: placeholderDiv.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1092,6 +1179,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			let done = false;
 			let buffer = "";
+			let hasReasoning = false;
 			while (!done) {
 				const { value, done: readerDone } = await reader.read();
 				done = readerDone;
@@ -1108,7 +1196,25 @@ document.addEventListener("DOMContentLoaded", () => {
 							const data = line.slice(6); // Remove 'data: ' prefix
 							// Skip the [DONE] token that signals end of stream
 							if (data.trim() && data.trim() !== "[DONE]") {
-								contentWrapperDiv.textContent += data;
+								// Check if this is reasoning content
+								if (data.startsWith("[REASONING]")) {
+									const reasoningContent = data.slice(11); // Remove [REASONING] prefix
+									if (!hasReasoning) {
+										hasReasoning = true;
+										// Check if reasoning should be visible
+										const toggleBtn = document.getElementById(
+											"toggle-reasoning-btn",
+										);
+										const shouldShow =
+											toggleBtn && toggleBtn.textContent === "Hide Reasoning";
+										reasoningDiv.style.display = shouldShow ? "block" : "none";
+										// Add a label
+										reasoningDiv.innerHTML = "<strong>Reasoning:</strong><br>";
+									}
+									reasoningDiv.innerHTML += escapeHtml(reasoningContent);
+								} else {
+									contentWrapperDiv.textContent += data;
+								}
 							}
 						} else if (line.trim() && !line.startsWith(":")) {
 							// If it's not SSE format, just append the line
@@ -1124,7 +1230,23 @@ document.addEventListener("DOMContentLoaded", () => {
 					const data = buffer.slice(6);
 					// Skip the [DONE] token
 					if (data.trim() !== "[DONE]") {
-						contentWrapperDiv.textContent += data;
+						if (data.startsWith("[REASONING]")) {
+							const reasoningContent = data.slice(11);
+							if (!hasReasoning) {
+								hasReasoning = true;
+								// Check if reasoning should be visible
+								const toggleBtn = document.getElementById(
+									"toggle-reasoning-btn",
+								);
+								const shouldShow =
+									toggleBtn && toggleBtn.textContent === "Hide Reasoning";
+								reasoningDiv.style.display = shouldShow ? "block" : "none";
+								reasoningDiv.innerHTML = "<strong>Reasoning:</strong><br>";
+							}
+							reasoningDiv.innerHTML += escapeHtml(reasoningContent);
+						} else {
+							contentWrapperDiv.textContent += data;
+						}
 					}
 				} else {
 					contentWrapperDiv.textContent += buffer;

@@ -452,10 +452,6 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 
 	// Convert messages and read content
 	for _, msg := range messages {
-		// Skip assistant-reasoning messages from the web UI
-		if msg.Role == chat.RoleAssistantReasoning {
-			continue
-		}
 
 		content, err := os.ReadFile(msg.Path)
 		if err != nil {
@@ -735,7 +731,7 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 	config := llm.Config{
 		Model:            model,
 		SystemPrompt:     "",
-		IncludeReasoning: false,
+		IncludeReasoning: true,
 	}
 
 	ctx := context.Background()
@@ -768,6 +764,9 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 			}
 
 			if event.Reasoning != "" {
+				// Stream reasoning tokens with a special prefix
+				fmt.Fprintf(w, "data: [REASONING]%s\n\n", event.Reasoning)
+				flusher.Flush()
 				reasoningBuffer.WriteString(event.Reasoning)
 			}
 
@@ -781,14 +780,21 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 done:
-	// Write the assistant message to file
-	fullResponse := contentBuffer.String()
+	// Write reasoning and assistant messages to separate files
 	if reasoningBuffer.Len() > 0 {
-		fullResponse = fmt.Sprintf("<think>%s</think>\n%s", reasoningBuffer.String(), contentBuffer.String())
+		// Save reasoning to a separate file with RoleAssistantReasoning
+		reasoningContent := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
+		_, err := chat.WriteMessageFile(convDir, chat.RoleAssistantReasoning, reasoningContent)
+		if err != nil {
+			fmt.Fprintf(w, "data: [ERROR] Failed to save reasoning\n\n")
+			flusher.Flush()
+			return
+		}
 	}
 
-	if fullResponse != "" {
-		_, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, fullResponse)
+	// Write the assistant message content (without reasoning)
+	if contentBuffer.Len() > 0 {
+		_, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, contentBuffer.String())
 		if err != nil {
 			fmt.Fprintf(w, "data: [ERROR] Failed to save message\n\n")
 			flusher.Flush()
