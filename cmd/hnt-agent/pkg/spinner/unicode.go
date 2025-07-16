@@ -134,6 +134,11 @@ func hasLegacyComputingFont() bool {
 			continue
 		}
 
+		// Skip LastResort font (macOS dummy backup font)
+		if strings.Contains(font, "LastResort") {
+			continue
+		}
+
 		// Look for known good fonts that support Legacy Computing
 		fontLower := strings.ToLower(font)
 
@@ -174,7 +179,11 @@ func hasLegacyComputingFont() bool {
 		cmd := exec.Command("fc-list", ":charset="+char, "family", "style")
 		output, err := cmd.Output()
 		if err == nil && len(bytes.TrimSpace(output)) > 0 {
-			supportCount++
+			// Check if output contains LastResort font
+			outputStr := string(output)
+			if !strings.Contains(outputStr, "LastResort") {
+				supportCount++
+			}
 		}
 	}
 

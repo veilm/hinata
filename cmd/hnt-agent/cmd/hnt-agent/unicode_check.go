@@ -106,11 +106,17 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 			if len(fonts) == 1 && fonts[0] == "" {
 				fmt.Println("No fonts found with U+1FB90 support")
 			} else {
-				fmt.Printf("Found %d font(s):\n", len(fonts))
-				for i, font := range fonts {
-					if font != "" {
-						fmt.Printf("  [%d] %s\n", i+1, font)
+				// Filter out LastResort fonts
+				filteredFonts := []string{}
+				for _, font := range fonts {
+					if font != "" && !strings.Contains(font, "LastResort") {
+						filteredFonts = append(filteredFonts, font)
 					}
+				}
+
+				fmt.Printf("Found %d font(s) (excluding LastResort):\n", len(filteredFonts))
+				for i, font := range filteredFonts {
+					fmt.Printf("  [%d] %s\n", i+1, font)
 				}
 
 				// Check for known good fonts
@@ -120,7 +126,7 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 					"fairfax hd", "fairfax", "legacy_computing", "unscii", "adwaita mono",
 				}
 				foundGood := false
-				for _, font := range fonts {
+				for _, font := range filteredFonts {
 					fontLower := strings.ToLower(font)
 					for _, gf := range goodFonts {
 						if strings.Contains(fontLower, gf) {
