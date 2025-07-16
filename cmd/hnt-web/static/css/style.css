@@ -894,7 +894,7 @@ html {
 
 .reasoning-header {
 	cursor: pointer;
-	background-color: #1a1a1a;
+	background-color: #0a0a0a;
 	padding: 8px 12px;
 	border-radius: 5px;
 	display: flex;
@@ -902,29 +902,31 @@ html {
 	justify-content: space-between;
 	user-select: none;
 	transition: background-color 0.2s ease;
+	border: 1px solid #1a1a1a;
 }
 
 .reasoning-header:hover {
-	background-color: #252525;
+	background-color: #111111;
+	border-color: #2a2a2a;
 }
 
 .reasoning-header span:first-child {
 	font-weight: bold;
-	color: #b19dff;
+	color: #6ec8ff;
 }
 
 .reasoning-header span:last-child {
 	font-size: 12px;
-	color: #666;
+	color: #4a8ab7;
 	transition: transform 0.2s ease;
 }
 
 .message-reasoning {
-	background-color: #0d0d0d;
+	background-color: #050505;
 	padding: 12px;
 	margin-top: 4px;
 	border-radius: 5px;
-	color: #999;
+	color: #a0a0a0;
 	white-space: pre-wrap;
-	border-left: 3px solid #4b3c6d;
+	border-left: 3px solid #3a6a8a;
 }

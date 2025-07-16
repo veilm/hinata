@@ -388,7 +388,7 @@ document.addEventListener("DOMContentLoaded", () => {
 						const reasoningHeader = document.createElement("div");
 						reasoningHeader.className = "reasoning-header";
 						reasoningHeader.style.cursor = "pointer";
-						reasoningHeader.style.backgroundColor = "#f0f0f0";
+						reasoningHeader.style.backgroundColor = "#0a0a0a";
 						reasoningHeader.style.padding = "8px 12px";
 						reasoningHeader.style.borderRadius = "5px";
 						reasoningHeader.style.display = "flex";
@@ -398,12 +398,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 						const reasoningLabel = document.createElement("span");
 						reasoningLabel.style.fontWeight = "bold";
-						reasoningLabel.style.color = "#666";
+						reasoningLabel.style.color = "#6ec8ff";
 						reasoningLabel.textContent = "Reasoning";
 
 						const toggleIcon = document.createElement("span");
 						toggleIcon.style.fontSize = "12px";
-						toggleIcon.style.color = "#999";
+						toggleIcon.style.color = "#4a8ab7";
 						toggleIcon.textContent = "▶"; // Right arrow when collapsed
 
 						reasoningHeader.appendChild(reasoningLabel);
@@ -412,11 +412,11 @@ document.addEventListener("DOMContentLoaded", () => {
 						// Create collapsible content
 						const reasoningContent = document.createElement("div");
 						reasoningContent.className = "message-reasoning";
-						reasoningContent.style.backgroundColor = "#f8f8f8";
+						reasoningContent.style.backgroundColor = "#050505";
 						reasoningContent.style.padding = "12px";
 						reasoningContent.style.marginTop = "4px";
 						reasoningContent.style.borderRadius = "5px";
-						reasoningContent.style.color = "#666";
+						reasoningContent.style.color = "#a0a0a0";
 						reasoningContent.style.display = "none"; // Hidden by default
 						reasoningContent.style.whiteSpace = "pre-wrap";
 
@@ -1216,7 +1216,7 @@ document.addEventListener("DOMContentLoaded", () => {
 										reasoningHeader = document.createElement("div");
 										reasoningHeader.className = "reasoning-header";
 										reasoningHeader.style.cursor = "pointer";
-										reasoningHeader.style.backgroundColor = "#f0f0f0";
+										reasoningHeader.style.backgroundColor = "#0a0a0a";
 										reasoningHeader.style.padding = "8px 12px";
 										reasoningHeader.style.borderRadius = "5px";
 										reasoningHeader.style.display = "flex";
@@ -1226,12 +1226,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 										const reasoningLabel = document.createElement("span");
 										reasoningLabel.style.fontWeight = "bold";
-										reasoningLabel.style.color = "#666";
+										reasoningLabel.style.color = "#6ec8ff";
 										reasoningLabel.textContent = "Reasoning";
 
 										toggleIcon = document.createElement("span");
 										toggleIcon.style.fontSize = "12px";
-										toggleIcon.style.color = "#999";
+										toggleIcon.style.color = "#4a8ab7";
 										toggleIcon.textContent = "▶"; // Right arrow when collapsed
 
 										reasoningHeader.appendChild(reasoningLabel);
@@ -1239,11 +1239,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 										reasoningContent = document.createElement("div");
 										reasoningContent.className = "message-reasoning";
-										reasoningContent.style.backgroundColor = "#f8f8f8";
+										reasoningContent.style.backgroundColor = "#050505";
 										reasoningContent.style.padding = "12px";
 										reasoningContent.style.marginTop = "4px";
 										reasoningContent.style.borderRadius = "5px";
-										reasoningContent.style.color = "#666";
+										reasoningContent.style.color = "#a0a0a0";
 										reasoningContent.style.display = "none"; // Hidden by default
 										reasoningContent.style.whiteSpace = "pre-wrap";
 
@@ -1297,7 +1297,7 @@ document.addEventListener("DOMContentLoaded", () => {
 								reasoningHeader = document.createElement("div");
 								reasoningHeader.className = "reasoning-header";
 								reasoningHeader.style.cursor = "pointer";
-								reasoningHeader.style.backgroundColor = "#f0f0f0";
+								reasoningHeader.style.backgroundColor = "#0a0a0a";
 								reasoningHeader.style.padding = "8px 12px";
 								reasoningHeader.style.borderRadius = "5px";
 								reasoningHeader.style.display = "flex";
@@ -1307,12 +1307,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 								const reasoningLabel = document.createElement("span");
 								reasoningLabel.style.fontWeight = "bold";
-								reasoningLabel.style.color = "#666";
+								reasoningLabel.style.color = "#6ec8ff";
 								reasoningLabel.textContent = "Reasoning";
 
 								toggleIcon = document.createElement("span");
 								toggleIcon.style.fontSize = "12px";
-								toggleIcon.style.color = "#999";
+								toggleIcon.style.color = "#4a8ab7";
 								toggleIcon.textContent = "▶"; // Right arrow when collapsed
 
 								reasoningHeader.appendChild(reasoningLabel);
@@ -1320,11 +1320,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 								reasoningContent = document.createElement("div");
 								reasoningContent.className = "message-reasoning";
-								reasoningContent.style.backgroundColor = "#f8f8f8";
+								reasoningContent.style.backgroundColor = "#050505";
 								reasoningContent.style.padding = "12px";
 								reasoningContent.style.marginTop = "4px";
 								reasoningContent.style.borderRadius = "5px";
-								reasoningContent.style.color = "#666";
+								reasoningContent.style.color = "#a0a0a0";
 								reasoningContent.style.display = "none"; // Hidden by default
 								reasoningContent.style.whiteSpace = "pre-wrap";
 
