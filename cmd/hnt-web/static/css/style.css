@@ -128,7 +128,8 @@ li {
 	text-decoration: none;
 }
 
-.other-files-divider {
+.other-files-divider,
+.archive-divider {
 	border: 0;
 	border-top: 1px solid #333333;
 	margin-top: 25px;

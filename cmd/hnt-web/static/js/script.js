@@ -232,8 +232,8 @@ document.addEventListener("DOMContentLoaded", () => {
 		const safeConvId = escapeHtml(conversationId);
 
 		// Initial state for inputs and buttons
-		document.title = `Loading: ${safeConvId}`;
-		mainTitleDisplayElement.textContent = `Loading conversation: ${safeConvId}...`;
+		document.title = `Loading conversation...`;
+		mainTitleDisplayElement.textContent = `Loading conversation...`;
 		titleEditInput.value = "";
 		titleEditInput.disabled = true;
 		modelEditInput.value = "";
@@ -260,8 +260,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			const updateDisplayedTitle = (currentTitle) => {
 				const displayPageTitle =
 					currentTitle && currentTitle !== "-"
-						? `${escapeHtml(currentTitle)} (${safeConvId})`
-						: `Conversation: ${safeConvId}`;
+						? escapeHtml(currentTitle)
+						: `Conversation ${safeConvId}`;
 				document.title = displayPageTitle;
 				mainTitleDisplayElement.textContent = displayPageTitle;
 			};
@@ -478,6 +478,7 @@ document.addEventListener("DOMContentLoaded", () => {
 							msg.content,
 							conversationId,
 							msg.filename,
+							msg.reasoning,
 						),
 					);
 					editButton.title = "Edit"; // Tooltip for accessibility
@@ -614,11 +615,11 @@ document.addEventListener("DOMContentLoaded", () => {
 				const archiveHeading = document.createElement("h2");
 				archiveHeading.textContent = `Deleted Messages (${data.archived_messages.length})`;
 				archiveHeading.style.margin = "0";
-				archiveHeading.style.color = "#888";
+				archiveHeading.style.color = "#e0e0e0"; // White text like Other Files
 
 				const archiveToggleIcon = document.createElement("span");
 				archiveToggleIcon.style.fontSize = "14px";
-				archiveToggleIcon.style.color = "#666";
+				archiveToggleIcon.style.color = "#4a8ab7"; // Blue like Other Files
 				archiveToggleIcon.textContent = "▶"; // Right arrow when collapsed
 
 				archiveHeader.appendChild(archiveHeading);
@@ -628,28 +629,32 @@ document.addEventListener("DOMContentLoaded", () => {
 				const archiveContent = document.createElement("div");
 				archiveContent.className = "collapsible-content archive-content";
 				archiveContent.style.display = "none"; // Collapsed by default
-				archiveContent.style.opacity = "0.7"; // Make archived messages slightly faded
 
 				// Group archived messages by conversation order
 				const groupedArchived = [];
 				let currentGroup = null;
 
-				data.archived_messages.forEach((msg) => {
+				// Sort archived messages by filename to ensure correct order
+				const sortedArchived = [...data.archived_messages].sort((a, b) =>
+					a.filename.localeCompare(b.filename),
+				);
+
+				for (let i = 0; i < sortedArchived.length; i++) {
+					const msg = sortedArchived[i];
+
 					if (msg.role === "assistant-reasoning") {
 						// Find the next assistant message to attach this reasoning to
-						for (let i = 0; i < data.archived_messages.length; i++) {
-							if (
-								data.archived_messages[i].role === "assistant" &&
-								data.archived_messages[i].filename > msg.filename
-							) {
-								data.archived_messages[i].reasoning = msg;
+						for (let j = i + 1; j < sortedArchived.length; j++) {
+							if (sortedArchived[j].role === "assistant") {
+								// Attach reasoning to the next assistant message
+								sortedArchived[j].reasoning = msg;
 								break;
 							}
 						}
 					} else {
 						groupedArchived.push(msg);
 					}
-				});
+				}
 
 				// Render archived messages
 				groupedArchived.forEach((msg) => {
@@ -1107,6 +1112,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		originalContent,
 		conversationId,
 		filename,
+		reasoning = null,
 	) {
 		const isEditing = messageElement.dataset.editing === "true";
 
@@ -1131,6 +1137,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					originalContent, // This is now the current content
 					conversationId,
 					filename,
+					reasoning,
 				),
 			);
 			editButton.title = "Edit";
@@ -1139,7 +1146,12 @@ document.addEventListener("DOMContentLoaded", () => {
 				ICON_ARCHIVE,
 				"btn-archive",
 				() =>
-					handleArchiveMessage(messageElement, conversationId, filename, null),
+					handleArchiveMessage(
+						messageElement,
+						conversationId,
+						filename,
+						reasoning,
+					),
 			);
 			archiveButton.title = "Archive";
 
@@ -1179,6 +1191,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					textarea, // Pass textarea to get its current value
 					conversationId,
 					filename,
+					reasoning,
 				),
 			);
 			saveButton.title = "Save";
@@ -1192,6 +1205,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					messageElement.dataset.originalContentForEdit, // Use stored original
 					conversationId,
 					filename,
+					reasoning,
 				),
 			);
 			cancelButton.title = "Cancel";
@@ -1278,6 +1292,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		textareaElement,
 		conversationId,
 		filename,
+		reasoning = null,
 	) {
 		const newContent = textareaElement.value;
 
@@ -1315,6 +1330,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				newContent, // Pass the new content to be displayed and set as original
 				conversationId,
 				filename,
+				reasoning,
 			);
 		} catch (error) {
 			console.error("Error saving message:", error);
