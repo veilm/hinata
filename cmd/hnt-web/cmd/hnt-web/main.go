@@ -22,9 +22,11 @@ import (
 )
 
 type ConversationInfo struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	IsPinned bool   `json:"is_pinned"`
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	IsPinned   bool     `json:"is_pinned"`
+	ForkSource string   `json:"fork_source,omitempty"`
+	Forks      []string `json:"forks,omitempty"`
 }
 
 type MessageFile struct {
@@ -278,6 +280,21 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 		pinPath := filepath.Join(convDir, "pinned.txt")
 		if _, err := os.Stat(pinPath); err == nil {
 			conv.IsPinned = true
+		}
+
+		// Check for fork_source.txt
+		forkSourcePath := filepath.Join(convDir, "fork_source.txt")
+		if data, err := os.ReadFile(forkSourcePath); err == nil {
+			conv.ForkSource = strings.TrimSpace(string(data))
+		}
+
+		// Check for forks.txt
+		forksPath := filepath.Join(convDir, "forks.txt")
+		if data, err := os.ReadFile(forksPath); err == nil {
+			forksStr := strings.TrimSpace(string(data))
+			if forksStr != "" {
+				conv.Forks = strings.Split(forksStr, "\n")
+			}
 		}
 
 		conversations = append(conversations, conv)
@@ -623,8 +640,10 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 			continue
 		}
 
-		// Skip access.txt - we'll set our own
-		if entry.Name() == "access.txt" {
+		// Skip access.txt and fork tracking files - we'll set our own
+		if entry.Name() == "access.txt" ||
+			entry.Name() == "fork_source.txt" ||
+			entry.Name() == "forks.txt" {
 			continue
 		}
 
@@ -645,6 +664,45 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 	newID := filepath.Base(newConvDir)
+
+	// Handle fork tracking
+	// 1. Check if source has a fork_source.txt (meaning it's already a fork)
+	var rootID string
+	forkSourcePath := filepath.Join(sourceDir, "fork_source.txt")
+	if data, err := os.ReadFile(forkSourcePath); err == nil {
+		// Source is a fork, use its root
+		rootID = strings.TrimSpace(string(data))
+	} else {
+		// Source is a root, use it as the root
+		rootID = convID
+	}
+
+	// 2. Write fork_source.txt to the new conversation
+	newForkSourcePath := filepath.Join(newConvDir, "fork_source.txt")
+	if err := os.WriteFile(newForkSourcePath, []byte(rootID), 0644); err != nil {
+		log.Printf("Warning: Failed to write fork_source.txt: %v", err)
+	}
+
+	// 3. Append new conversation ID to root's forks.txt
+	rootDir := filepath.Join(baseDir, rootID)
+	forksPath := filepath.Join(rootDir, "forks.txt")
+
+	// Read existing forks
+	var forks []string
+	if data, err := os.ReadFile(forksPath); err == nil {
+		existing := strings.TrimSpace(string(data))
+		if existing != "" {
+			forks = strings.Split(existing, "\n")
+		}
+	}
+
+	// Append new fork ID
+	forks = append(forks, newID)
+	forksData := strings.Join(forks, "\n")
+
+	if err := os.WriteFile(forksPath, []byte(forksData), 0644); err != nil {
+		log.Printf("Warning: Failed to update root's forks.txt: %v", err)
+	}
 
 	// Log the fork operation
 	sourceTitle := getConversationTitle(sourceDir)

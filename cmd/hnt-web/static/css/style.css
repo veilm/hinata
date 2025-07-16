@@ -888,6 +888,26 @@ html {
 	background-color: #777;
 }
 
+/* Fork Display Styles */
+#conversation-list-container ul li {
+	position: relative;
+}
+
+#conversation-list-container ul li[style*="marginLeft"] {
+	border-left: 2px solid #333;
+	padding-left: 10px;
+	margin-top: 5px;
+	margin-bottom: 5px;
+}
+
+#conversation-list-container ul li[style*="marginLeft"]:before {
+	content: "└";
+	position: absolute;
+	left: -8px;
+	top: 0;
+	color: #555;
+}
+
 /* Collapsible Reasoning Styles */
 .message-reasoning-container {
 	margin: 10px 0;

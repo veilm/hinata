@@ -113,11 +113,44 @@ document.addEventListener("DOMContentLoaded", () => {
 			const data = await response.json(); // Expects { conversations: [{id: "...", title: "...", is_pinned: bool}, ...] }
 
 			if (data.conversations && data.conversations.length > 0) {
-				const ul = document.createElement("ul");
+				// Group conversations by fork relationships
+				const rootConversations = [];
+				const forkMap = new Map(); // root ID -> list of fork conversations
+				const allConvsMap = new Map(); // ID -> conversation object
+
+				// First pass: build maps
 				data.conversations.forEach((conv) => {
+					allConvsMap.set(conv.id, conv);
+
+					if (!conv.fork_source) {
+						// This is a root conversation
+						rootConversations.push(conv);
+						if (!forkMap.has(conv.id)) {
+							forkMap.set(conv.id, []);
+						}
+					}
+				});
+
+				// Second pass: populate fork map
+				data.conversations.forEach((conv) => {
+					if (conv.fork_source) {
+						// This is a fork
+						if (!forkMap.has(conv.fork_source)) {
+							forkMap.set(conv.fork_source, []);
+						}
+						forkMap.get(conv.fork_source).push(conv);
+					}
+				});
+
+				// Helper function to create conversation list item
+				const createConversationItem = (conv, isRoot = true) => {
 					const li = document.createElement("li");
 					if (conv.is_pinned) {
 						li.classList.add("pinned-conversation");
+					}
+					if (!isRoot) {
+						li.style.marginLeft = "20px"; // Indent forks
+						li.style.fontSize = "0.95em"; // Slightly smaller font for forks
 					}
 
 					const a = document.createElement("a");
@@ -132,14 +165,45 @@ document.addEventListener("DOMContentLoaded", () => {
 						displayTitle = "-";
 					}
 					let titleContent = ` - ${displayTitle}`;
+					if (!isRoot) {
+						titleContent = ` - (fork) ${displayTitle}`;
+					}
 					if (conv.is_pinned) {
 						titleContent += ` <span class="pin-emoji">${ICON_PIN}</span>`; // Use SVG icon
 					}
 					titleSpan.innerHTML = titleContent; // Use innerHTML for the emoji span
 					li.appendChild(titleSpan);
 
-					ul.appendChild(li);
+					return li;
+				};
+
+				const ul = document.createElement("ul");
+
+				// Display root conversations with their forks
+				rootConversations.forEach((rootConv) => {
+					// Add root conversation
+					ul.appendChild(createConversationItem(rootConv, true));
+
+					// Add its forks (if any)
+					const forks = forkMap.get(rootConv.id) || [];
+
+					// Sort forks by their order in the root's forks.txt
+					if (rootConv.forks && rootConv.forks.length > 0) {
+						// Use the order from forks.txt
+						rootConv.forks.forEach((forkId) => {
+							const forkConv = forks.find((f) => f.id === forkId);
+							if (forkConv) {
+								ul.appendChild(createConversationItem(forkConv, false));
+							}
+						});
+					} else {
+						// Fallback: just add any forks we found
+						forks.forEach((forkConv) => {
+							ul.appendChild(createConversationItem(forkConv, false));
+						});
+					}
 				});
+
 				container.innerHTML = ""; // Clear "Loading..."
 				container.appendChild(ul);
 			} else {
