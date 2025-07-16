@@ -886,3 +886,45 @@ html {
 .btn-secondary:hover {
 	background-color: #777;
 }
+
+/* Collapsible Reasoning Styles */
+.message-reasoning-container {
+	margin: 10px 0;
+}
+
+.reasoning-header {
+	cursor: pointer;
+	background-color: #1a1a1a;
+	padding: 8px 12px;
+	border-radius: 5px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	user-select: none;
+	transition: background-color 0.2s ease;
+}
+
+.reasoning-header:hover {
+	background-color: #252525;
+}
+
+.reasoning-header span:first-child {
+	font-weight: bold;
+	color: #b19dff;
+}
+
+.reasoning-header span:last-child {
+	font-size: 12px;
+	color: #666;
+	transition: transform 0.2s ease;
+}
+
+.message-reasoning {
+	background-color: #0d0d0d;
+	padding: 12px;
+	margin-top: 4px;
+	border-radius: 5px;
+	color: #999;
+	white-space: pre-wrap;
+	border-left: 3px solid #4b3c6d;
+}

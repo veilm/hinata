@@ -224,7 +224,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		const modelEditInput = document.getElementById("conversation-model-input");
 		const pinToggleButton = document.getElementById("pin-toggle-btn");
 		const jumpToLatestBtn = document.getElementById("jump-to-latest-btn");
-		const toggleReasoningBtn = document.getElementById("toggle-reasoning-btn");
 		const messagesContainer = document.getElementById("messages-container");
 		const otherFilesContainer = document.getElementById(
 			"other-files-container",
@@ -381,28 +380,67 @@ document.addEventListener("DOMContentLoaded", () => {
 
 					// If this message has associated reasoning, display it first
 					if (msg.reasoning) {
-						const reasoningDiv = document.createElement("div");
-						reasoningDiv.className = "message-reasoning";
-						reasoningDiv.style.backgroundColor = "#f0f0f0";
-						reasoningDiv.style.padding = "10px";
-						reasoningDiv.style.margin = "10px 0";
-						reasoningDiv.style.borderRadius = "5px";
-						reasoningDiv.style.fontStyle = "italic";
-						reasoningDiv.style.color = "#666";
-						reasoningDiv.style.display = "none"; // Hidden by default
+						const reasoningContainer = document.createElement("div");
+						reasoningContainer.className = "message-reasoning-container";
+						reasoningContainer.style.margin = "10px 0";
+
+						// Create toggle header
+						const reasoningHeader = document.createElement("div");
+						reasoningHeader.className = "reasoning-header";
+						reasoningHeader.style.cursor = "pointer";
+						reasoningHeader.style.backgroundColor = "#f0f0f0";
+						reasoningHeader.style.padding = "8px 12px";
+						reasoningHeader.style.borderRadius = "5px";
+						reasoningHeader.style.display = "flex";
+						reasoningHeader.style.alignItems = "center";
+						reasoningHeader.style.justifyContent = "space-between";
+						reasoningHeader.style.userSelect = "none";
+
+						const reasoningLabel = document.createElement("span");
+						reasoningLabel.style.fontWeight = "bold";
+						reasoningLabel.style.color = "#666";
+						reasoningLabel.textContent = "Reasoning";
+
+						const toggleIcon = document.createElement("span");
+						toggleIcon.style.fontSize = "12px";
+						toggleIcon.style.color = "#999";
+						toggleIcon.textContent = "▶"; // Right arrow when collapsed
+
+						reasoningHeader.appendChild(reasoningLabel);
+						reasoningHeader.appendChild(toggleIcon);
+
+						// Create collapsible content
+						const reasoningContent = document.createElement("div");
+						reasoningContent.className = "message-reasoning";
+						reasoningContent.style.backgroundColor = "#f8f8f8";
+						reasoningContent.style.padding = "12px";
+						reasoningContent.style.marginTop = "4px";
+						reasoningContent.style.borderRadius = "5px";
+						reasoningContent.style.color = "#666";
+						reasoningContent.style.display = "none"; // Hidden by default
+						reasoningContent.style.whiteSpace = "pre-wrap";
 
 						// Extract content from <think> tags if present
-						let reasoningContent = msg.reasoning.content;
+						let reasoningText = msg.reasoning.content;
 						const thinkMatch = msg.reasoning.content.match(
 							/^<think>([\s\S]*?)<\/think>$/,
 						);
 						if (thinkMatch) {
-							reasoningContent = thinkMatch[1];
+							reasoningText = thinkMatch[1];
 						}
 
-						reasoningDiv.innerHTML =
-							"<strong>Reasoning:</strong><br>" + escapeHtml(reasoningContent);
-						messageDiv.appendChild(reasoningDiv);
+						reasoningContent.textContent = reasoningText;
+
+						// Toggle handler
+						reasoningHeader.addEventListener("click", () => {
+							const isVisible = reasoningContent.style.display !== "none";
+							reasoningContent.style.display = isVisible ? "none" : "block";
+							toggleIcon.textContent = isVisible ? "▶" : "▼";
+						});
+
+						reasoningContainer.appendChild(reasoningHeader);
+						reasoningContainer.appendChild(reasoningContent);
+						messageDiv.appendChild(reasoningContainer);
 					}
 
 					// Wrapper for content to allow easy replacement (text <-> textarea)
@@ -540,33 +578,6 @@ document.addEventListener("DOMContentLoaded", () => {
 				newShareButton.addEventListener("click", () => {
 					showShareModal(conversationId);
 				});
-			}
-
-			// Setup Toggle Reasoning button listener
-			if (toggleReasoningBtn) {
-				const newToggleReasoningBtn = toggleReasoningBtn.cloneNode(true);
-				toggleReasoningBtn.parentNode.replaceChild(
-					newToggleReasoningBtn,
-					toggleReasoningBtn,
-				);
-				newToggleReasoningBtn.disabled = false;
-
-				// Track reasoning visibility state
-				let reasoningVisible = false;
-
-				newToggleReasoningBtn.addEventListener("click", () => {
-					reasoningVisible = !reasoningVisible;
-					const reasoningDivs = document.querySelectorAll(".message-reasoning");
-					reasoningDivs.forEach((div) => {
-						div.style.display = reasoningVisible ? "block" : "none";
-					});
-					newToggleReasoningBtn.textContent = reasoningVisible
-						? "Hide Reasoning"
-						: "Show Reasoning";
-				});
-
-				// Initialize button text
-				newToggleReasoningBtn.textContent = "Show Reasoning";
 			}
 
 			// Setup Jump to Latest button listener
@@ -1140,19 +1151,14 @@ document.addEventListener("DOMContentLoaded", () => {
 		contentWrapperDiv.className = "message-content-wrapper";
 		// contentWrapperDiv.style.whiteSpace = "pre-wrap"; // Ensure pre-wrap for streaming
 
-		// Create a separate div for reasoning content
-		const reasoningDiv = document.createElement("div");
-		reasoningDiv.className = "message-reasoning";
-		reasoningDiv.style.display = "none"; // Hidden by default
-		reasoningDiv.style.backgroundColor = "#f0f0f0";
-		reasoningDiv.style.padding = "10px";
-		reasoningDiv.style.margin = "10px 0";
-		reasoningDiv.style.borderRadius = "5px";
-		reasoningDiv.style.fontStyle = "italic";
-		reasoningDiv.style.color = "#666";
+		// Create reasoning container (will be populated if reasoning content arrives)
+		let reasoningContainer = null;
+		let reasoningContent = null;
+		let reasoningHeader = null;
+		let toggleIcon = null;
 
 		placeholderDiv.appendChild(headerDiv);
-		placeholderDiv.appendChild(reasoningDiv);
+		// Reasoning container will be inserted here when needed
 		placeholderDiv.appendChild(contentWrapperDiv);
 		messagesContainer.appendChild(placeholderDiv);
 		// Removed: placeholderDiv.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1198,20 +1204,69 @@ document.addEventListener("DOMContentLoaded", () => {
 							if (data.trim() && data.trim() !== "[DONE]") {
 								// Check if this is reasoning content
 								if (data.startsWith("[REASONING]")) {
-									const reasoningContent = data.slice(11); // Remove [REASONING] prefix
+									const reasoningText = data.slice(11); // Remove [REASONING] prefix
 									if (!hasReasoning) {
 										hasReasoning = true;
-										// Check if reasoning should be visible
-										const toggleBtn = document.getElementById(
-											"toggle-reasoning-btn",
+										// Create collapsible reasoning section
+										reasoningContainer = document.createElement("div");
+										reasoningContainer.className =
+											"message-reasoning-container";
+										reasoningContainer.style.margin = "10px 0";
+
+										reasoningHeader = document.createElement("div");
+										reasoningHeader.className = "reasoning-header";
+										reasoningHeader.style.cursor = "pointer";
+										reasoningHeader.style.backgroundColor = "#f0f0f0";
+										reasoningHeader.style.padding = "8px 12px";
+										reasoningHeader.style.borderRadius = "5px";
+										reasoningHeader.style.display = "flex";
+										reasoningHeader.style.alignItems = "center";
+										reasoningHeader.style.justifyContent = "space-between";
+										reasoningHeader.style.userSelect = "none";
+
+										const reasoningLabel = document.createElement("span");
+										reasoningLabel.style.fontWeight = "bold";
+										reasoningLabel.style.color = "#666";
+										reasoningLabel.textContent = "Reasoning";
+
+										toggleIcon = document.createElement("span");
+										toggleIcon.style.fontSize = "12px";
+										toggleIcon.style.color = "#999";
+										toggleIcon.textContent = "▶"; // Right arrow when collapsed
+
+										reasoningHeader.appendChild(reasoningLabel);
+										reasoningHeader.appendChild(toggleIcon);
+
+										reasoningContent = document.createElement("div");
+										reasoningContent.className = "message-reasoning";
+										reasoningContent.style.backgroundColor = "#f8f8f8";
+										reasoningContent.style.padding = "12px";
+										reasoningContent.style.marginTop = "4px";
+										reasoningContent.style.borderRadius = "5px";
+										reasoningContent.style.color = "#666";
+										reasoningContent.style.display = "none"; // Hidden by default
+										reasoningContent.style.whiteSpace = "pre-wrap";
+
+										// Toggle handler
+										reasoningHeader.addEventListener("click", () => {
+											const isVisible =
+												reasoningContent.style.display !== "none";
+											reasoningContent.style.display = isVisible
+												? "none"
+												: "block";
+											toggleIcon.textContent = isVisible ? "▶" : "▼";
+										});
+
+										reasoningContainer.appendChild(reasoningHeader);
+										reasoningContainer.appendChild(reasoningContent);
+
+										// Insert before content wrapper
+										placeholderDiv.insertBefore(
+											reasoningContainer,
+											contentWrapperDiv,
 										);
-										const shouldShow =
-											toggleBtn && toggleBtn.textContent === "Hide Reasoning";
-										reasoningDiv.style.display = shouldShow ? "block" : "none";
-										// Add a label
-										reasoningDiv.innerHTML = "<strong>Reasoning:</strong><br>";
 									}
-									reasoningDiv.innerHTML += escapeHtml(reasoningContent);
+									reasoningContent.textContent += reasoningText;
 								} else {
 									contentWrapperDiv.textContent += data;
 								}
@@ -1231,19 +1286,65 @@ document.addEventListener("DOMContentLoaded", () => {
 					// Skip the [DONE] token
 					if (data.trim() !== "[DONE]") {
 						if (data.startsWith("[REASONING]")) {
-							const reasoningContent = data.slice(11);
+							const reasoningText = data.slice(11);
 							if (!hasReasoning) {
 								hasReasoning = true;
-								// Check if reasoning should be visible
-								const toggleBtn = document.getElementById(
-									"toggle-reasoning-btn",
+								// Create collapsible reasoning section (same as above)
+								reasoningContainer = document.createElement("div");
+								reasoningContainer.className = "message-reasoning-container";
+								reasoningContainer.style.margin = "10px 0";
+
+								reasoningHeader = document.createElement("div");
+								reasoningHeader.className = "reasoning-header";
+								reasoningHeader.style.cursor = "pointer";
+								reasoningHeader.style.backgroundColor = "#f0f0f0";
+								reasoningHeader.style.padding = "8px 12px";
+								reasoningHeader.style.borderRadius = "5px";
+								reasoningHeader.style.display = "flex";
+								reasoningHeader.style.alignItems = "center";
+								reasoningHeader.style.justifyContent = "space-between";
+								reasoningHeader.style.userSelect = "none";
+
+								const reasoningLabel = document.createElement("span");
+								reasoningLabel.style.fontWeight = "bold";
+								reasoningLabel.style.color = "#666";
+								reasoningLabel.textContent = "Reasoning";
+
+								toggleIcon = document.createElement("span");
+								toggleIcon.style.fontSize = "12px";
+								toggleIcon.style.color = "#999";
+								toggleIcon.textContent = "▶"; // Right arrow when collapsed
+
+								reasoningHeader.appendChild(reasoningLabel);
+								reasoningHeader.appendChild(toggleIcon);
+
+								reasoningContent = document.createElement("div");
+								reasoningContent.className = "message-reasoning";
+								reasoningContent.style.backgroundColor = "#f8f8f8";
+								reasoningContent.style.padding = "12px";
+								reasoningContent.style.marginTop = "4px";
+								reasoningContent.style.borderRadius = "5px";
+								reasoningContent.style.color = "#666";
+								reasoningContent.style.display = "none"; // Hidden by default
+								reasoningContent.style.whiteSpace = "pre-wrap";
+
+								// Toggle handler
+								reasoningHeader.addEventListener("click", () => {
+									const isVisible = reasoningContent.style.display !== "none";
+									reasoningContent.style.display = isVisible ? "none" : "block";
+									toggleIcon.textContent = isVisible ? "▶" : "▼";
+								});
+
+								reasoningContainer.appendChild(reasoningHeader);
+								reasoningContainer.appendChild(reasoningContent);
+
+								// Insert before content wrapper
+								placeholderDiv.insertBefore(
+									reasoningContainer,
+									contentWrapperDiv,
 								);
-								const shouldShow =
-									toggleBtn && toggleBtn.textContent === "Hide Reasoning";
-								reasoningDiv.style.display = shouldShow ? "block" : "none";
-								reasoningDiv.innerHTML = "<strong>Reasoning:</strong><br>";
 							}
-							reasoningDiv.innerHTML += escapeHtml(reasoningContent);
+							reasoningContent.textContent += reasoningText;
 						} else {
 							contentWrapperDiv.textContent += data;
 						}
