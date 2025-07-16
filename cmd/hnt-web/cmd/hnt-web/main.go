@@ -462,18 +462,8 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		// Extract filename from path
 		filename := filepath.Base(msg.Path)
 
-		// Format content based on role prefix in original Python
 		contentStr := string(content)
 		role := string(msg.Role)
-
-		// Remove role prefixes if they exist (for backward compatibility)
-		if strings.HasPrefix(contentStr, "Human: ") {
-			contentStr = strings.TrimPrefix(contentStr, "Human: ")
-		} else if strings.HasPrefix(contentStr, "Assistant: ") {
-			contentStr = strings.TrimPrefix(contentStr, "Assistant: ")
-		} else if strings.HasPrefix(contentStr, "System: ") {
-			contentStr = strings.TrimPrefix(contentStr, "System: ")
-		}
 
 		detail.Messages = append(detail.Messages, MessageFile{
 			Filename: filename,
@@ -551,11 +541,12 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 						role = "assistant-reasoning"
 					}
 
-					contentStr := strings.TrimSpace(string(content))
+					contentStr := string(content)
+
 					detail.ArchivedMessages = append(detail.ArchivedMessages, MessageFile{
 						Filename: entry.Name(),
 						Role:     role,
-						Content:  contentStr,
+						Content:  strings.TrimSpace(contentStr),
 					})
 				}
 			}
@@ -720,18 +711,9 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	// Format content based on role (for backward compatibility)
-	content := req.Content
-	switch role {
-	case chat.RoleUser:
-		content = "Human: " + content
-	case chat.RoleAssistant:
-		content = "Assistant: " + content
-	case chat.RoleSystem:
-		content = "System: " + content
-	}
-
-	filename, err := chat.WriteMessageFile(convDir, role, content)
+	// Write message content directly without role prefixes
+	// (role is already in the filename)
+	filename, err := chat.WriteMessageFile(convDir, role, req.Content)
 	if err != nil {
 		http.Error(w, "Failed to write message", http.StatusInternalServerError)
 		return
