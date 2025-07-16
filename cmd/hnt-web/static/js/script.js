@@ -145,34 +145,56 @@ document.addEventListener("DOMContentLoaded", () => {
 				// Helper function to create conversation list item
 				const createConversationItem = (conv, isRoot = true) => {
 					const li = document.createElement("li");
+					li.style.display = "flex";
+					li.style.alignItems = "center";
+					li.style.gap = "15px";
+
 					if (conv.is_pinned) {
 						li.classList.add("pinned-conversation");
 					}
 					if (!isRoot) {
-						li.style.marginLeft = "20px"; // Indent forks
+						li.style.marginLeft = "40px"; // Indent forks
 						li.style.fontSize = "0.95em"; // Slightly smaller font for forks
+						li.classList.add("fork-conversation");
 					}
 
+					// Convert nanosecond timestamp to date
+					const timestampNs = parseInt(conv.id);
+					const timestampMs = Math.floor(timestampNs / 1000000); // Convert ns to ms
+					const date = new Date(timestampMs);
+					const dateStr = date.toLocaleDateString("en-US", {
+						month: "short",
+						day: "2-digit",
+						year: "numeric",
+					});
+
+					// Date span (not clickable)
+					const dateSpan = document.createElement("span");
+					dateSpan.style.color = "#e0e0e0";
+					dateSpan.style.minWidth = "100px";
+					if (!isRoot) {
+						dateSpan.style.marginLeft = "10px";
+					}
+					dateSpan.textContent = dateStr;
+					li.appendChild(dateSpan);
+
+					// Title link
 					const a = document.createElement("a");
 					a.href = `/c/${encodeURIComponent(conv.id)}`;
-					a.textContent = escapeHtml(conv.id);
+					let displayTitle = escapeHtml(conv.title).trim();
+					if (!displayTitle || displayTitle === "-") {
+						displayTitle = "Untitled";
+					}
+					a.textContent = displayTitle;
 					li.appendChild(a);
 
-					const titleSpan = document.createElement("span");
-					titleSpan.className = "conversation-list-title";
-					let displayTitle = escapeHtml(conv.title).trim();
-					if (!displayTitle) {
-						displayTitle = "-";
-					}
-					let titleContent = ` - ${displayTitle}`;
-					if (!isRoot) {
-						titleContent = ` - (fork) ${displayTitle}`;
-					}
+					// Pin icon (if pinned)
 					if (conv.is_pinned) {
-						titleContent += ` <span class="pin-emoji">${ICON_PIN}</span>`; // Use SVG icon
+						const pinSpan = document.createElement("span");
+						pinSpan.className = "pin-emoji";
+						pinSpan.innerHTML = ICON_PIN;
+						li.appendChild(pinSpan);
 					}
-					titleSpan.innerHTML = titleContent; // Use innerHTML for the emoji span
-					li.appendChild(titleSpan);
 
 					return li;
 				};

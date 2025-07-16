@@ -893,19 +893,26 @@ html {
 	position: relative;
 }
 
-#conversation-list-container ul li[style*="marginLeft"] {
-	border-left: 2px solid #333;
-	padding-left: 10px;
-	margin-top: 5px;
-	margin-bottom: 5px;
+#conversation-list-container ul li.fork-conversation {
+	border-left: 2px solid #3a6a8a;
+	padding-left: 15px;
+	margin-top: 8px;
+	margin-bottom: 8px;
+	position: relative;
 }
 
-#conversation-list-container ul li[style*="marginLeft"]:before {
-	content: "└";
+#conversation-list-container ul li.fork-conversation:before {
+	content: "";
 	position: absolute;
-	left: -8px;
-	top: 0;
-	color: #555;
+	left: -2px;
+	top: 50%;
+	width: 15px;
+	height: 2px;
+	background-color: #3a6a8a;
+}
+
+#conversation-list-container ul li a {
+	flex-grow: 1;
 }
 
 /* Collapsible Reasoning Styles */
