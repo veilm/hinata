@@ -2020,8 +2020,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			}
 
 			const responseData = await response.json();
-			if (responseData && responseData.new_conversation_id) {
-				window.location.href = `/c/${encodeURIComponent(responseData.new_conversation_id)}`;
+			if (responseData && responseData.conversation_id) {
+				window.location.href = `/c/${encodeURIComponent(responseData.conversation_id)}`;
 			} else {
 				throw new Error(
 					"Fork successful, but new conversation ID was not returned.",

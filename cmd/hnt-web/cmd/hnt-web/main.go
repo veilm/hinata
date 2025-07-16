@@ -739,6 +739,25 @@ func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
 		// Pin
 		os.WriteFile(pinPath, []byte(""), 0644)
 
+		// Check if this is a fork and auto-pin the root if needed
+		forkSourcePath := filepath.Join(convDir, "fork_source.txt")
+		if data, err := os.ReadFile(forkSourcePath); err == nil {
+			rootID := strings.TrimSpace(string(data))
+			baseDir, _ := chat.GetConversationsDir()
+			rootDir := filepath.Join(baseDir, rootID)
+			rootPinPath := filepath.Join(rootDir, "pinned.txt")
+
+			// Pin the root if it's not already pinned
+			if _, err := os.Stat(rootPinPath); err != nil {
+				os.WriteFile(rootPinPath, []byte(""), 0644)
+				rootTitle := getConversationTitle(rootDir)
+				if rootTitle == "" {
+					rootTitle = rootID
+				}
+				log.Printf("Auto-pinned root conversation (%s) when pinning fork\n", rootTitle)
+			}
+		}
+
 		// Log the pin operation
 		title := getConversationTitle(convDir)
 		if title == "" {
