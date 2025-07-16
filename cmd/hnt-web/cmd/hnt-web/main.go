@@ -41,12 +41,13 @@ type OtherFile struct {
 }
 
 type ConversationDetail struct {
-	ID         string        `json:"conversation_id"`
-	Title      string        `json:"title"`
-	Model      string        `json:"model"`
-	Messages   []MessageFile `json:"messages"`
-	OtherFiles []OtherFile   `json:"other_files"`
-	IsPinned   bool          `json:"is_pinned"`
+	ID               string        `json:"conversation_id"`
+	Title            string        `json:"title"`
+	Model            string        `json:"model"`
+	Messages         []MessageFile `json:"messages"`
+	OtherFiles       []OtherFile   `json:"other_files"`
+	ArchivedMessages []MessageFile `json:"archived_messages"`
+	IsPinned         bool          `json:"is_pinned"`
 }
 
 type TitleUpdateRequest struct {
@@ -523,6 +524,44 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		}
 	}
 
+	// Load archived messages
+	archiveDir := filepath.Join(convDir, "archive")
+	if archiveEntries, err := os.ReadDir(archiveDir); err == nil {
+		for _, entry := range archiveEntries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+				archivePath := filepath.Join(archiveDir, entry.Name())
+				if content, err := os.ReadFile(archivePath); err == nil {
+					// Extract role from filename (after timestamp)
+					filename := entry.Name()
+					// Remove timestamp prefix if present
+					parts := strings.SplitN(filename, "-", 2)
+					if len(parts) == 2 {
+						filename = parts[1]
+					}
+
+					// Determine role from filename
+					role := "unknown"
+					if strings.Contains(filename, "user") {
+						role = "user"
+					} else if strings.Contains(filename, "assistant") {
+						role = "assistant"
+					} else if strings.Contains(filename, "system") {
+						role = "system"
+					} else if strings.Contains(filename, "assistant-reasoning") {
+						role = "assistant-reasoning"
+					}
+
+					contentStr := strings.TrimSpace(string(content))
+					detail.ArchivedMessages = append(detail.ArchivedMessages, MessageFile{
+						Filename: entry.Name(),
+						Role:     role,
+						Content:  contentStr,
+					})
+				}
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(detail)
 }
@@ -765,7 +804,9 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 
 			if event.Reasoning != "" {
 				// Stream reasoning tokens with a special prefix
-				fmt.Fprintf(w, "data: [REASONING]%s\n\n", event.Reasoning)
+				// Escape newlines for SSE format
+				escapedReasoning := strings.ReplaceAll(event.Reasoning, "\n", "\\n")
+				fmt.Fprintf(w, "data: [REASONING]%s\n\n", escapedReasoning)
 				flusher.Flush()
 				reasoningBuffer.WriteString(event.Reasoning)
 			}

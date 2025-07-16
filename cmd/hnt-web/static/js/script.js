@@ -486,7 +486,12 @@ document.addEventListener("DOMContentLoaded", () => {
 						ICON_ARCHIVE,
 						"btn-archive",
 						() =>
-							handleArchiveMessage(messageDiv, conversationId, msg.filename),
+							handleArchiveMessage(
+								messageDiv,
+								conversationId,
+								msg.filename,
+								msg.reasoning,
+							),
 					);
 					archiveButton.title = "Archive"; // Tooltip for accessibility
 
@@ -511,8 +516,37 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (data.other_files && data.other_files.length > 0) {
 				const divider = document.createElement("hr");
 				divider.className = "other-files-divider";
+
+				// Create collapsible container
+				const collapsibleContainer = document.createElement("div");
+				collapsibleContainer.className = "collapsible-section";
+
+				// Create header with toggle
+				const headerContainer = document.createElement("div");
+				headerContainer.className = "collapsible-header";
+				headerContainer.style.cursor = "pointer";
+				headerContainer.style.display = "flex";
+				headerContainer.style.alignItems = "center";
+				headerContainer.style.justifyContent = "space-between";
+				headerContainer.style.padding = "10px 0";
+
 				const heading = document.createElement("h2");
 				heading.textContent = "Other Files";
+				heading.style.margin = "0";
+
+				const toggleIcon = document.createElement("span");
+				toggleIcon.style.fontSize = "14px";
+				toggleIcon.style.color = "#4a8ab7";
+				toggleIcon.textContent = "▶"; // Right arrow when collapsed
+
+				headerContainer.appendChild(heading);
+				headerContainer.appendChild(toggleIcon);
+
+				// Create content container
+				const contentContainer = document.createElement("div");
+				contentContainer.className = "collapsible-content";
+				contentContainer.style.display = "none"; // Collapsed by default
+
 				const ul = document.createElement("ul");
 
 				data.other_files.forEach((file) => {
@@ -542,9 +576,206 @@ document.addEventListener("DOMContentLoaded", () => {
 					}
 					ul.appendChild(li);
 				});
+
+				contentContainer.appendChild(ul);
+
+				// Toggle handler
+				headerContainer.addEventListener("click", () => {
+					const isVisible = contentContainer.style.display !== "none";
+					contentContainer.style.display = isVisible ? "none" : "block";
+					toggleIcon.textContent = isVisible ? "▶" : "▼";
+				});
+
+				collapsibleContainer.appendChild(headerContainer);
+				collapsibleContainer.appendChild(contentContainer);
+
 				otherFilesContainer.appendChild(divider);
-				otherFilesContainer.appendChild(heading);
-				otherFilesContainer.appendChild(ul);
+				otherFilesContainer.appendChild(collapsibleContainer);
+			}
+
+			// Render archived messages
+			if (data.archived_messages && data.archived_messages.length > 0) {
+				const archiveDivider = document.createElement("hr");
+				archiveDivider.className = "archive-divider";
+
+				// Create collapsible container for archived messages
+				const archiveContainer = document.createElement("div");
+				archiveContainer.className = "collapsible-section archive-section";
+
+				// Create header with toggle
+				const archiveHeader = document.createElement("div");
+				archiveHeader.className = "collapsible-header";
+				archiveHeader.style.cursor = "pointer";
+				archiveHeader.style.display = "flex";
+				archiveHeader.style.alignItems = "center";
+				archiveHeader.style.justifyContent = "space-between";
+				archiveHeader.style.padding = "10px 0";
+
+				const archiveHeading = document.createElement("h2");
+				archiveHeading.textContent = `Deleted Messages (${data.archived_messages.length})`;
+				archiveHeading.style.margin = "0";
+				archiveHeading.style.color = "#888";
+
+				const archiveToggleIcon = document.createElement("span");
+				archiveToggleIcon.style.fontSize = "14px";
+				archiveToggleIcon.style.color = "#666";
+				archiveToggleIcon.textContent = "▶"; // Right arrow when collapsed
+
+				archiveHeader.appendChild(archiveHeading);
+				archiveHeader.appendChild(archiveToggleIcon);
+
+				// Create content container
+				const archiveContent = document.createElement("div");
+				archiveContent.className = "collapsible-content archive-content";
+				archiveContent.style.display = "none"; // Collapsed by default
+				archiveContent.style.opacity = "0.7"; // Make archived messages slightly faded
+
+				// Group archived messages by conversation order
+				const groupedArchived = [];
+				let currentGroup = null;
+
+				data.archived_messages.forEach((msg) => {
+					if (msg.role === "assistant-reasoning") {
+						// Find the next assistant message to attach this reasoning to
+						for (let i = 0; i < data.archived_messages.length; i++) {
+							if (
+								data.archived_messages[i].role === "assistant" &&
+								data.archived_messages[i].filename > msg.filename
+							) {
+								data.archived_messages[i].reasoning = msg;
+								break;
+							}
+						}
+					} else {
+						groupedArchived.push(msg);
+					}
+				});
+
+				// Render archived messages
+				groupedArchived.forEach((msg) => {
+					const messageDiv = document.createElement("div");
+					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())} archived-message`;
+					messageDiv.dataset.filename = msg.filename;
+
+					// If this message has associated reasoning, display it first
+					if (msg.reasoning) {
+						const reasoningContainer = document.createElement("div");
+						reasoningContainer.className = "message-reasoning-container";
+						reasoningContainer.style.margin = "10px 0";
+
+						// Create toggle header
+						const reasoningHeader = document.createElement("div");
+						reasoningHeader.className = "reasoning-header";
+						reasoningHeader.style.cursor = "pointer";
+						reasoningHeader.style.backgroundColor = "#0a0a0a";
+						reasoningHeader.style.padding = "8px 12px";
+						reasoningHeader.style.borderRadius = "5px";
+						reasoningHeader.style.display = "flex";
+						reasoningHeader.style.alignItems = "center";
+						reasoningHeader.style.justifyContent = "space-between";
+						reasoningHeader.style.userSelect = "none";
+
+						const reasoningLabel = document.createElement("span");
+						reasoningLabel.style.fontWeight = "bold";
+						reasoningLabel.style.color = "#6ec8ff";
+						reasoningLabel.textContent = "Reasoning";
+
+						const toggleIcon = document.createElement("span");
+						toggleIcon.style.fontSize = "12px";
+						toggleIcon.style.color = "#4a8ab7";
+						toggleIcon.textContent = "▶"; // Right arrow when collapsed
+
+						reasoningHeader.appendChild(reasoningLabel);
+						reasoningHeader.appendChild(toggleIcon);
+
+						// Create collapsible content
+						const reasoningContent = document.createElement("div");
+						reasoningContent.className = "message-reasoning";
+						reasoningContent.style.backgroundColor = "#050505";
+						reasoningContent.style.padding = "12px";
+						reasoningContent.style.marginTop = "4px";
+						reasoningContent.style.borderRadius = "5px";
+						reasoningContent.style.color = "#a0a0a0";
+						reasoningContent.style.display = "none"; // Hidden by default
+						reasoningContent.style.whiteSpace = "pre-wrap";
+
+						// Extract content from <think> tags if present
+						let reasoningText = msg.reasoning.content;
+						const thinkMatch = msg.reasoning.content.match(
+							/^<think>([\s\S]*?)<\/think>$/,
+						);
+						if (thinkMatch) {
+							reasoningText = thinkMatch[1];
+						}
+
+						reasoningContent.textContent = reasoningText;
+
+						// Toggle handler
+						reasoningHeader.addEventListener("click", () => {
+							const isVisible = reasoningContent.style.display !== "none";
+							reasoningContent.style.display = isVisible ? "none" : "block";
+							toggleIcon.textContent = isVisible ? "▶" : "▼";
+						});
+
+						reasoningContainer.appendChild(reasoningHeader);
+						reasoningContainer.appendChild(reasoningContent);
+						messageDiv.appendChild(reasoningContainer);
+					}
+
+					// Message content
+					const contentDiv = document.createElement("div");
+					contentDiv.className = "message-content";
+					contentDiv.textContent = msg.content;
+
+					// Footer with role and restore button
+					const footerDiv = document.createElement("div");
+					footerDiv.className = "message-footer";
+
+					const infoDiv = document.createElement("div");
+					infoDiv.className = "message-info";
+
+					const roleSpan = document.createElement("span");
+					roleSpan.className = "message-role";
+					roleSpan.textContent = escapeHtml(msg.role);
+
+					infoDiv.appendChild(roleSpan);
+
+					// Restore button
+					const actionsDiv = document.createElement("div");
+					actionsDiv.className = "message-actions";
+
+					const restoreButton = document.createElement("button");
+					restoreButton.className = "btn-action btn-restore";
+					restoreButton.innerHTML = "↺"; // Restore icon
+					restoreButton.title = "Restore message";
+					restoreButton.onclick = () => {
+						// TODO: Implement restore functionality
+						alert("Restore functionality not yet implemented");
+					};
+
+					actionsDiv.appendChild(restoreButton);
+
+					footerDiv.appendChild(infoDiv);
+					footerDiv.appendChild(actionsDiv);
+
+					messageDiv.appendChild(contentDiv);
+					messageDiv.appendChild(footerDiv);
+
+					archiveContent.appendChild(messageDiv);
+				});
+
+				// Toggle handler
+				archiveHeader.addEventListener("click", () => {
+					const isVisible = archiveContent.style.display !== "none";
+					archiveContent.style.display = isVisible ? "none" : "block";
+					archiveToggleIcon.textContent = isVisible ? "▶" : "▼";
+				});
+
+				archiveContainer.appendChild(archiveHeader);
+				archiveContainer.appendChild(archiveContent);
+
+				messagesContainer.appendChild(archiveDivider);
+				messagesContainer.appendChild(archiveContainer);
 			}
 
 			// After rendering messages and other files, set up the input area
@@ -907,7 +1138,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			const archiveButton = createActionButton(
 				ICON_ARCHIVE,
 				"btn-archive",
-				() => handleArchiveMessage(messageElement, conversationId, filename),
+				() =>
+					handleArchiveMessage(messageElement, conversationId, filename, null),
 			);
 			archiveButton.title = "Archive";
 
@@ -974,6 +1206,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		messageElement,
 		conversationId,
 		filename,
+		reasoning = null,
 	) {
 		// Clear previous errors specifically for this message's actions
 		if (messageElement) {
@@ -983,6 +1216,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 
 		try {
+			// Archive the main message
 			const response = await authFetch(
 				`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(filename)}/archive`,
 				{
@@ -995,6 +1229,27 @@ document.addEventListener("DOMContentLoaded", () => {
 					.json()
 					.catch(() => ({ detail: "Failed to archive message." }));
 				throw new Error(errorData.detail || `HTTP error ${response.status}`);
+			}
+
+			// If there's associated reasoning, archive it too
+			if (reasoning && reasoning.filename) {
+				try {
+					const reasoningResponse = await authFetch(
+						`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(reasoning.filename)}/archive`,
+						{
+							method: "POST",
+						},
+					);
+
+					if (!reasoningResponse.ok) {
+						console.error(
+							"Failed to archive reasoning message, but main message was archived",
+						);
+					}
+				} catch (reasoningError) {
+					console.error("Error archiving reasoning message:", reasoningError);
+					// Don't fail the whole operation if reasoning archive fails
+				}
 			}
 
 			// On success, remove the message element from the DOM
@@ -1204,7 +1459,8 @@ document.addEventListener("DOMContentLoaded", () => {
 							if (data.trim() && data.trim() !== "[DONE]") {
 								// Check if this is reasoning content
 								if (data.startsWith("[REASONING]")) {
-									const reasoningText = data.slice(11); // Remove [REASONING] prefix
+									// Remove [REASONING] prefix and unescape newlines
+									const reasoningText = data.slice(11).replace(/\\n/g, "\n");
 									if (!hasReasoning) {
 										hasReasoning = true;
 										// Create collapsible reasoning section
@@ -1266,7 +1522,12 @@ document.addEventListener("DOMContentLoaded", () => {
 											contentWrapperDiv,
 										);
 									}
-									reasoningContent.textContent += reasoningText;
+									// Append text while preserving newlines
+									if (!reasoningContent.textContent) {
+										reasoningContent.textContent = reasoningText;
+									} else {
+										reasoningContent.textContent += reasoningText;
+									}
 								} else {
 									contentWrapperDiv.textContent += data;
 								}
