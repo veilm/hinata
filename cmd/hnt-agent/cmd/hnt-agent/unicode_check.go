@@ -151,10 +151,22 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 			cmd := exec.Command("fc-list", ":charset="+char, "family", "style")
 			output, err := cmd.Output()
 			if err == nil && len(bytes.TrimSpace(output)) > 0 {
-				supportCount++
 				families := strings.Split(strings.TrimSpace(string(output)), "\n")
-				fmt.Printf("  ✓ U+%s supported (%d fonts)\n",
-					strings.ToUpper(char), len(families))
+				// Filter out LastResort fonts
+				nonLastResortCount := 0
+				for _, family := range families {
+					if family != "" && !strings.Contains(family, "LastResort") {
+						nonLastResortCount++
+					}
+				}
+
+				if nonLastResortCount > 0 {
+					supportCount++
+					fmt.Printf("  ✓ U+%s supported (%d fonts, excluding LastResort)\n",
+						strings.ToUpper(char), nonLastResortCount)
+				} else {
+					fmt.Printf("  ✗ U+%s not supported (only LastResort found)\n", strings.ToUpper(char))
+				}
 			} else {
 				fmt.Printf("  ✗ U+%s not supported\n", strings.ToUpper(char))
 			}

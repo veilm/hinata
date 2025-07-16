@@ -179,9 +179,17 @@ func hasLegacyComputingFont() bool {
 		cmd := exec.Command("fc-list", ":charset="+char, "family", "style")
 		output, err := cmd.Output()
 		if err == nil && len(bytes.TrimSpace(output)) > 0 {
-			// Check if output contains LastResort font
+			// Check if ALL fonts in output are LastResort
 			outputStr := string(output)
-			if !strings.Contains(outputStr, "LastResort") {
+			lines := strings.Split(strings.TrimSpace(outputStr), "\n")
+			hasNonLastResort := false
+			for _, line := range lines {
+				if line != "" && !strings.Contains(line, "LastResort") {
+					hasNonLastResort = true
+					break
+				}
+			}
+			if hasNonLastResort {
 				supportCount++
 			}
 		}
