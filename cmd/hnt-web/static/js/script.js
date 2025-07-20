@@ -1015,9 +1015,17 @@ document.addEventListener("DOMContentLoaded", () => {
 			}
 		}
 
-		textarea.addEventListener("input", () =>
-			adjustTextareaHeightOnInput(textarea),
-		);
+		textarea.addEventListener("input", () => {
+			adjustTextareaHeightOnInput(textarea);
+			updateSplitButtonState(conversationId);
+			// Save draft to localStorage
+			const storageKey = `hinata-draft-${conversationId}`;
+			if (textarea.value.trim()) {
+				localStorage.setItem(storageKey, textarea.value);
+			} else {
+				localStorage.removeItem(storageKey);
+			}
+		});
 		// Initial call to set height will be done after textarea is appended to DOM.
 
 		const buttonsDiv = document.createElement("div");
@@ -1062,7 +1070,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		const allButtons = [primaryBtn, dropdownToggleBtn]; // Dropdown buttons will be added.
 
-		const messages = document.querySelectorAll("#messages-container .message");
+		const messages = document.querySelectorAll(
+			"#messages-container .message:not(.archived-message)",
+		);
 		const lastMessage =
 			messages.length > 0 ? messages[messages.length - 1] : null;
 		const lastMessageIsUser =
@@ -1104,14 +1114,27 @@ document.addEventListener("DOMContentLoaded", () => {
 		};
 
 		let primaryAction, dropdownActions;
+		const hasTextareaContent = textarea.value.trim().length > 0;
 
 		if (lastMessageIsUser) {
-			primaryAction = actions.genAssistant;
-			dropdownActions = [
-				actions.addUser,
-				actions.addSystem,
-				actions.addAssistant,
-			];
+			// Last message is from user
+			if (hasTextareaContent) {
+				// If there's content in textarea, prefer Add Assistant
+				primaryAction = actions.addAssistant;
+				dropdownActions = [
+					actions.genAssistant,
+					actions.addUser,
+					actions.addSystem,
+				];
+			} else {
+				// Empty textarea, show Gen Assistant
+				primaryAction = actions.genAssistant;
+				dropdownActions = [
+					actions.addUser,
+					actions.addSystem,
+					actions.addAssistant,
+				];
+			}
 		} else {
 			// No messages, or last message was from system/assistant
 			primaryAction = actions.addUser;
@@ -1359,10 +1382,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			updateGlobalActionButtonsState(); // Check if this removal affects global buttons state
 			jumpToLatestMessage(); // Scroll to the latest message after archiving one
 
-			// No need to reload full conversation, message is gone from this view.
-			// It will appear in "Other Files" on next full load/refresh.
-			// To refresh "Other Files" immediately, one could call loadConversationDetails(conversationId)
-			// but that's a full reload. For now, let it update on page refresh.
+			// Reload the conversation to update the "Deleted Messages" section
+			loadConversationDetails(conversationId);
 		} catch (error) {
 			console.error("Error archiving message:", error);
 			handleError(
