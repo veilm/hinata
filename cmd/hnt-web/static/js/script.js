@@ -1387,13 +1387,56 @@ document.addEventListener("DOMContentLoaded", () => {
 		toast.style.transition = "opacity 0.3s ease";
 
 		if (success) {
-			toast.style.backgroundColor = "#4caf50";
+			toast.style.backgroundColor = "#6ec8ff";
+			toast.style.color = "#000";
 			toast.textContent = "Copied to clipboard!";
 		} else {
 			toast.style.backgroundColor = "#f44336";
+			toast.style.color = "#fff";
 			toast.textContent = "Copy failed";
 		}
 
+		document.body.appendChild(toast);
+
+		// Fade out and remove after 2 seconds
+		setTimeout(() => {
+			toast.style.opacity = "0";
+			setTimeout(() => document.body.removeChild(toast), 300);
+		}, 2000);
+	}
+
+	function showToast(message, type = "success") {
+		// Create a temporary toast notification
+		const toast = document.createElement("div");
+		toast.style.position = "fixed";
+		toast.style.bottom = "20px";
+		toast.style.right = "20px";
+		toast.style.padding = "10px 20px";
+		toast.style.borderRadius = "4px";
+		toast.style.fontSize = "14px";
+		toast.style.zIndex = "10000";
+		toast.style.transition = "opacity 0.3s ease";
+		toast.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.3)";
+
+		switch (type) {
+			case "success":
+				toast.style.backgroundColor = "#6ec8ff";
+				toast.style.color = "#000";
+				break;
+			case "error":
+				toast.style.backgroundColor = "#f44336";
+				toast.style.color = "#fff";
+				break;
+			case "info":
+				toast.style.backgroundColor = "#4a8ab7";
+				toast.style.color = "#fff";
+				break;
+			default:
+				toast.style.backgroundColor = "#6ec8ff";
+				toast.style.color = "#000";
+		}
+
+		toast.textContent = message;
 		document.body.appendChild(toast);
 
 		// Fade out and remove after 2 seconds
@@ -1459,6 +1502,9 @@ document.addEventListener("DOMContentLoaded", () => {
 			updateGlobalActionButtonsState(); // Check if this removal affects global buttons state
 			jumpToLatestMessage(); // Scroll to the latest message after archiving one
 
+			// Show success toast
+			showToast("Message archived", "success");
+
 			// Reload the conversation to update the "Deleted Messages" section
 			loadConversationDetails(conversationId);
 		} catch (error) {
@@ -1517,6 +1563,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				filename,
 				reasoning,
 			);
+
+			// Show success toast
+			showToast("Message saved", "success");
 		} catch (error) {
 			console.error("Error saving message:", error);
 			handleError(`Error saving message: ${error.message}`, actionsDiv);
@@ -1558,6 +1607,11 @@ document.addEventListener("DOMContentLoaded", () => {
 			localStorage.removeItem(storageKey);
 
 			textareaElement.value = ""; // Clear textarea on success
+
+			// Show success toast
+			const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
+			showToast(`${roleDisplay} message added`, "success");
+
 			loadConversationDetails(conversationId); // Reload to show new message
 		} catch (error) {
 			console.error(`Error adding ${role} message:`, error);
@@ -1886,7 +1940,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			const savedTitle = newTitle;
 
 			// Visually indicate success briefly (optional)
-			inputElement.style.borderColor = "#81ae9d"; // New: green
+			inputElement.style.borderColor = "#6ec8ff"; // Blue theme color
 			setTimeout(() => {
 				inputElement.style.borderColor = "";
 			}, 1500);
@@ -1894,6 +1948,9 @@ document.addEventListener("DOMContentLoaded", () => {
 			inputElement.value = escapeHtml(savedTitle === "-" ? "" : savedTitle);
 			inputElement.dataset.originalTitle = savedTitle;
 			console.log(`Title for ${conversationId} updated to "${savedTitle}"`);
+
+			// Show success toast
+			showToast("Title updated", "success");
 		} catch (error) {
 			console.error("Failed to update title:", error);
 			handleError(
@@ -1937,7 +1994,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			// If empty string was sent, backend will use default, so we should too
 			const savedModel = newModel || DEFAULT_MODEL_NAME;
 
-			inputElement.style.borderColor = "#81ae9d"; // New: green
+			inputElement.style.borderColor = "#6ec8ff"; // Blue theme color
 			setTimeout(() => {
 				inputElement.style.borderColor = "";
 			}, 1500);
@@ -1945,6 +2002,9 @@ document.addEventListener("DOMContentLoaded", () => {
 			inputElement.value = escapeHtml(savedModel); // Update input to what was actually saved
 			inputElement.dataset.originalModel = savedModel;
 			console.log(`Model for ${conversationId} updated to "${savedModel}"`);
+
+			// Show success toast
+			showToast("Model updated", "success");
 		} catch (error) {
 			console.error("Failed to update model:", error);
 			handleError(
@@ -2087,7 +2147,10 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (buttonElement) {
 				buttonElement.textContent = responseData.is_pinned ? "Unpin" : "Pin";
 			}
-			// Optionally, provide a success message, though button text change is often enough.
+
+			// Show success toast
+			const action = responseData.is_pinned ? "pinned" : "unpinned";
+			showToast(`Conversation ${action}`, "success");
 		} catch (error) {
 			console.error("Error toggling pin status:", error);
 			handleError(
