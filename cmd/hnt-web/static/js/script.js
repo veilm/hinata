@@ -54,6 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	const ICON_ARCHIVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`;
 	const ICON_SAVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save-icon lucide-save"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>`;
 	const ICON_X = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+	const ICON_COPY = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy-icon lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 	const ICON_SHARE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-share-2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>`;
 
 	// Display username
@@ -582,7 +583,13 @@ document.addEventListener("DOMContentLoaded", () => {
 					);
 					archiveButton.title = "Archive"; // Tooltip for accessibility
 
+					const copyButton = createActionButton(ICON_COPY, "btn-copy", () =>
+						handleCopyMessage(msg.content),
+					);
+					copyButton.title = "Copy"; // Tooltip for accessibility
+
 					actionsDiv.appendChild(infoButton);
+					actionsDiv.appendChild(copyButton);
 					actionsDiv.appendChild(editButton);
 					actionsDiv.appendChild(archiveButton);
 
@@ -1265,7 +1272,13 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			archiveButton.title = "Archive";
 
+			const copyButton = createActionButton(ICON_COPY, "btn-copy", () =>
+				handleCopyMessage(originalContent),
+			);
+			copyButton.title = "Copy";
+
 			actionsDiv.appendChild(infoButton);
+			actionsDiv.appendChild(copyButton);
 			actionsDiv.appendChild(editButton);
 			actionsDiv.appendChild(archiveButton);
 
@@ -1324,6 +1337,70 @@ document.addEventListener("DOMContentLoaded", () => {
 			actionsDiv.appendChild(cancelButton);
 			updateGlobalActionButtonsState(); // Update global buttons state
 		}
+	}
+
+	async function handleCopyMessage(content) {
+		try {
+			// Try modern clipboard API first
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				await navigator.clipboard.writeText(content);
+				// Show temporary success feedback
+				showCopyFeedback(true);
+			} else {
+				// Fallback for non-HTTPS or older browsers
+				const textArea = document.createElement("textarea");
+				textArea.value = content;
+				textArea.style.position = "fixed";
+				textArea.style.left = "-9999px";
+				textArea.style.top = "-9999px";
+				document.body.appendChild(textArea);
+				textArea.focus();
+				textArea.select();
+
+				try {
+					const successful = document.execCommand("copy");
+					showCopyFeedback(successful);
+				} catch (err) {
+					console.error("Fallback copy failed:", err);
+					showCopyFeedback(false);
+				}
+
+				document.body.removeChild(textArea);
+			}
+		} catch (err) {
+			console.error("Copy failed:", err);
+			showCopyFeedback(false);
+		}
+	}
+
+	function showCopyFeedback(success) {
+		// Create a temporary toast notification
+		const toast = document.createElement("div");
+		toast.style.position = "fixed";
+		toast.style.bottom = "20px";
+		toast.style.right = "20px";
+		toast.style.padding = "10px 20px";
+		toast.style.borderRadius = "4px";
+		toast.style.color = "#fff";
+		toast.style.fontSize = "14px";
+		toast.style.zIndex = "10000";
+		toast.style.transition = "opacity 0.3s ease";
+
+		if (success) {
+			toast.style.backgroundColor = "#4caf50";
+			toast.textContent = "Copied to clipboard!";
+		} else {
+			toast.style.backgroundColor = "#f44336";
+			toast.textContent = "Copy failed";
+		}
+
+		document.body.appendChild(toast);
+
+		// Fade out and remove after 2 seconds
+		setTimeout(() => {
+			toast.style.opacity = "0";
+			setTimeout(() => document.body.removeChild(toast), 300);
+		}, 2000);
 	}
 
 	async function handleArchiveMessage(
@@ -1539,7 +1616,14 @@ document.addEventListener("DOMContentLoaded", () => {
 		placeholderDiv.appendChild(headerDiv);
 		// Reasoning container will be inserted here when needed
 		placeholderDiv.appendChild(contentWrapperDiv);
-		messagesContainer.appendChild(placeholderDiv);
+
+		// Insert before archive section if it exists, otherwise append to end
+		const archiveDivider = messagesContainer.querySelector(".archive-divider");
+		if (archiveDivider) {
+			messagesContainer.insertBefore(placeholderDiv, archiveDivider);
+		} else {
+			messagesContainer.appendChild(placeholderDiv);
+		}
 		// Removed: placeholderDiv.scrollIntoView({ behavior: "smooth", block: "end" });
 
 		try {

@@ -516,6 +516,25 @@ li {
 	justify-content: flex-end; /* Align buttons to the right */
 }
 
+/* Hide action buttons by default on desktop, show on message hover */
+@media (min-width: 769px) {
+	.message-actions {
+		opacity: 0;
+		transition: opacity 0.2s ease;
+	}
+
+	.message:hover .message-actions {
+		opacity: 1;
+	}
+}
+
+/* Always show buttons on mobile devices */
+@media (max-width: 768px) {
+	.message-actions {
+		opacity: 1;
+	}
+}
+
 .message-actions button {
 	padding: 6px 10px; /* Smaller buttons */
 	font-size: 0.85em; /* Will be overridden by emoji size mostly, but good for consistency */
