@@ -617,6 +617,12 @@ li {
 	/* Inherits gray hover */
 }
 
+/* Message content wrapper - preserves whitespace and newlines */
+.message-content-wrapper {
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
 /* Textarea for editing message content within a message block */
 
 .message-content-wrapper textarea {

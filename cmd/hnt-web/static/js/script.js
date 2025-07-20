@@ -1528,7 +1528,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		const contentWrapperDiv = document.createElement("div");
 		contentWrapperDiv.className = "message-content-wrapper";
-		// contentWrapperDiv.style.whiteSpace = "pre-wrap"; // Ensure pre-wrap for streaming
+		contentWrapperDiv.style.whiteSpace = "pre-wrap"; // Ensure pre-wrap for streaming
 
 		// Create reasoning container (will be populated if reasoning content arrives)
 		let reasoningContainer = null;
@@ -1653,7 +1653,9 @@ document.addEventListener("DOMContentLoaded", () => {
 										reasoningContent.textContent += reasoningText;
 									}
 								} else {
-									contentWrapperDiv.textContent += data;
+									// Unescape newlines in regular content
+									const unescapedData = data.replace(/\\n/g, "\n");
+									contentWrapperDiv.textContent += unescapedData;
 								}
 							}
 						} else if (line.trim() && !line.startsWith(":")) {
@@ -1731,11 +1733,15 @@ document.addEventListener("DOMContentLoaded", () => {
 							}
 							reasoningContent.textContent += reasoningText;
 						} else {
-							contentWrapperDiv.textContent += data;
+							// Unescape newlines in regular content
+							const unescapedData = data.replace(/\\n/g, "\n");
+							contentWrapperDiv.textContent += unescapedData;
 						}
 					}
 				} else {
-					contentWrapperDiv.textContent += buffer;
+					// Unescape newlines in regular content
+					const unescapedBuffer = buffer.replace(/\\n/g, "\n");
+					contentWrapperDiv.textContent += unescapedBuffer;
 				}
 			}
 			// Stream finished

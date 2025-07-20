@@ -856,7 +856,9 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 			}
 
 			if event.Content != "" {
-				fmt.Fprintf(w, "data: %s\n\n", event.Content)
+				// Escape newlines for SSE format
+				escapedContent := strings.ReplaceAll(event.Content, "\n", "\\n")
+				fmt.Fprintf(w, "data: %s\n\n", escapedContent)
 				flusher.Flush()
 				contentBuffer.WriteString(event.Content)
 			}
