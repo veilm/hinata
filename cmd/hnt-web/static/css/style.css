@@ -136,6 +136,64 @@ li {
 	margin-bottom: 20px;
 }
 
+/* Collapsible sections (Other Files, Archived Messages) */
+.collapsible-section {
+	margin-bottom: 20px;
+}
+
+.collapsible-header {
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 0;
+	user-select: none;
+}
+
+.collapsible-header:hover {
+	opacity: 0.8;
+}
+
+.collapsible-content {
+	transition: all 0.3s ease;
+}
+
+/* Archived Messages Section */
+.archive-section {
+	margin-bottom: 20px;
+}
+
+.archive-content {
+	max-height: 600px;
+	overflow-y: auto;
+	padding: 10px;
+	background-color: #0a0a0a;
+	border: 1px solid #282828;
+	border-radius: 4px;
+}
+
+/* Style archived messages similar to other files */
+.archived-message {
+	background-color: #101010;
+	border: 1px solid #282828;
+	padding: 15px;
+	margin-bottom: 10px;
+	opacity: 0.7; /* Make deleted messages slightly faded */
+}
+
+.archived-message .message-content {
+	background-color: #050505;
+	padding: 12px;
+	border-radius: 4px;
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+.archived-message .message-footer {
+	margin-top: 10px;
+	opacity: 0.8;
+}
+
 .other-file-entry {
 	background-color: #101010;
 	border: 1px solid #282828;
@@ -348,14 +406,20 @@ li {
 
 /* "Add System" and "Add Assistant" buttons: background like textarea (#2c2c2c) */
 
-.btn-add-system,
-.btn-add-assistant {
+.btn-add-system {
 	background-color: #101010; /* Match textarea background */
 	color: #e0e0e0; /* Light text */
 }
-.btn-add-system:hover,
-.btn-add-assistant:hover {
+.btn-add-system:hover {
 	background-color: #191919; /* Slightly lighter version of #2c2c2c for hover */
+}
+/* "Add Assistant" button: when primary, use blue theme like Gen Assistant */
+#primary-action-btn.btn-add-assistant {
+	background-color: #6ec8ff;
+	color: #000000;
+}
+#primary-action-btn.btn-add-assistant:hover {
+	background-color: #4da3e0;
 }
 
 /* "Add User" button: purple */
@@ -395,6 +459,13 @@ li {
 }
 #primary-action-btn.btn-add-user + #dropdown-toggle-btn:hover {
 	background-color: #755f88; /* Even darker purple */
+}
+#primary-action-btn.btn-add-assistant + #dropdown-toggle-btn {
+	background-color: #4da3e0; /* Darker blue, matches Gen Assistant style */
+	color: #000000; /* Match Gen Assistant text color */
+}
+#primary-action-btn.btn-add-assistant + #dropdown-toggle-btn:hover {
+	background-color: #3b8ac0; /* Even darker blue */
 }
 
 /* When the primary action button is disabled (e.g., during generation), style the an-ddjacent dropdown toggle to match. */
