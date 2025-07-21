@@ -927,6 +927,11 @@ document.addEventListener("DOMContentLoaded", () => {
 					"Jump to latest button (#jump-to-latest-btn) not found in DOM.",
 				);
 			}
+
+			// Auto-scroll to latest message on page load
+			setTimeout(() => {
+				jumpToLatestMessage();
+			}, 100); // Small delay to ensure DOM is fully rendered
 		} catch (error) {
 			handleError(
 				`Failed to load conversation: ${safeConvId}.`,
@@ -1197,17 +1202,48 @@ document.addEventListener("DOMContentLoaded", () => {
 	function jumpToLatestMessage() {
 		const messagesContainerElem = document.getElementById("messages-container");
 		if (messagesContainerElem) {
-			const messageElements =
-				messagesContainerElem.querySelectorAll(".message");
+			// Get only non-archived messages
+			const messageElements = messagesContainerElem.querySelectorAll(
+				".message:not(.archived-message)",
+			);
+
 			if (messageElements.length > 0) {
 				const lastMessageElement = messageElements[messageElements.length - 1];
-				lastMessageElement.scrollIntoView({ behavior: "smooth", block: "end" });
-			} else {
-				// If no messages, scroll to the bottom of the (empty) messages container
-				messagesContainerElem.scrollIntoView({
+
+				// Get the height of the message input area to account for it
+				const messageInputArea = document.getElementById("message-input-area");
+				const inputAreaHeight = messageInputArea
+					? messageInputArea.offsetHeight
+					: 0;
+
+				// Get absolute position of last message
+				const rect = lastMessageElement.getBoundingClientRect();
+				const absoluteBottom = rect.bottom + window.pageYOffset;
+
+				// Calculate where to scroll: message bottom should be just above input area
+				const targetScroll =
+					absoluteBottom - window.innerHeight + inputAreaHeight + 20;
+
+				// Scroll to calculated position
+				window.scrollTo({
+					top: targetScroll,
 					behavior: "smooth",
-					block: "end",
 				});
+			} else {
+				// If no non-archived messages, check if there are archived ones
+				const archiveContainer = document.querySelector(".archive-container");
+				if (archiveContainer) {
+					archiveContainer.scrollIntoView({
+						behavior: "smooth",
+						block: "start",
+					});
+				} else {
+					// Scroll to top if nothing found
+					window.scrollTo({
+						top: 0,
+						behavior: "smooth",
+					});
+				}
 			}
 		}
 	}
@@ -1298,9 +1334,16 @@ document.addEventListener("DOMContentLoaded", () => {
 			textarea.style.height = "auto"; // Temporarily set to auto to get scrollHeight
 			textarea.style.height = `${textarea.scrollHeight}px`;
 			textarea.addEventListener("input", () => {
+				// Save current scroll position
+				const scrollTop =
+					window.pageYOffset || document.documentElement.scrollTop;
+
 				// Adjust height on input
 				textarea.style.height = "auto";
 				textarea.style.height = `${textarea.scrollHeight}px`;
+
+				// Restore scroll position
+				window.scrollTo(0, scrollTop);
 			});
 			contentWrapperDiv.appendChild(textarea);
 			textarea.focus();
