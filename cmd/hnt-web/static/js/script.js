@@ -104,6 +104,47 @@ document.addEventListener("DOMContentLoaded", () => {
 			.replace(/'/g, "&#039;");
 	}
 
+	// Simple markdown renderer
+	function renderMarkdown(text) {
+		// First escape HTML to prevent XSS
+		let html = escapeHtml(text);
+
+		// Headers (h1-h6)
+		html = html.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
+		html = html.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
+		html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+		html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
+		html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
+		html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+		// Code blocks (```)
+		html = html.replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
+
+		// Inline code (`)
+		html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+		// Bold (**text** or __text__)
+		html = html.replace(/\*\*([^\*]+)\*\*/g, "<strong>$1</strong>");
+		html = html.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+
+		// Italic (*text* or _text_)
+		// Match single * or _ that are not part of bold markers
+		// Using word boundaries for better compatibility
+		html = html.replace(/\b\*([^\*]+)\*\b/g, "<em>$1</em>");
+		html = html.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
+
+		// Line breaks (two spaces at end of line or double newline)
+		html = html.replace(/  \n/g, "<br>\n");
+		html = html.replace(/\n\n/g, "</p><p>");
+
+		// Wrap in paragraph tags if not already wrapped
+		if (!html.startsWith("<")) {
+			html = "<p>" + html + "</p>";
+		}
+
+		return html;
+	}
+
 	async function loadConversationsList() {
 		const container = document.getElementById("conversation-list-container");
 		try {
@@ -516,7 +557,7 @@ document.addEventListener("DOMContentLoaded", () => {
 							reasoningText = thinkMatch[1];
 						}
 
-						reasoningContent.textContent = reasoningText;
+						reasoningContent.innerHTML = renderMarkdown(reasoningText);
 
 						// Toggle handler
 						reasoningHeader.addEventListener("click", () => {
@@ -533,7 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					// Wrapper for content to allow easy replacement (text <-> textarea)
 					const contentWrapperDiv = document.createElement("div");
 					contentWrapperDiv.className = "message-content-wrapper";
-					contentWrapperDiv.textContent = msg.content; // Initial content display
+					contentWrapperDiv.innerHTML = renderMarkdown(msg.content); // Render markdown
 
 					// New compact footer
 					const footerDiv = document.createElement("div");
@@ -806,7 +847,7 @@ document.addEventListener("DOMContentLoaded", () => {
 							reasoningText = thinkMatch[1];
 						}
 
-						reasoningContent.textContent = reasoningText;
+						reasoningContent.innerHTML = renderMarkdown(reasoningText);
 
 						// Toggle handler
 						reasoningHeader.addEventListener("click", () => {
@@ -1828,15 +1869,27 @@ document.addEventListener("DOMContentLoaded", () => {
 										);
 									}
 									// Append text while preserving newlines
-									if (!reasoningContent.textContent) {
-										reasoningContent.textContent = reasoningText;
+									if (!reasoningContent.dataset.rawText) {
+										reasoningContent.dataset.rawText = reasoningText;
+										reasoningContent.innerHTML = renderMarkdown(reasoningText);
 									} else {
-										reasoningContent.textContent += reasoningText;
+										// For streaming, append to existing text and re-render
+										reasoningContent.dataset.rawText += reasoningText;
+										reasoningContent.innerHTML = renderMarkdown(
+											reasoningContent.dataset.rawText,
+										);
 									}
 								} else {
 									// Unescape newlines in regular content
 									const unescapedData = data.replace(/\\n/g, "\n");
-									contentWrapperDiv.textContent += unescapedData;
+									if (!contentWrapperDiv.dataset.rawText) {
+										contentWrapperDiv.dataset.rawText = unescapedData;
+									} else {
+										contentWrapperDiv.dataset.rawText += unescapedData;
+									}
+									contentWrapperDiv.innerHTML = renderMarkdown(
+										contentWrapperDiv.dataset.rawText,
+									);
 								}
 							}
 						} else if (line.trim() && !line.startsWith(":")) {
@@ -1912,7 +1965,15 @@ document.addEventListener("DOMContentLoaded", () => {
 									contentWrapperDiv,
 								);
 							}
-							reasoningContent.textContent += reasoningText;
+							// For streaming, append to existing text and re-render
+							if (!reasoningContent.dataset.rawText) {
+								reasoningContent.dataset.rawText = reasoningText;
+							} else {
+								reasoningContent.dataset.rawText += reasoningText;
+							}
+							reasoningContent.innerHTML = renderMarkdown(
+								reasoningContent.dataset.rawText,
+							);
 						} else {
 							// Unescape newlines in regular content
 							const unescapedData = data.replace(/\\n/g, "\n");

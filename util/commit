@@ -1,5 +1,17 @@
 #!/bin/sh
 
+if ! git config get user.name > /dev/null
+then
+	notify-send "set user.name for $PWD!"
+	exit 1
+fi
+
+if ! git config get user.email > /dev/null
+then
+	notify-send "set user.email for $PWD!"
+	exit 1
+fi
+
 [ "$1" ] && comment="here is a brief comment by the developer (only relevant to deciding on the commit message): $@"
 
 export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro

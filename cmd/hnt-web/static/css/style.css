@@ -642,6 +642,78 @@ li {
 	word-wrap: break-word;
 }
 
+/* Markdown styles within messages */
+.message-content-wrapper h1,
+.message-content-wrapper h2,
+.message-content-wrapper h3,
+.message-content-wrapper h4,
+.message-content-wrapper h5,
+.message-content-wrapper h6 {
+	margin: 1em 0 0.5em 0;
+	color: #e0e0e0;
+	line-height: 1.2;
+}
+
+.message-content-wrapper h1 {
+	font-size: 1.5em;
+}
+.message-content-wrapper h2 {
+	font-size: 1.3em;
+}
+.message-content-wrapper h3 {
+	font-size: 1.1em;
+}
+.message-content-wrapper h4 {
+	font-size: 1em;
+}
+.message-content-wrapper h5 {
+	font-size: 0.9em;
+}
+.message-content-wrapper h6 {
+	font-size: 0.85em;
+}
+
+.message-content-wrapper p {
+	margin: 0.5em 0;
+}
+
+/* Code styles */
+.message-content-wrapper code {
+	background-color: #1a1a1a;
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-family: "Roboto Mono", "Consolas", "Menlo", monospace;
+	font-size: 0.9em;
+	color: #6ec8ff;
+}
+
+.message-content-wrapper pre {
+	background-color: #050505;
+	border: 1px solid #222222;
+	border-radius: 4px;
+	padding: 12px;
+	margin: 1em 0;
+	overflow-x: auto;
+}
+
+.message-content-wrapper pre code {
+	background-color: transparent;
+	padding: 0;
+	color: #e0e0e0;
+	font-size: 0.9em;
+}
+
+/* Bold and italic */
+.message-content-wrapper strong {
+	font-weight: bold;
+	color: #ffffff;
+}
+
+.message-content-wrapper em {
+	font-style: italic;
+	color: #d0d0d0;
+}
+
 /* Textarea for editing message content within a message block */
 
 .message-content-wrapper textarea {
@@ -1053,4 +1125,74 @@ html {
 	color: #a0a0a0;
 	white-space: pre-wrap;
 	border-left: 3px solid #3a6a8a;
+}
+
+/* Apply same markdown styles to reasoning content */
+.message-reasoning h1,
+.message-reasoning h2,
+.message-reasoning h3,
+.message-reasoning h4,
+.message-reasoning h5,
+.message-reasoning h6 {
+	margin: 1em 0 0.5em 0;
+	color: #6ec8ff;
+	line-height: 1.2;
+}
+
+.message-reasoning h1 {
+	font-size: 1.5em;
+}
+.message-reasoning h2 {
+	font-size: 1.3em;
+}
+.message-reasoning h3 {
+	font-size: 1.1em;
+}
+.message-reasoning h4 {
+	font-size: 1em;
+}
+.message-reasoning h5 {
+	font-size: 0.9em;
+}
+.message-reasoning h6 {
+	font-size: 0.85em;
+}
+
+.message-reasoning p {
+	margin: 0.5em 0;
+}
+
+.message-reasoning code {
+	background-color: #1a1a1a;
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-family: "Roboto Mono", "Consolas", "Menlo", monospace;
+	font-size: 0.9em;
+	color: #8ac0ea;
+}
+
+.message-reasoning pre {
+	background-color: #000000;
+	border: 1px solid #2a4a5a;
+	border-radius: 4px;
+	padding: 12px;
+	margin: 1em 0;
+	overflow-x: auto;
+}
+
+.message-reasoning pre code {
+	background-color: transparent;
+	padding: 0;
+	color: #a0a0a0;
+	font-size: 0.9em;
+}
+
+.message-reasoning strong {
+	font-weight: bold;
+	color: #c0c0c0;
+}
+
+.message-reasoning em {
+	font-style: italic;
+	color: #b0b0b0;
 }
