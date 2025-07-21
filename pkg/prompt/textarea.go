@@ -26,7 +26,7 @@ func (m textareaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			m.aborted = true
 			return m, tea.Quit
-		case "ctrl+d", "esc":
+		case "ctrl+d": // , "esc":
 			m.value = m.textarea.Value()
 			m.finished = true
 			return m, tea.Quit
@@ -50,7 +50,7 @@ func (m textareaModel) View() string {
 
 	helpText := lipgloss.NewStyle().
 		Faint(true).
-		Render("• Ctrl+D or Esc to submit • Ctrl+C to cancel")
+		Render("• Ctrl+D to submit • Ctrl+C to cancel")
 
 	return strings.Join([]string{
 		header,
