@@ -154,6 +154,19 @@ func (a *Agent) Run(userMessage string) error {
 	isNewSession := !a.isExistingSession()
 
 	if isNewSession {
+		// Print welcome message - right aligned
+		termWidth, _, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil || termWidth <= 0 {
+			termWidth = 80 // fallback
+		}
+		welcome := "❄️ hinata"
+		padding := termWidth - runewidth.StringWidth(welcome) - 3
+		if padding > 0 {
+			fmt.Printf("%s%s\n", strings.Repeat(" ", padding), welcome)
+		} else {
+			fmt.Println(welcome)
+		}
+		fmt.Println()
 		if a.SystemPrompt != "" {
 			if err := a.writeMessage("system", a.SystemPrompt); err != nil {
 				return err
@@ -176,9 +189,8 @@ func (a *Agent) Run(userMessage string) error {
 		a.resumeSession()
 	}
 
-	a.printTurnHeader("querent", a.humanTurnCounter)
 	a.humanTurnCounter++
-	fmt.Print(indentMultiline(userMessage))
+	fmt.Print(indentMultilineUser(userMessage))
 	fmt.Println()
 	fmt.Println()
 
@@ -188,7 +200,6 @@ func (a *Agent) Run(userMessage string) error {
 	}
 
 	for {
-		a.printTurnHeader("hinata", a.turnCounter)
 		a.turnCounter++
 
 		llmContent, llmReasoning, err := a.streamLLMResponse()
@@ -230,9 +241,8 @@ func (a *Agent) Run(userMessage string) error {
 				return fmt.Errorf("Aborted: User did not provide new instructions.")
 			}
 
-			a.printTurnHeader("querent", a.humanTurnCounter)
 			a.humanTurnCounter++
-			fmt.Print(indentMultiline(newMessage))
+			fmt.Print(indentMultilineUser(newMessage))
 			fmt.Println()
 			fmt.Println()
 
@@ -266,9 +276,8 @@ func (a *Agent) Run(userMessage string) error {
 						return fmt.Errorf("no message provided")
 					}
 
-					a.printTurnHeader("querent", a.humanTurnCounter)
 					a.humanTurnCounter++
-					fmt.Print(indentMultiline(newMessage))
+					fmt.Print(indentMultilineUser(newMessage))
 					fmt.Println()
 					fmt.Println()
 
@@ -914,16 +923,28 @@ func marginStr() string {
 	return strings.Repeat(" ", MARGIN)
 }
 
+func userMarginStr() string {
+	magenta := color.New(color.FgMagenta)
+	return magenta.Sprint("┆ ")
+}
+
 func indentMultiline(text string) string {
+	return indentMultilineWithMargin(text, marginStr())
+}
+
+func indentMultilineUser(text string) string {
+	return indentMultilineWithMargin(text, userMarginStr())
+}
+
+func indentMultilineWithMargin(text string, margin string) string {
 	if text == "" {
 		return ""
 	}
 
 	lines := strings.Split(text, "\n")
 	for i := range lines {
-		if lines[i] != "" {
-			lines[i] = marginStr() + lines[i]
-		}
+		// Always add margin, even for empty lines
+		lines[i] = margin + lines[i]
 	}
 
 	return strings.Join(lines, "\n")
@@ -974,7 +995,6 @@ func (a *Agent) resumeSession() {
 		a.humanTurnCounter = userCount + 1
 		a.turnCounter = assistantCount + 1
 
-		a.printTurnHeader("hinata", assistantCount)
 		fmt.Print(indentMultiline(lastAssistantMessage))
 		fmt.Println()
 	}
