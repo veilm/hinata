@@ -1089,11 +1089,15 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 
 	blue := color.New(color.FgBlue)
 
-	// Top border (maxWidth + 2 for the padding spaces inside)
+	// Top border - the border should match the content line width
+	// Content line is: "║ " + content + padding + " ║"
+	// So border needs to be: "╔" + "═"*(2 + maxWidth + 2) + "╗"
+	// But we draw it as: "╔═" + "═"*X + "═╗"
+	// So X = maxWidth + 2 - 2 = maxWidth
 	fmt.Print(marginStr())
-	blue.Print("╔═")
+	blue.Print("╔")
 	blue.Print(strings.Repeat("═", maxWidth+2))
-	blue.Print("═╗")
+	blue.Print("╗")
 	fmt.Println()
 
 	// Content lines
@@ -1133,9 +1137,9 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 
 	// Bottom border
 	fmt.Print(marginStr())
-	blue.Print("╚═")
+	blue.Print("╚")
 	blue.Print(strings.Repeat("═", maxWidth+2))
-	blue.Print("═╝")
+	blue.Print("╝")
 	fmt.Println()
 
 	// Reset current column after block
