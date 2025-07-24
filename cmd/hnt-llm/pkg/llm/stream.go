@@ -172,6 +172,34 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 			}
 
 			if err == io.EOF {
+				// Process any remaining data in the buffer before returning
+				if buffer.Len() > 0 {
+					// Check if there's an incomplete SSE event in the buffer
+					eventStr := strings.TrimSpace(buffer.String())
+					if strings.HasPrefix(eventStr, "data: ") {
+						dataStr := strings.TrimPrefix(eventStr, "data: ")
+						dataStr = strings.TrimSpace(dataStr)
+
+						if dataStr != "[DONE]" {
+							var chunk ApiResponseChunk
+							if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil && len(chunk.Choices) > 0 {
+								delta := chunk.Choices[0].Delta
+
+								if delta.Content != nil && *delta.Content != "" {
+									eventChan <- StreamEvent{Content: *delta.Content}
+								}
+
+								if config.IncludeReasoning {
+									if delta.Reasoning != nil && *delta.Reasoning != "" {
+										eventChan <- StreamEvent{Reasoning: *delta.Reasoning}
+									} else if delta.ReasoningContent != nil && *delta.ReasoningContent != "" {
+										eventChan <- StreamEvent{Reasoning: *delta.ReasoningContent}
+									}
+								}
+							}
+						}
+					}
+				}
 				return
 			}
 		}

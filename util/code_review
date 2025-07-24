@@ -1,0 +1,7 @@
+#!/bin/sh
+
+export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
+hnt-agent --auto-exit -m "please
+1. read the git diff
+2. read the changed file(s) in full
+3. give your general review (you might not have the full context of the change, but try your best. you can at least assess eg whether there are any clear syntax or logic errors)"
