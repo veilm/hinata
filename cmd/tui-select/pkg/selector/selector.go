@@ -18,6 +18,8 @@ type Options struct {
 	BackgroundRGB *[3]int // RGB values for background
 	ForegroundRGB *[3]int // RGB values for foreground (text on highlight)
 	PrefixRGB     *[3]int // RGB values for prefix
+	NormalRGB     *[3]int // RGB values for non-selected items
+	HelpRGB       *[3]int // RGB values for help text
 }
 
 type Model struct {
@@ -50,7 +52,7 @@ func New(items []string, opts Options) Model {
 	spacePrefix := strings.Repeat(" ", runewidth.StringWidth(prefix))
 
 	// Build styles
-	var hlStyle, prefixStyle lipgloss.Style
+	var hlStyle, prefixStyle, normalStyle, faintStyle lipgloss.Style
 
 	// Check if RGB colors are provided
 	if opts.BackgroundRGB != nil && opts.PrefixRGB != nil {
@@ -77,6 +79,28 @@ func New(items []string, opts Options) Model {
 
 		hlStyle = lipgloss.NewStyle().Background(bgColor).Foreground(fgColor)
 		prefixStyle = lipgloss.NewStyle().Foreground(prefixColor)
+
+		// Style for non-selected items
+		if opts.NormalRGB != nil {
+			normalColor := lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+				(*opts.NormalRGB)[0],
+				(*opts.NormalRGB)[1],
+				(*opts.NormalRGB)[2]))
+			normalStyle = lipgloss.NewStyle().Foreground(normalColor)
+		} else {
+			normalStyle = lipgloss.NewStyle()
+		}
+
+		// Style for help text
+		if opts.HelpRGB != nil {
+			helpColor := lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+				(*opts.HelpRGB)[0],
+				(*opts.HelpRGB)[1],
+				(*opts.HelpRGB)[2]))
+			faintStyle = lipgloss.NewStyle().Foreground(helpColor)
+		} else {
+			faintStyle = lipgloss.NewStyle().Faint(true)
+		}
 	} else if opts.Color >= 0 && opts.Color <= 7 {
 		// ANSI color codes: 30-37 for foreground, 40-47 for background
 		// But lipgloss uses string numbers "0"-"15" for 16 colors
@@ -84,10 +108,14 @@ func New(items []string, opts Options) Model {
 		bg := lipgloss.Color(strconv.Itoa(opts.Color))
 		hlStyle = lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("0"))
 		prefixStyle = lipgloss.NewStyle().Foreground(bg)
+		normalStyle = lipgloss.NewStyle()
+		faintStyle = lipgloss.NewStyle().Faint(true)
 	} else {
 		// Reverse video fallback
 		hlStyle = lipgloss.NewStyle().Reverse(true)
 		prefixStyle = lipgloss.NewStyle()
+		normalStyle = lipgloss.NewStyle()
+		faintStyle = lipgloss.NewStyle().Faint(true)
 	}
 
 	return Model{
@@ -97,8 +125,8 @@ func New(items []string, opts Options) Model {
 		spacePrefix:  spacePrefix,
 		hlStyle:      hlStyle,
 		prefixStyle:  prefixStyle,
-		normalStyle:  lipgloss.NewStyle(),
-		faintStyle:   lipgloss.NewStyle().Faint(true),
+		normalStyle:  normalStyle,
+		faintStyle:   faintStyle,
 	}
 }
 

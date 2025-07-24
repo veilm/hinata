@@ -203,6 +203,7 @@ func promptForMessage(useEditor bool) (string, error) {
 			HeaderRGB: &[3]int{255, 255, 255}, // White header
 			HelpRGB:   &[3]int{160, 200, 255}, // Lighter blue for help text
 			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
+			TextRGB:   &[3]int{255, 255, 255}, // Explicit white for input text
 		}
 		return prompt.GetUserInstructionWithColors("", useEditor, colors)
 	} else {

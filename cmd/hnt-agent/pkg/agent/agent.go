@@ -165,9 +165,10 @@ func (a *Agent) Run(userMessage string) error {
 		welcome := "❄️ hinata"
 		padding := termWidth - runewidth.StringWidth(welcome) - 3
 		if padding > 0 {
-			fmt.Printf("%s%s\n", strings.Repeat(" ", padding), welcome)
+			a.theme.DefaultText.Print(strings.Repeat(" ", padding))
+			a.theme.DefaultText.Println(welcome)
 		} else {
-			fmt.Println(welcome)
+			a.theme.DefaultText.Println(welcome)
 		}
 		fmt.Println()
 		if a.SystemPrompt != "" {
@@ -193,7 +194,7 @@ func (a *Agent) Run(userMessage string) error {
 	}
 
 	a.humanTurnCounter++
-	fmt.Print(a.indentMultilineUser(userMessage))
+	a.printUserMessage(userMessage)
 	fmt.Println()
 	fmt.Println()
 
@@ -233,7 +234,9 @@ func (a *Agent) Run(userMessage string) error {
 
 		shellCommands := extractShellCommands(llmResponse)
 		if len(shellCommands) == 0 {
-			fmt.Fprintf(os.Stderr, "\n%s-> Hinata did not suggest a shell block.\n", marginStr())
+			fmt.Fprint(os.Stderr, "\n")
+			fmt.Fprint(os.Stderr, marginStr())
+			a.theme.DefaultText.Fprint(os.Stderr, "-> Hinata did not suggest a shell block.\n")
 
 			if a.AutoExit {
 				return nil
@@ -245,7 +248,7 @@ func (a *Agent) Run(userMessage string) error {
 			}
 
 			a.humanTurnCounter++
-			fmt.Print(a.indentMultilineUser(newMessage))
+			a.printUserMessage(newMessage)
 			fmt.Println()
 			fmt.Println()
 
@@ -262,7 +265,9 @@ func (a *Agent) Run(userMessage string) error {
 			}
 
 			if !a.NoConfirm {
-				fmt.Fprintf(os.Stderr, "\n%sHinata wants to execute a shell block. Proceed?\n", marginStr())
+				fmt.Fprint(os.Stderr, "\n")
+				fmt.Fprint(os.Stderr, marginStr())
+				a.theme.DefaultText.Fprint(os.Stderr, "Hinata wants to execute a shell block. Proceed?\n")
 				choice := a.promptExecute()
 
 				// Clear the prompt message and selection menu
@@ -273,14 +278,15 @@ func (a *Agent) Run(userMessage string) error {
 				case executeExit:
 					return nil
 				case executeSkip:
-					fmt.Fprintf(os.Stderr, "%s-> Chose to provide new instructions.\n", marginStr())
+					fmt.Fprint(os.Stderr, marginStr())
+					a.theme.DefaultText.Fprint(os.Stderr, "-> Chose to provide new instructions.\n")
 					newMessage := a.promptForMessage()
 					if newMessage == "" {
 						return fmt.Errorf("no message provided")
 					}
 
 					a.humanTurnCounter++
-					fmt.Print(a.indentMultilineUser(newMessage))
+					a.printUserMessage(newMessage)
 					fmt.Println()
 					fmt.Println()
 
@@ -290,7 +296,8 @@ func (a *Agent) Run(userMessage string) error {
 					}
 					continue
 				case executeYes:
-					fmt.Fprintf(os.Stderr, "%s-> Executing command.\n", marginStr())
+					fmt.Fprint(os.Stderr, marginStr())
+					a.theme.DefaultText.Fprint(os.Stderr, "-> Executing command.\n")
 					// Continue with execution
 				}
 			}
@@ -324,7 +331,7 @@ func (a *Agent) Run(userMessage string) error {
 			// Display shell output to the user
 			if a.ShellDisplay {
 				fmt.Println()
-				fmt.Print(indentMultiline(resultMessage))
+				a.printWithIndent(resultMessage)
 				fmt.Println()
 			} else {
 				// Display colored output like Rust version
@@ -430,14 +437,14 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 					for _, line := range shellBlockState.Content {
 						if line != "" {
 							fmt.Print(marginStr())
-							fmt.Println(line)
+							a.theme.DefaultText.Println(line)
 						}
 					}
 				}
 
 				// Flush any remaining buffered content
 				if contentBuffer.Len() > 0 {
-					a.printWrappedText(contentBuffer.String(), &currentColumn, wrapAt, nil)
+					a.printWrappedText(contentBuffer.String(), &currentColumn, wrapAt, a.theme.DefaultText)
 					contentBuffer.Reset()
 				}
 				if reasoningChunkBuffer.Len() > 0 {
@@ -546,7 +553,7 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 										currentColumn = 0
 										isFirstToken = false
 									}
-									a.printWrappedText(content[:idx], &currentColumn, wrapAt, nil)
+									a.printWrappedText(content[:idx], &currentColumn, wrapAt, a.theme.DefaultText)
 								}
 
 								// Start shell block
@@ -605,7 +612,7 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 									currentColumn = 0
 									isFirstToken = false
 								}
-								a.printWrappedText(content, &currentColumn, wrapAt, nil)
+								a.printWrappedText(content, &currentColumn, wrapAt, a.theme.DefaultText)
 								break
 							}
 						}
@@ -617,7 +624,7 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 						currentColumn = 0
 						isFirstToken = false
 					}
-					a.printWrappedText(event.Content, &currentColumn, wrapAt, nil)
+					a.printWrappedText(event.Content, &currentColumn, wrapAt, a.theme.DefaultText)
 				}
 
 				if a.logger != nil && a.ShellBox {
@@ -792,10 +799,10 @@ func (a *Agent) printTurnHeader(role string, turn int) {
 
 	fmt.Print(marginStr())
 	lineColor.Print(prefix)
-	fmt.Print(roleText)
+	a.theme.DefaultText.Print(roleText)
 	lineColor.Print(" • ")
 	a.theme.TurnNumber.Print(turnText)
-	fmt.Print(" ")
+	a.theme.DefaultText.Print(" ")
 	lineColor.Print(line)
 	fmt.Println()
 }
@@ -811,6 +818,8 @@ func (a *Agent) promptContinue() bool {
 		opts.BackgroundRGB = &[3]int{0, 0, 0}       // Black background
 		opts.ForegroundRGB = &[3]int{110, 200, 255} // Official snowflake blue text
 		opts.PrefixRGB = &[3]int{110, 200, 255}     // Official snowflake blue prefix
+		opts.NormalRGB = &[3]int{255, 255, 255}     // Explicit white for non-selected
+		opts.HelpRGB = &[3]int{160, 200, 255}       // Lighter blue for help text
 	} else {
 		// Use ANSI color for ansi theme
 		opts.Color = 4 // Blue
@@ -855,6 +864,8 @@ func (a *Agent) promptExecute() executeChoice {
 		opts.BackgroundRGB = &[3]int{0, 0, 0}       // Black background
 		opts.ForegroundRGB = &[3]int{110, 200, 255} // Official snowflake blue text
 		opts.PrefixRGB = &[3]int{110, 200, 255}     // Official snowflake blue prefix
+		opts.NormalRGB = &[3]int{255, 255, 255}     // Explicit white for non-selected
+		opts.HelpRGB = &[3]int{160, 200, 255}       // Lighter blue for help text
 	} else {
 		// Use ANSI color for ansi theme
 		opts.Color = 4 // Blue
@@ -896,6 +907,7 @@ func (a *Agent) promptForMessage() string {
 			HeaderRGB: &[3]int{255, 255, 255}, // White header
 			HelpRGB:   &[3]int{160, 200, 255}, // Lighter blue for help text
 			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
+			TextRGB:   &[3]int{255, 255, 255}, // Explicit white for input text
 		}
 		instruction, err = prompt.GetUserInstructionWithColors("", a.UseEditor, colors)
 	} else {
@@ -905,7 +917,8 @@ func (a *Agent) promptForMessage() string {
 
 	if err != nil {
 		if a.UseEditor {
-			fmt.Fprintf(os.Stderr, "%sError: %v\n", marginStr(), err)
+			fmt.Fprint(os.Stderr, marginStr())
+			a.theme.DefaultText.Fprintf(os.Stderr, "Error: %v\n", err)
 		}
 		return ""
 	}
@@ -955,6 +968,57 @@ func marginStr() string {
 
 func (a *Agent) userMarginStr() string {
 	return a.theme.UserMargin.Sprint("┆ ")
+}
+
+func (a *Agent) printUserMessage(text string) {
+	if text == "" {
+		return
+	}
+
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		// Print the margin (purple ┆)
+		fmt.Print(a.userMarginStr())
+		// Print the text in explicit white for snow theme
+		a.theme.DefaultText.Print(line)
+		if i < len(lines)-1 {
+			fmt.Println()
+		}
+	}
+}
+
+func (a *Agent) printAssistantMessage(text string) {
+	if text == "" {
+		return
+	}
+
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		// Print the margin
+		fmt.Print(marginStr())
+		// Print the text in explicit white for snow theme
+		a.theme.DefaultText.Print(line)
+		if i < len(lines)-1 {
+			fmt.Println()
+		}
+	}
+}
+
+func (a *Agent) printWithIndent(text string) {
+	if text == "" {
+		return
+	}
+
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		// Print the margin
+		fmt.Print(marginStr())
+		// Print the text in explicit white for snow theme
+		a.theme.DefaultText.Print(line)
+		if i < len(lines)-1 {
+			fmt.Println()
+		}
+	}
 }
 
 func indentMultiline(text string) string {
@@ -1024,7 +1088,7 @@ func (a *Agent) resumeSession() {
 		a.humanTurnCounter = userCount + 1
 		a.turnCounter = assistantCount + 1
 
-		fmt.Print(indentMultiline(lastAssistantMessage))
+		a.printAssistantMessage(lastAssistantMessage)
 		fmt.Println()
 	}
 }
@@ -1100,7 +1164,7 @@ func (a *Agent) printShellPlaceholder() int {
 	// Content
 	fmt.Print(marginStr())
 	a.theme.ShellBlock.Print("║ ")
-	fmt.Print(placeholderText)
+	a.theme.DefaultText.Print(placeholderText)
 	a.theme.ShellBlock.Print(" ║")
 	fmt.Println()
 
@@ -1164,8 +1228,8 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 					end = len(line)
 				}
 				segment := line[i:end]
-				fmt.Print(segment)
-				fmt.Print(strings.Repeat(" ", maxWidth-len(segment)))
+				a.theme.DefaultText.Print(segment)
+				a.theme.DefaultText.Print(strings.Repeat(" ", maxWidth-len(segment)))
 				a.theme.ShellBlock.Print(" ║")
 				fmt.Println()
 				if end < len(line) {
@@ -1174,8 +1238,8 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 				}
 			}
 		} else {
-			fmt.Print(line)
-			fmt.Print(strings.Repeat(" ", maxWidth-len(line)))
+			a.theme.DefaultText.Print(line)
+			a.theme.DefaultText.Print(strings.Repeat(" ", maxWidth-len(line)))
 			a.theme.ShellBlock.Print(" ║")
 			fmt.Println()
 		}

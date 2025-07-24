@@ -13,6 +13,7 @@ type ColorConfig struct {
 	HeaderRGB *[3]int // RGB values for header text
 	HelpRGB   *[3]int // RGB values for help text
 	PromptRGB *[3]int // RGB values for textarea prompt (left border)
+	TextRGB   *[3]int // RGB values for input text
 }
 
 type textareaModel struct {
@@ -103,6 +104,17 @@ func PromptForInputWithColors(colors ColorConfig) (string, error) {
 			(*colors.PromptRGB)[2]))
 		ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor)
 		ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+	}
+
+	// Style the input text if color is provided
+	if colors.TextRGB != nil {
+		textColor := lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+			(*colors.TextRGB)[0],
+			(*colors.TextRGB)[1],
+			(*colors.TextRGB)[2]))
+		// Apply text color to the base style which affects the input text
+		ta.FocusedStyle.Base = ta.FocusedStyle.Base.Foreground(textColor)
+		ta.BlurredStyle.Base = ta.BlurredStyle.Base.Foreground(textColor)
 	}
 
 	m := textareaModel{
