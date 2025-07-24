@@ -196,7 +196,19 @@ func loadDefaultPrompt() (string, error) {
 }
 
 func promptForMessage(useEditor bool) (string, error) {
-	return prompt.GetUserInstruction("", useEditor)
+	// Check theme to determine colors
+	if theme == "snow" {
+		// Use RGB colors for snow theme
+		colors := prompt.ColorConfig{
+			HeaderRGB: &[3]int{255, 255, 255}, // White header
+			HelpRGB:   &[3]int{160, 200, 255}, // Lighter blue for help text
+			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
+		}
+		return prompt.GetUserInstructionWithColors("", useEditor, colors)
+	} else {
+		// Use default colors for ansi theme
+		return prompt.GetUserInstruction("", useEditor)
+	}
 }
 
 func newUnicodeCheckCmd() *cobra.Command {

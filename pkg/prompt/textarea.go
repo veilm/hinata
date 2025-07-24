@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -8,11 +9,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type ColorConfig struct {
+	HeaderRGB *[3]int // RGB values for header text
+	HelpRGB   *[3]int // RGB values for help text
+	PromptRGB *[3]int // RGB values for textarea prompt (left border)
+}
+
 type textareaModel struct {
 	textarea textarea.Model
 	aborted  bool
 	finished bool
 	value    string
+	colors   ColorConfig
 }
 
 func (m textareaModel) Init() tea.Cmd {
@@ -43,14 +51,25 @@ func (m textareaModel) View() string {
 		return ""
 	}
 
-	header := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("12")).
-		Render("Enter your instructions:")
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	if m.colors.HeaderRGB != nil {
+		headerStyle = headerStyle.Foreground(lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+			(*m.colors.HeaderRGB)[0],
+			(*m.colors.HeaderRGB)[1],
+			(*m.colors.HeaderRGB)[2])))
+	} else {
+		headerStyle = headerStyle.Foreground(lipgloss.Color("12"))
+	}
+	header := headerStyle.Render("Enter your instructions:")
 
-	helpText := lipgloss.NewStyle().
-		Faint(true).
-		Render("• Ctrl+D to submit • Ctrl+C to cancel")
+	helpStyle := lipgloss.NewStyle().Faint(true)
+	if m.colors.HelpRGB != nil {
+		helpStyle = helpStyle.Foreground(lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+			(*m.colors.HelpRGB)[0],
+			(*m.colors.HelpRGB)[1],
+			(*m.colors.HelpRGB)[2])))
+	}
+	helpText := helpStyle.Render("• Ctrl+D to submit • Ctrl+C to cancel")
 
 	return strings.Join([]string{
 		header,
@@ -62,6 +81,10 @@ func (m textareaModel) View() string {
 }
 
 func PromptForInput() (string, error) {
+	return PromptForInputWithColors(ColorConfig{})
+}
+
+func PromptForInputWithColors(colors ColorConfig) (string, error) {
 	ta := textarea.New()
 	ta.Placeholder = "Type your instructions here..."
 	ta.Focus()
@@ -72,8 +95,19 @@ func PromptForInput() (string, error) {
 	ta.SetWidth(80)
 	ta.SetHeight(7)
 
+	// Style the prompt (left border) if color is provided
+	if colors.PromptRGB != nil {
+		promptColor := lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+			(*colors.PromptRGB)[0],
+			(*colors.PromptRGB)[1],
+			(*colors.PromptRGB)[2]))
+		ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+		ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+	}
+
 	m := textareaModel{
 		textarea: ta,
+		colors:   colors,
 	}
 
 	p := tea.NewProgram(m)

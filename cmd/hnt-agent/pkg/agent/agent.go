@@ -802,21 +802,18 @@ func (a *Agent) printTurnHeader(role string, turn int) {
 
 func (a *Agent) promptContinue() bool {
 	items := []string{"Retry LLM request.", "Quit."}
-	
-	// Map theme to selector color index (0-7)
-	// 0=black, 1=red, 2=green, 3=yellow, 4=blue, 5=magenta, 6=cyan, 7=white
-	selectorColor := 4 // Default blue
-	if a.theme.Name == "ansi" {
-		selectorColor = 4 // Keep blue for ANSI
+
+	var opts selector.Options
+	opts.Height = 2
+
+	if a.theme.Name == "snow" {
+		// Use RGB colors for snow theme
+		opts.BackgroundRGB = &[3]int{0, 0, 0}       // Black background
+		opts.ForegroundRGB = &[3]int{110, 200, 255} // Official snowflake blue text
+		opts.PrefixRGB = &[3]int{110, 200, 255}     // Official snowflake blue prefix
 	} else {
-		// For snow theme, we'll still use index 4 (blue) but the terminal
-		// will interpret it based on its theme
-		selectorColor = 4
-	}
-	
-	opts := selector.Options{
-		Height: 2,
-		Color:  selectorColor,
+		// Use ANSI color for ansi theme
+		opts.Color = 4 // Blue
 	}
 
 	model := selector.New(items, opts)
@@ -849,20 +846,18 @@ func (a *Agent) promptExecute() executeChoice {
 		"Skip this execution. Provide new instructions instead.",
 		"Exit the Hinata session.",
 	}
-	
-	// Map theme to selector color index (0-7)
-	selectorColor := 4 // Default blue
-	if a.theme.Name == "ansi" {
-		selectorColor = 4 // Keep blue for ANSI
+
+	var opts selector.Options
+	opts.Height = 3
+
+	if a.theme.Name == "snow" {
+		// Use RGB colors for snow theme
+		opts.BackgroundRGB = &[3]int{0, 0, 0}       // Black background
+		opts.ForegroundRGB = &[3]int{110, 200, 255} // Official snowflake blue text
+		opts.PrefixRGB = &[3]int{110, 200, 255}     // Official snowflake blue prefix
 	} else {
-		// For snow theme, we'll still use index 4 (blue) but the terminal
-		// will interpret it based on its theme
-		selectorColor = 4
-	}
-	
-	opts := selector.Options{
-		Height: 3,
-		Color:  selectorColor,
+		// Use ANSI color for ansi theme
+		opts.Color = 4 // Blue
 	}
 
 	model := selector.New(items, opts)
@@ -892,7 +887,22 @@ func (a *Agent) promptForMessage() string {
 	// Print a blank line before showing the textarea during conversation
 	fmt.Println()
 
-	instruction, err := prompt.GetUserInstruction("", a.UseEditor)
+	var instruction string
+	var err error
+
+	if a.theme.Name == "snow" {
+		// Use RGB colors for snow theme
+		colors := prompt.ColorConfig{
+			HeaderRGB: &[3]int{255, 255, 255}, // White header
+			HelpRGB:   &[3]int{160, 200, 255}, // Lighter blue for help text
+			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
+		}
+		instruction, err = prompt.GetUserInstructionWithColors("", a.UseEditor, colors)
+	} else {
+		// Use default colors for ansi theme
+		instruction, err = prompt.GetUserInstruction("", a.UseEditor)
+	}
+
 	if err != nil {
 		if a.UseEditor {
 			fmt.Fprintf(os.Stderr, "%sError: %v\n", marginStr(), err)

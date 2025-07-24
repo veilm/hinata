@@ -19,6 +19,18 @@ func GetUserInstruction(message string, useEditor bool) (string, error) {
 	return PromptWithTUI()
 }
 
+func GetUserInstructionWithColors(message string, useEditor bool, colors ColorConfig) (string, error) {
+	if message != "" {
+		return message, nil
+	}
+
+	if useEditor {
+		return PromptWithEditor()
+	}
+
+	return PromptWithTUIColors(colors)
+}
+
 func PromptWithEditor() (string, error) {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
@@ -62,6 +74,17 @@ func PromptWithEditor() (string, error) {
 
 func PromptWithTUI() (string, error) {
 	instruction, err := PromptForInput()
+	if err != nil {
+		return "", err
+	}
+	if instruction == "" {
+		return "", fmt.Errorf("no message provided")
+	}
+	return instruction, nil
+}
+
+func PromptWithTUIColors(colors ColorConfig) (string, error) {
+	instruction, err := PromptForInputWithColors(colors)
 	if err != nil {
 		return "", err
 	}

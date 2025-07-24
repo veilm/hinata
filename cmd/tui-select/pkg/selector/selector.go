@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -11,8 +12,12 @@ import (
 
 type Options struct {
 	Height int
-	Color  int
+	Color  int // ANSI color (0-7) for backward compatibility
 	Prefix string
+	// RGB colors (optional) - if set, these override Color
+	BackgroundRGB *[3]int // RGB values for background
+	ForegroundRGB *[3]int // RGB values for foreground (text on highlight)
+	PrefixRGB     *[3]int // RGB values for prefix
 }
 
 type Model struct {
@@ -46,7 +51,33 @@ func New(items []string, opts Options) Model {
 
 	// Build styles
 	var hlStyle, prefixStyle lipgloss.Style
-	if opts.Color >= 0 && opts.Color <= 7 {
+
+	// Check if RGB colors are provided
+	if opts.BackgroundRGB != nil && opts.PrefixRGB != nil {
+		// Use RGB colors in hex format
+		bgColor := lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+			(*opts.BackgroundRGB)[0],
+			(*opts.BackgroundRGB)[1],
+			(*opts.BackgroundRGB)[2]))
+
+		var fgColor lipgloss.Color
+		if opts.ForegroundRGB != nil {
+			fgColor = lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+				(*opts.ForegroundRGB)[0],
+				(*opts.ForegroundRGB)[1],
+				(*opts.ForegroundRGB)[2]))
+		} else {
+			fgColor = lipgloss.Color("0") // Default to black
+		}
+
+		prefixColor := lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
+			(*opts.PrefixRGB)[0],
+			(*opts.PrefixRGB)[1],
+			(*opts.PrefixRGB)[2]))
+
+		hlStyle = lipgloss.NewStyle().Background(bgColor).Foreground(fgColor)
+		prefixStyle = lipgloss.NewStyle().Foreground(prefixColor)
+	} else if opts.Color >= 0 && opts.Color <= 7 {
 		// ANSI color codes: 30-37 for foreground, 40-47 for background
 		// But lipgloss uses string numbers "0"-"15" for 16 colors
 		// 0=black, 1=red, 2=green, 3=yellow, 4=blue, 5=magenta, 6=cyan, 7=white
