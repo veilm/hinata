@@ -44,6 +44,7 @@ type Agent struct {
 	turnCounter      int
 	humanTurnCounter int
 	logger           *log.Logger
+	theme            Theme
 }
 
 type Config struct {
@@ -60,6 +61,7 @@ type Config struct {
 	UseEditor       bool
 	AutoExit        bool
 	ShellBox        bool
+	Theme           string
 }
 
 // ShellBlockState tracks the state of shell block detection during streaming
@@ -147,6 +149,7 @@ func New(cfg Config) (*Agent, error) {
 		turnCounter:      1,
 		humanTurnCounter: 1,
 		logger:           logger,
+		theme:            GetTheme(cfg.Theme),
 	}, nil
 }
 
@@ -190,7 +193,7 @@ func (a *Agent) Run(userMessage string) error {
 	}
 
 	a.humanTurnCounter++
-	fmt.Print(indentMultilineUser(userMessage))
+	fmt.Print(a.indentMultilineUser(userMessage))
 	fmt.Println()
 	fmt.Println()
 
@@ -242,7 +245,7 @@ func (a *Agent) Run(userMessage string) error {
 			}
 
 			a.humanTurnCounter++
-			fmt.Print(indentMultilineUser(newMessage))
+			fmt.Print(a.indentMultilineUser(newMessage))
 			fmt.Println()
 			fmt.Println()
 
@@ -277,7 +280,7 @@ func (a *Agent) Run(userMessage string) error {
 					}
 
 					a.humanTurnCounter++
-					fmt.Print(indentMultilineUser(newMessage))
+					fmt.Print(a.indentMultilineUser(newMessage))
 					fmt.Println()
 					fmt.Println()
 
@@ -336,8 +339,7 @@ func (a *Agent) Run(userMessage string) error {
 				}
 
 				if stdoutContent != "" {
-					cyan := color.New(color.FgCyan)
-					cyan.Print(indentMultiline(stdoutContent))
+					a.theme.Stdout.Print(indentMultiline(stdoutContent))
 					fmt.Println()
 				}
 
@@ -346,8 +348,7 @@ func (a *Agent) Run(userMessage string) error {
 				}
 
 				if stderrContent != "" {
-					red := color.New(color.FgRed)
-					red.Print(indentMultiline(stderrContent))
+					a.theme.Stderr.Print(indentMultiline(stderrContent))
 					fmt.Println()
 				}
 
@@ -357,8 +358,7 @@ func (a *Agent) Run(userMessage string) error {
 
 				if exitCode != 0 {
 					exitMessage := fmt.Sprintf("🫀 exit code: %d", exitCode)
-					red := color.New(color.FgRed)
-					red.Print(indentMultiline(exitMessage))
+					a.theme.ExitCode.Print(indentMultiline(exitMessage))
 					fmt.Println()
 				}
 
@@ -394,7 +394,6 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	currentColumn := 0
 	isFirstToken := true
 	inReasoning := false
-	yellow := color.New(color.FgYellow)
 
 	// Buffer to accumulate partial content between chunks
 	var contentBuffer strings.Builder
@@ -424,9 +423,8 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 					fmt.Print("\033[u") // Restore cursor position
 					fmt.Print("\033[J") // Clear from cursor to end of screen
 
-					red := color.New(color.FgRed)
 					fmt.Print(marginStr())
-					red.Println("⚠️  Warning: Unclosed <hnt-shell> block detected")
+					a.theme.ErrorHighlight.Println("⚠️  Warning: Unclosed <hnt-shell> block detected")
 
 					// Print the accumulated content as normal text
 					for _, line := range shellBlockState.Content {
@@ -443,7 +441,7 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 					contentBuffer.Reset()
 				}
 				if reasoningChunkBuffer.Len() > 0 {
-					a.printWrappedText(reasoningChunkBuffer.String(), &currentColumn, wrapAt, yellow)
+					a.printWrappedText(reasoningChunkBuffer.String(), &currentColumn, wrapAt, a.theme.Reasoning)
 					reasoningChunkBuffer.Reset()
 				}
 				return response.String(), reasoningBuffer.String(), nil
@@ -639,7 +637,7 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 				}
 
 				// Print reasoning directly without buffering
-				a.printWrappedText(event.Reasoning, &currentColumn, wrapAt, yellow)
+				a.printWrappedText(event.Reasoning, &currentColumn, wrapAt, a.theme.Reasoning)
 				reasoningBuffer.WriteString(event.Reasoning)
 			}
 		case err := <-errChan:
@@ -711,10 +709,10 @@ func (a *Agent) printTurnHeader(role string, turn int) {
 	switch role {
 	case "hinata":
 		icon = "❄️"
-		lineColor = color.New(color.FgBlue)
+		lineColor = a.theme.HinataLine
 	case "querent":
 		icon = "🗝️"
-		lineColor = color.New(color.FgMagenta)
+		lineColor = a.theme.QuerentLine
 	default:
 		icon = "?"
 		lineColor = color.New(color.FgWhite)
@@ -796,8 +794,7 @@ func (a *Agent) printTurnHeader(role string, turn int) {
 	lineColor.Print(prefix)
 	fmt.Print(roleText)
 	lineColor.Print(" • ")
-	green := color.New(color.FgGreen)
-	green.Print(turnText)
+	a.theme.TurnNumber.Print(turnText)
 	fmt.Print(" ")
 	lineColor.Print(line)
 	fmt.Println()
@@ -805,9 +802,21 @@ func (a *Agent) printTurnHeader(role string, turn int) {
 
 func (a *Agent) promptContinue() bool {
 	items := []string{"Retry LLM request.", "Quit."}
+	
+	// Map theme to selector color index (0-7)
+	// 0=black, 1=red, 2=green, 3=yellow, 4=blue, 5=magenta, 6=cyan, 7=white
+	selectorColor := 4 // Default blue
+	if a.theme.Name == "ansi" {
+		selectorColor = 4 // Keep blue for ANSI
+	} else {
+		// For snow theme, we'll still use index 4 (blue) but the terminal
+		// will interpret it based on its theme
+		selectorColor = 4
+	}
+	
 	opts := selector.Options{
 		Height: 2,
-		Color:  4, // Blue
+		Color:  selectorColor,
 	}
 
 	model := selector.New(items, opts)
@@ -840,9 +849,20 @@ func (a *Agent) promptExecute() executeChoice {
 		"Skip this execution. Provide new instructions instead.",
 		"Exit the Hinata session.",
 	}
+	
+	// Map theme to selector color index (0-7)
+	selectorColor := 4 // Default blue
+	if a.theme.Name == "ansi" {
+		selectorColor = 4 // Keep blue for ANSI
+	} else {
+		// For snow theme, we'll still use index 4 (blue) but the terminal
+		// will interpret it based on its theme
+		selectorColor = 4
+	}
+	
 	opts := selector.Options{
 		Height: 3,
-		Color:  4, // Blue
+		Color:  selectorColor,
 	}
 
 	model := selector.New(items, opts)
@@ -923,17 +943,16 @@ func marginStr() string {
 	return strings.Repeat(" ", MARGIN)
 }
 
-func userMarginStr() string {
-	magenta := color.New(color.FgMagenta)
-	return magenta.Sprint("┆ ")
+func (a *Agent) userMarginStr() string {
+	return a.theme.UserMargin.Sprint("┆ ")
 }
 
 func indentMultiline(text string) string {
 	return indentMultilineWithMargin(text, marginStr())
 }
 
-func indentMultilineUser(text string) string {
-	return indentMultilineWithMargin(text, userMarginStr())
+func (a *Agent) indentMultilineUser(text string) string {
+	return indentMultilineWithMargin(text, a.userMarginStr())
 }
 
 func indentMultilineWithMargin(text string, margin string) string {
@@ -1057,30 +1076,29 @@ func (a *Agent) printWrappedText(text string, currentColumn *int, wrapAt int, co
 }
 
 func (a *Agent) printShellPlaceholder() int {
-	blue := color.New(color.FgBlue)
 	placeholderText := "📦 Proposing shell block..."
 	// Account for emoji width (emoji typically renders as 2 columns)
 	displayWidth := runewidth.StringWidth(placeholderText)
 
 	// Top border
 	fmt.Print(marginStr())
-	blue.Print("╔═")
-	blue.Print(strings.Repeat("═", displayWidth)) // No extra padding needed
-	blue.Print("═╗")
+	a.theme.ShellBlock.Print("╔═")
+	a.theme.ShellBlock.Print(strings.Repeat("═", displayWidth)) // No extra padding needed
+	a.theme.ShellBlock.Print("═╗")
 	fmt.Println()
 
 	// Content
 	fmt.Print(marginStr())
-	blue.Print("║ ")
+	a.theme.ShellBlock.Print("║ ")
 	fmt.Print(placeholderText)
-	blue.Print(" ║")
+	a.theme.ShellBlock.Print(" ║")
 	fmt.Println()
 
 	// Bottom border
 	fmt.Print(marginStr())
-	blue.Print("╚═")
-	blue.Print(strings.Repeat("═", displayWidth))
-	blue.Print("═╝")
+	a.theme.ShellBlock.Print("╚═")
+	a.theme.ShellBlock.Print(strings.Repeat("═", displayWidth))
+	a.theme.ShellBlock.Print("═╝")
 	fmt.Println()
 
 	return 3 // 3 lines for the box
@@ -1107,17 +1125,15 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 		maxWidth = availableWidth
 	}
 
-	blue := color.New(color.FgBlue)
-
 	// Top border - the border should match the content line width
 	// Content line is: "║ " + content + padding + " ║"
 	// So border needs to be: "╔" + "═"*(2 + maxWidth + 2) + "╗"
 	// But we draw it as: "╔═" + "═"*X + "═╗"
 	// So X = maxWidth + 2 - 2 = maxWidth
 	fmt.Print(marginStr())
-	blue.Print("╔")
-	blue.Print(strings.Repeat("═", maxWidth+2))
-	blue.Print("╗")
+	a.theme.ShellBlock.Print("╔")
+	a.theme.ShellBlock.Print(strings.Repeat("═", maxWidth+2))
+	a.theme.ShellBlock.Print("╗")
 	fmt.Println()
 
 	// Content lines
@@ -1127,7 +1143,7 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 		}
 
 		fmt.Print(marginStr())
-		blue.Print("║ ")
+		a.theme.ShellBlock.Print("║ ")
 
 		// Handle line wrapping if needed
 		if len(line) > maxWidth {
@@ -1140,26 +1156,26 @@ func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
 				segment := line[i:end]
 				fmt.Print(segment)
 				fmt.Print(strings.Repeat(" ", maxWidth-len(segment)))
-				blue.Print(" ║")
+				a.theme.ShellBlock.Print(" ║")
 				fmt.Println()
 				if end < len(line) {
 					fmt.Print(marginStr())
-					blue.Print("║ ")
+					a.theme.ShellBlock.Print("║ ")
 				}
 			}
 		} else {
 			fmt.Print(line)
 			fmt.Print(strings.Repeat(" ", maxWidth-len(line)))
-			blue.Print(" ║")
+			a.theme.ShellBlock.Print(" ║")
 			fmt.Println()
 		}
 	}
 
 	// Bottom border
 	fmt.Print(marginStr())
-	blue.Print("╚")
-	blue.Print(strings.Repeat("═", maxWidth+2))
-	blue.Print("╝")
+	a.theme.ShellBlock.Print("╚")
+	a.theme.ShellBlock.Print(strings.Repeat("═", maxWidth+2))
+	a.theme.ShellBlock.Print("╝")
 	fmt.Println()
 
 	// Reset current column after block
