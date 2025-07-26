@@ -216,20 +216,24 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 			}
 
 			if event.Content != "" {
-				if hasThinkTag {
-					fmt.Print("</think>\n")
-					hasThinkTag = false
+				if !outputFilename {
+					if hasThinkTag {
+						fmt.Print("</think>\n")
+						hasThinkTag = false
+					}
+					fmt.Print(event.Content)
 				}
-				fmt.Print(event.Content)
 				contentBuffer.WriteString(event.Content)
 			}
 
 			if event.Reasoning != "" && (includeReasoning || debugUnsafe) {
-				if !hasThinkTag {
-					fmt.Print("<think>")
-					hasThinkTag = true
+				if !outputFilename {
+					if !hasThinkTag {
+						fmt.Print("<think>")
+						hasThinkTag = true
+					}
+					fmt.Print(event.Reasoning)
 				}
-				fmt.Print(event.Reasoning)
 				reasoningBuffer.WriteString(event.Reasoning)
 			}
 
@@ -241,7 +245,7 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 	}
 
 done:
-	if hasThinkTag {
+	if !outputFilename && hasThinkTag {
 		fmt.Print("</think>\n")
 	}
 
@@ -277,7 +281,6 @@ done:
 	}
 
 	if outputFilename && assistantFilePath != "" {
-		fmt.Println()
 		fmt.Println(assistantFilePath)
 	}
 
