@@ -91,6 +91,41 @@ func getWebDir() string {
 	return filepath.Join(home, ".local", "share", "hinata", "web")
 }
 
+func getBlacklistPath() string {
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "hinata", "web", "blacklist.txt")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "hinata", "web", "blacklist.txt")
+}
+
+func loadBlacklist() []string {
+	blacklistPath := getBlacklistPath()
+	data, err := os.ReadFile(blacklistPath)
+	if err != nil {
+		return []string{}
+	}
+
+	var blacklist []string
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			blacklist = append(blacklist, line)
+		}
+	}
+	return blacklist
+}
+
+func containsBlacklistedContent(content string, blacklist []string) bool {
+	for _, entry := range blacklist {
+		if strings.Contains(content, entry) {
+			return true
+		}
+	}
+	return false
+}
+
 func getUsersDir() string {
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
 		return filepath.Join(xdgData, "hinata", "users")
@@ -781,6 +816,15 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
+	// Check blacklist for Add Assistant, Add System, or Add User messages
+	if req.Role == "assistant" || req.Role == "system" || req.Role == "user" {
+		blacklist := loadBlacklist()
+		if containsBlacklistedContent(req.Content, blacklist) {
+			http.Error(w, "Request aborted", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse role
 	role, err := chat.ParseRole(req.Role)
 	if err != nil {
@@ -981,6 +1025,16 @@ func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
+	}
+
+	// Check blacklist when editing messages
+	// Determine role from filename (user.md, assistant.md, system.md)
+	if strings.Contains(filename, "user") || strings.Contains(filename, "assistant") || strings.Contains(filename, "system") {
+		blacklist := loadBlacklist()
+		if containsBlacklistedContent(req.Content, blacklist) {
+			http.Error(w, "Request aborted", http.StatusBadRequest)
+			return
+		}
 	}
 
 	msgPath := filepath.Join(convDir, filename)
