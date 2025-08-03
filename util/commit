@@ -16,14 +16,18 @@ fi
 
 [ "$1" ] && comment="here is a brief comment by the developer (only relevant to deciding on the commit message): $@"
 
-export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
-hnt-agent --yes --auto-exit -m "please do the following
+# export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
+export HINATA_AGENT_MODEL=openrouter/moonshotai/kimi-k2
+export HNT_AGENT_DEBUG=1
+
+# hnt-agent --shell-box --auto-exit -m "please do the following
+hnt-agent --shell-box --yes --auto-exit -m "please do the following
 1. check the repo status
-2. check if no changes are staged
-	if yes
-		stage ALL the unstaged changes
-	if not
+2. check if any changes are staged
+	if yes (there are >0 changes staged)
 		don't make any changes to what is staged and what is not
+	if not (there are 0 changes staged)
+		stage ALL the unstaged changes
 
 3. view the diff *of the staged changes* only
 4. commit those staged changes with a meaningful message
