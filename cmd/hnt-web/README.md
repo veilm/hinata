@@ -9,19 +9,20 @@
 - X reposts ❌
 - brain damage ✅ (minimalism™)
 
-## install (uniquely easy)
+## install
 ```
+# Go is the only dependency
 curl hnt-agent.org/install | sh
 
-# start the server
+# start the server (runs in the foreground)
 hnt-web
 
 # open http://127.0.0.1:2027/ in your browser
 ```
 
 the architecture is vanilla Go (http std lib) + Vanilla JS. the entire server is
-one Python executable (hnt-web). the frontend is copied to `$XDG_DATA_HOME` on
-build and then served from there
+one executable (hnt-web). the frontend is copied to `$XDG_DATA_HOME` during the
+installationl and then hnt-web serves from there
 
 => you don't need any docker or npm, just Go
 
