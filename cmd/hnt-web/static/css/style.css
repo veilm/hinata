@@ -65,7 +65,6 @@ li {
 
 .message {
 	background-color: #080808; /* Background for each message block */
-	border: 1px solid #222222; /* Subtle border */
 	margin-bottom: 15px;
 	padding: 12px;
 	border-radius: 0; /* Minimal */
@@ -95,11 +94,11 @@ li {
 }
 
 .message-system {
-	border-left: 4px solid #fcddf2; /* Light pink */
+	border-right: 4px solid #fcddf2; /* Light pink */
 }
 
 .message-user {
-	border-left: 4px solid #9d81ae; /* Soft purple */
+	border-right: 4px solid #9d81ae; /* Soft purple */
 }
 .message-assistant {
 	border-left: 4px solid #6ec8ff; /* Icy-blue */

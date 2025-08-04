@@ -652,7 +652,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				processedMessages.forEach((msg) => {
 					const messageDiv = document.createElement("div");
 					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
-					messageDiv.dataset.filename = msg.filename; // Store filename for actions
+					messageDiv.dataset.filename = msg.filename;
+					messageDiv.dataset.role = msg.role; // Store filename for actions
+					messageDiv.dataset.role = msg.role; // Store role for actions
 
 					// If this message has associated reasoning, display it first
 					if (msg.reasoning) {
@@ -731,18 +733,14 @@ document.addEventListener("DOMContentLoaded", () => {
 					const infoDiv = document.createElement("div");
 					infoDiv.className = "message-info";
 
-					const roleSpan = document.createElement("span");
-					roleSpan.className = "message-role";
-					roleSpan.textContent = escapeHtml(msg.role);
-
-					infoDiv.appendChild(roleSpan);
+					// Role span removed - now shown in info modal instead
 
 					// Actions (Edit, Archive) - this is now just a button container
 					const actionsDiv = document.createElement("div");
 					actionsDiv.className = "message-actions";
 
 					const infoButton = createActionButton(ICON_INFO, "btn-info", () =>
-						showMessageInfoModal(msg.filename, msg.content),
+						showMessageInfoModal(msg.filename, msg.content, msg.role),
 					);
 					infoButton.title = "Info";
 
@@ -943,6 +941,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					const messageDiv = document.createElement("div");
 					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())} archived-message`;
 					messageDiv.dataset.filename = msg.filename;
+					messageDiv.dataset.role = msg.role;
 
 					// If this message has associated reasoning, display it first
 					if (msg.reasoning) {
@@ -1021,11 +1020,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					const infoDiv = document.createElement("div");
 					infoDiv.className = "message-info";
 
-					const roleSpan = document.createElement("span");
-					roleSpan.className = "message-role";
-					roleSpan.textContent = escapeHtml(msg.role);
-
-					infoDiv.appendChild(roleSpan);
+					// Role span removed - now shown in info modal instead
 
 					// Restore button
 					const actionsDiv = document.createElement("div");
@@ -1466,9 +1461,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
 
-			const infoButton = createActionButton(ICON_INFO, "btn-info", () =>
-				showMessageInfoModal(filename, originalContent),
-			);
+			const infoButton = createActionButton(ICON_INFO, "btn-info", () => {
+				const role = messageElement.dataset.role || "unknown";
+				showMessageInfoModal(filename, originalContent, role);
+			});
 			infoButton.title = "Info";
 
 			const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
@@ -1880,13 +1876,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		const headerDiv = document.createElement("div");
 		headerDiv.className = "message-header";
-		const roleSpan = document.createElement("span");
-		roleSpan.className = "message-role";
-		roleSpan.textContent = "Assistant";
 		const filenameSpan = document.createElement("span");
 		filenameSpan.className = "message-filename";
-		filenameSpan.textContent = " - Generating..."; // Placeholder text with separator
-		headerDiv.appendChild(roleSpan);
+		filenameSpan.textContent = "Generating..."; // Placeholder text
 		headerDiv.appendChild(filenameSpan);
 
 		const contentWrapperDiv = document.createElement("div");
@@ -2329,7 +2321,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 	}
 
-	function showMessageInfoModal(filename, content) {
+	function showMessageInfoModal(filename, content, role = "unknown") {
 		const lineCount = content.split("\n").length;
 		const charCount = content.length;
 
@@ -2341,6 +2333,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		modalContent.innerHTML = `
 			<p><strong>File:</strong> ${escapeHtml(filename)}</p>
+			<p><strong>Type:</strong> ${escapeHtml(role.charAt(0).toUpperCase() + role.slice(1))}</p>
 			<p><strong>Lines:</strong> ${lineCount}</p>
 			<p><strong>Characters:</strong> ${charCount}</p>
 		`;
