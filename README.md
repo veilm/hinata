@@ -8,8 +8,8 @@ agentic AI pair programming in your terminal. except minimalist, modular, extens
 
 # quick tour
 
-### [`hnt-agent`](./hnt-agent/)
-simple [`hnt-chat`](./hnt-chat/) wrapper for letting an LLM operate a persistent shell
+### [`hnt-agent`](./cmd/hnt-agent/)
+simple [`hnt-chat`](./cmd/hnt-chat/) wrapper for letting an LLM operate a persistent shell
 
 ```
 $ git log --oneline | head -1
@@ -31,13 +31,13 @@ b8b305b refactor: Handle recoil animations during enemy fade-out state
 the persistent shell is the only direct "tool" the model has access to. all
 other possible functionality (e.g. browser navigation with
 [`browse`](./util/browse/), file editing with
-[`hnt-edit`](./hnt-edit/)) is implemented as CLI utilities that the LLM can
+[`hnt-edit`](./cmd/hnt-edit/)) is implemented as CLI utilities that the LLM can
 leverage
 
 not as aesthetic as Claude Code. UX is WIP
 
-### [`hnt-edit`](./hnt-edit/)
-simple [`hnt-chat`](./hnt-chat/) wrapper for editing source code or other
+### [`hnt-edit`](./cmd/hnt-edit/)
+simple [`hnt-chat`](./cmd/hnt-chat/) wrapper for editing source code or other
 plaintext files
 
 ```
@@ -67,8 +67,8 @@ in my experience, hnt-edit's editing performance is higher than Aider's for my
 usual Gemini 2.5 Pro infra and web use cases, as of Apr 2025. (functional
 differences: system prompt and design of TARGET/REPLACE parser)
 
-### [`hnt-chat`](./hnt-chat/)
-simple [`hnt-llm`](./hnt-llm/) wrapper, for chat history management using
+### [`hnt-chat`](./cmd/hnt-chat/)
+simple [`hnt-llm`](./cmd/hnt-llm/) wrapper, for chat history management using
 plaintext files and conversation directories
 ```
 $ conversation=$(hnt-chat new)
@@ -89,7 +89,7 @@ $ ls $conversation
 1751202692095544873-assistant.md
 ```
 
-### [`hnt-llm`](./hnt-llm/)
+### [`hnt-llm`](./cmd/hnt-llm/)
 basic LLM API in/out. significantly faster startup than openai-python
 ```
 $ echo "hello Claude! ❄️" | hnt-llm --model openrouter/anthropic/claude-3-opus
@@ -123,21 +123,21 @@ cd hinata
 ```
 
 # full architecture
-- [`hnt-llm`](./hnt-llm/): simple, performant text backend. pipe text input
+- [`hnt-llm`](./cmd/hnt-llm/): simple, performant text backend. pipe text input
 in, receive LLM text response out
-- [`hnt-chat`](./hnt-chat/): wrapper around `hnt-llm` for managing
+- [`hnt-chat`](./cmd/hnt-chat/): wrapper around `hnt-llm` for managing
 conversations and message history, using simple conv directories and message
 markdown files
-- [`llm-pack`](./llm-pack/): take source code filenames as CLI args. write
+- [`llm-pack`](./cmd/llm-pack/): take source code filenames as CLI args. write
 LLM packed prompt to stdout
-- [`hnt-apply`](./hnt-apply/): take LLM output including TARGET/REPLACE
+- [`hnt-apply`](./cmd/hnt-apply/): take LLM output including TARGET/REPLACE
 blocks as stdin. make edits to those files on the LLM's behalf
-- [`hnt-edit`](./hnt-edit/): (very low-budget) aider clone. wrapper that
-uses `llm-pack` to format source code. sends it along with user instructions to
+- [`hnt-edit`](./cmd/hnt-edit/): minimal aider clone. wrapper that uses
+`llm-pack` to format source code. sends it along with user instructions to
 `hnt-chat`. then uses `hnt-apply` to parse the LLM's desired edits
-- [`hnt-agent`](./hnt-agent/): allows an LLM to use a persistent shell and
+- [`hnt-agent`](./cmd/hnt-agent/): allows an LLM to use a persistent shell and
 receive output, in a feedback loop
-- [`hnt-web`](./hnt-web/): simple 80/20 web app wrapping `hnt-chat`. sufficient
+- [`hnt-web`](./cmd/hnt-web/): simple 80/20 web app wrapping `hnt-chat`. sufficient
 for my own casual usage and mobile/{filesystem storage} requirement
 - [`browse`](./util/browse/): CLI for navigating your (not headless)
 GUI Chromium-based browser programmatically. intended for LLM web browsing
