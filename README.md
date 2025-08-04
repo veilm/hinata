@@ -115,7 +115,7 @@ $ hnt-agent
 > my brother, can you please spare me any help with ...
 ```
 
-### alternative installation (yucky manual clone)
+### alternative: manual
 ```
 git clone --depth 1 https://github.com/veilm/hinata
 cd hinata
@@ -143,11 +143,11 @@ for my own casual usage and mobile/{filesystem storage} requirement
 GUI Chromium-based browser programmatically. intended for LLM web browsing
 
 # bugs / support
-feel free to [@ me on X](https://x.com/sucralose__) or make a GitHub issue. for
-**literally any reason**
+feel free to [@ me on X](https://x.com/sucralose__) or make a GitHub issue, for
+literally any reason
 
 you don't need to read any documentation or even try installing. I'd be happy to
-answer any possible questions
+answer any possible questions or hear criticism
 
 # philosophy
 
