@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-edit/pkg/edit"
 	"github.com/veilm/hinata/pkg/terminal"
-	"os"
 )
 
 func main() {
@@ -33,6 +34,7 @@ Example: hnt-edit -m 'Refactor foo function' src/main.py src/utils.py`,
 	rootCmd.Flags().StringVar(&opts.Model, "model", "", "Model to use for LLM")
 	rootCmd.Flags().StringVar(&opts.ContinueDir, "continue-dir", "", "Path to an existing hnt-chat conversation directory to continue from a failed edit")
 	rootCmd.Flags().BoolVar(&opts.UseEditor, "use-editor", false, "Use an external editor ($EDITOR) for the user instruction message")
+	rootCmd.Flags().BoolVar(&opts.Stdin, "stdin", false, "Read user instruction message from stdin")
 	rootCmd.Flags().BoolVar(&opts.IgnoreReasoning, "ignore-reasoning", false, "Do not ask the LLM for reasoning")
 	rootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.Flags().BoolVar(&opts.DebugUnsafe, "debug-unsafe", false, "Enable unsafe debugging options")

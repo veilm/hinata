@@ -3,9 +3,11 @@ package edit
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/veilm/hinata/cmd/hnt-apply/pkg/apply"
@@ -22,6 +24,7 @@ type Options struct {
 	Model           string
 	ContinueDir     string
 	UseEditor       bool
+	Stdin           bool
 	IgnoreReasoning bool
 	Verbose         bool
 	DebugUnsafe     bool
@@ -49,7 +52,60 @@ func (g *CreatedFilesGuard) Cleanup() {
 	}
 }
 
-func GetUserInstruction(message string, useEditor bool) (string, bool, error) {
+func GetUserInstruction(message string, useEditor bool, useStdin bool, debugUnsafe bool) (string, bool, error) {
+	if debugUnsafe {
+		// Create debug log directory if it doesn't exist
+		os.MkdirAll("/tmp/hinata", 0755)
+		debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if debugFile != nil {
+			defer debugFile.Close()
+			fmt.Fprintf(debugFile, "[%s] GetUserInstruction called: message='%s', useEditor=%v, useStdin=%v\n",
+				time.Now().Format("2006-01-02 15:04:05.000"), message, useEditor, useStdin)
+		}
+	}
+
+	if useStdin {
+		if debugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] Reading from stdin...\n", time.Now().Format("2006-01-02 15:04:05.000"))
+			}
+		}
+
+		// Read from stdin
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			if debugUnsafe {
+				debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+				if debugFile != nil {
+					defer debugFile.Close()
+					fmt.Fprintf(debugFile, "[%s] Error reading stdin: %v\n", time.Now().Format("2006-01-02 15:04:05.000"), err)
+				}
+			}
+			return "", false, fmt.Errorf("failed to read from stdin: %w", err)
+		}
+
+		if debugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] Read %d bytes from stdin: %q\n",
+					time.Now().Format("2006-01-02 15:04:05.000"), len(data), string(data))
+			}
+		}
+		return string(data), false, nil
+	}
+
+	if debugUnsafe {
+		debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if debugFile != nil {
+			defer debugFile.Close()
+			fmt.Fprintf(debugFile, "[%s] Not using stdin, calling prompt.GetUserInstruction\n",
+				time.Now().Format("2006-01-02 15:04:05.000"))
+		}
+	}
+
 	instruction, err := prompt.GetUserInstruction(message, useEditor)
 	if err != nil {
 		return "", false, err
@@ -106,6 +162,18 @@ func PrintUserInstructions(instruction string) error {
 }
 
 func Run(opts Options) error {
+	if opts.DebugUnsafe {
+		// Create debug log directory if it doesn't exist
+		os.MkdirAll("/tmp/hinata", 0755)
+		debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if debugFile != nil {
+			defer debugFile.Close()
+			fmt.Fprintf(debugFile, "[%s] ========== Run called ==========\n", time.Now().Format("2006-01-02 15:04:05.000"))
+			fmt.Fprintf(debugFile, "[%s] Options: Message='%s', UseEditor=%v, Stdin=%v, SourceFiles=%v\n",
+				time.Now().Format("2006-01-02 15:04:05.000"), opts.Message, opts.UseEditor, opts.Stdin, opts.SourceFiles)
+		}
+	}
+
 	// Validate inputs
 	if opts.ContinueDir == "" && len(opts.SourceFiles) == 0 {
 		return fmt.Errorf("source_files are required when not using --continue-dir")
@@ -183,9 +251,18 @@ func Run(opts Options) error {
 			return fmt.Errorf("failed to get system message: %w", err)
 		}
 
-		instruction, fromEditor, err := GetUserInstruction(opts.Message, opts.UseEditor)
+		instruction, fromEditor, err := GetUserInstruction(opts.Message, opts.UseEditor, opts.Stdin, opts.DebugUnsafe)
 		if err != nil {
 			return err
+		}
+
+		if opts.DebugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] GetUserInstruction returned: instruction='%s', fromEditor=%v\n",
+					time.Now().Format("2006-01-02 15:04:05.000"), instruction, fromEditor)
+			}
 		}
 
 		if fromEditor {
@@ -203,20 +280,55 @@ func Run(opts Options) error {
 		}
 
 		// Pack files
+		if opts.DebugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] About to pack files...\n", time.Now().Format("2006-01-02 15:04:05.000"))
+			}
+		}
 		packed, err := packFiles(sourceFiles)
 		if err != nil {
 			return fmt.Errorf("failed to pack source files: %w", err)
 		}
+		if opts.DebugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] Files packed successfully\n", time.Now().Format("2006-01-02 15:04:05.000"))
+			}
+		}
 
 		// Create new conversation
+		if opts.DebugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] Getting conversations dir...\n", time.Now().Format("2006-01-02 15:04:05.000"))
+			}
+		}
 		baseDir, err := chat.GetConversationsDir()
 		if err != nil {
 			return fmt.Errorf("failed to get conversations directory: %w", err)
 		}
 
+		if opts.DebugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] Creating new conversation...\n", time.Now().Format("2006-01-02 15:04:05.000"))
+			}
+		}
 		conversationDir, err = chat.CreateNewConversation(baseDir)
 		if err != nil {
 			return fmt.Errorf("failed to create conversation: %w", err)
+		}
+		if opts.DebugUnsafe {
+			debugFile, _ := os.OpenFile("/tmp/hinata/hnt-edit-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if debugFile != nil {
+				defer debugFile.Close()
+				fmt.Fprintf(debugFile, "[%s] Conversation created: %s\n", time.Now().Format("2006-01-02 15:04:05.000"), conversationDir)
+			}
 		}
 
 		// Save absolute paths
