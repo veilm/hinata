@@ -5,10 +5,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/agent"
+	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/pkg/prompt"
 	"github.com/veilm/hinata/pkg/terminal"
 )
@@ -25,6 +28,7 @@ var (
 	shellDisplay    bool
 	useJSON         bool
 	spinnerIndex    int
+	spinnerFile     string
 	useSpinner      bool
 	useEditor       bool
 	useStdin        bool
@@ -46,6 +50,7 @@ func main() {
 
 	// Add subcommands
 	rootCmd.AddCommand(newUnicodeCheckCmd())
+	rootCmd.AddCommand(newSpinnerDemoCmd())
 
 	rootCmd.Flags().StringVar(&systemPrompt, "system", "", "System message string or path to system message file")
 	rootCmd.Flags().StringVarP(&message, "message", "m", "", "User instruction message")
@@ -59,6 +64,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&shellDisplay, "shell-results-display-xml", false, "Display shell command results")
 	rootCmd.Flags().BoolVar(&useJSON, "json", false, "Output shell results as JSON")
 	rootCmd.Flags().IntVar(&spinnerIndex, "spinner", -1, "Use specific spinner by index")
+	rootCmd.Flags().StringVar(&spinnerFile, "spinner-file", "", "Path to a text file containing spinner frames (overrides --spinner)")
 	rootCmd.Flags().BoolVar(&useEditor, "use-editor", false, "Use an external editor ($EDITOR) for the user instruction message")
 	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read message from stdin")
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
@@ -134,6 +140,7 @@ func run(cmd *cobra.Command, args []string) error {
 		ShellDisplay:    shellDisplay,
 		UseJSON:         useJSON,
 		SpinnerIndex:    spinnerPtr,
+		SpinnerFile:     spinnerFile,
 		UseEditor:       useEditor,
 		AutoExit:        autoExit,
 		Theme:           theme,
@@ -218,4 +225,85 @@ Shows environment variables, locale detection, terminal detection,
 font support, and the final Unicode support level determination.`,
 		Run: runUnicodeCheck,
 	}
+}
+
+func newSpinnerDemoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "spinner-demo [seconds]",
+		Short: "Display a spinner for N seconds",
+		Long:  "Demonstrates the spinner animation for the specified number of seconds. Useful for testing spinner appearance and theme colors.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runSpinnerDemo,
+	}
+
+	// Add local flags for spinner demo
+	cmd.Flags().IntVar(&spinnerIndex, "spinner", -1, "Use specific spinner by index")
+	cmd.Flags().StringVar(&spinnerFile, "spinner-file", "", "Path to a text file containing spinner frames")
+	cmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
+
+	return cmd
+}
+
+func runSpinnerDemo(cmd *cobra.Command, args []string) error {
+	// Parse duration
+	seconds, err := strconv.Atoi(args[0])
+	if err != nil || seconds <= 0 {
+		return fmt.Errorf("invalid duration: %s (must be a positive integer)", args[0])
+	}
+
+	// Get spinner
+	var sp spinner.Spinner
+	if spinnerFile != "" {
+		// Load spinner from file
+		sp, err = loadSpinnerFromFile(spinnerFile)
+		if err != nil {
+			return fmt.Errorf("failed to load spinner from file: %w", err)
+		}
+	} else if spinnerIndex >= 0 && spinnerIndex < len(spinner.SPINNERS) {
+		sp = spinner.SPINNERS[spinnerIndex]
+	} else {
+		sp = spinner.GetRandomSpinner()
+	}
+
+	// Get theme
+	t := agent.GetTheme(theme)
+
+	// Get random loading message - same logic as regular hnt-agent
+	msg := spinner.GetRandomLoadingMessage()
+
+	// Set up stop channel
+	stopCh := make(chan bool)
+
+	// Start spinner
+	go spinner.Run(sp, msg, "  ", stopCh, func(s string) {
+		t.Spinner.Print(s)
+	})
+
+	// Wait for specified duration
+	time.Sleep(time.Duration(seconds) * time.Second)
+
+	// Stop spinner
+	close(stopCh)
+	time.Sleep(50 * time.Millisecond) // Give spinner time to clean up
+
+	fmt.Println()
+	return nil
+}
+
+func loadSpinnerFromFile(path string) (spinner.Spinner, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return spinner.Spinner{}, err
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(lines) == 0 {
+		return spinner.Spinner{}, fmt.Errorf("spinner file is empty")
+	}
+
+	return spinner.Spinner{
+		Name:   filepath.Base(path),
+		Frames: lines,
+		Speed:  150 * time.Millisecond, // Default speed
+	}, nil
 }

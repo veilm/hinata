@@ -21,7 +21,8 @@ export HINATA_AGENT_MODEL=openrouter/moonshotai/kimi-k2
 export HNT_AGENT_DEBUG=1
 
 # hnt-agent --shell-box --auto-exit -m "please do the following
-hnt-agent --shell-box --yes --auto-exit -m "please do the following
+# hnt-agent --shell-box --yes --auto-exit -m "please do the following
+hnt-agent --yes --auto-exit -m "please do the following
 1. check the repo status
 2. check if any changes are staged
 	if yes (there are >0 changes staged)

@@ -37,6 +37,7 @@ type Agent struct {
 	ShellDisplay    bool
 	UseJSON         bool
 	SpinnerIndex    *int
+	SpinnerFile     string
 	UseEditor       bool
 	AutoExit        bool
 
@@ -45,6 +46,7 @@ type Agent struct {
 	humanTurnCounter int
 	logger           *log.Logger
 	theme            Theme
+	customSpinner    *spinner.Spinner
 }
 
 type Config struct {
@@ -58,11 +60,11 @@ type Config struct {
 	ShellDisplay    bool
 	UseJSON         bool
 	SpinnerIndex    *int
+	SpinnerFile     string
 	UseEditor       bool
 	AutoExit        bool
 	Theme           string
 }
-
 
 func New(cfg Config) (*Agent, error) {
 	if cfg.ConversationDir == "" {
@@ -121,6 +123,26 @@ func New(cfg Config) (*Agent, error) {
 		}
 	}
 
+	// Load custom spinner if specified
+	var customSpinner *spinner.Spinner
+	if cfg.SpinnerFile != "" {
+		content, err := os.ReadFile(cfg.SpinnerFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read spinner file: %w", err)
+		}
+
+		lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+		if len(lines) == 0 {
+			return nil, fmt.Errorf("spinner file is empty")
+		}
+
+		customSpinner = &spinner.Spinner{
+			Name:   filepath.Base(cfg.SpinnerFile),
+			Frames: lines,
+			Speed:  150 * time.Millisecond,
+		}
+	}
+
 	return &Agent{
 		ConversationDir:  cfg.ConversationDir,
 		SystemPrompt:     cfg.SystemPrompt,
@@ -131,6 +153,7 @@ func New(cfg Config) (*Agent, error) {
 		ShellDisplay:     cfg.ShellDisplay,
 		UseJSON:          cfg.UseJSON,
 		SpinnerIndex:     cfg.SpinnerIndex,
+		SpinnerFile:      cfg.SpinnerFile,
 		UseEditor:        cfg.UseEditor,
 		AutoExit:         cfg.AutoExit,
 		shellExecutor:    executor,
@@ -138,6 +161,7 @@ func New(cfg Config) (*Agent, error) {
 		humanTurnCounter: 1,
 		logger:           logger,
 		theme:            GetTheme(cfg.Theme),
+		customSpinner:    customSpinner,
 	}, nil
 }
 
@@ -458,9 +482,16 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 func (a *Agent) executeShellCommands(commands string) (*shell.ExecutionResult, error) {
 	stopCh := make(chan bool)
 
-	sp := spinner.GetRandomSpinner()
-	if a.SpinnerIndex != nil && *a.SpinnerIndex < len(spinner.SPINNERS) {
+	var sp spinner.Spinner
+	if a.customSpinner != nil {
+		// Use custom spinner from file
+		sp = *a.customSpinner
+	} else if a.SpinnerIndex != nil && *a.SpinnerIndex < len(spinner.SPINNERS) {
+		// Use spinner by index
 		sp = spinner.SPINNERS[*a.SpinnerIndex]
+	} else {
+		// Use random spinner
+		sp = spinner.GetRandomSpinner()
 	}
 
 	msg := spinner.GetRandomLoadingMessage()
@@ -950,7 +981,6 @@ func (a *Agent) printWrappedText(text string, currentColumn *int, wrapAt int, co
 		}
 	}
 }
-
 
 func (a *Agent) printWord(word string, currentColumn *int, wrapAt int, colorFunc *color.Color) {
 	wordLen := len(word)
