@@ -131,7 +131,12 @@ func New(cfg Config) (*Agent, error) {
 			return nil, fmt.Errorf("failed to read spinner file: %w", err)
 		}
 
-		lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+		// Split by newlines without trimming to preserve leading spaces in frames
+		lines := strings.Split(string(content), "\n")
+		// Remove empty trailing line if exists
+		if len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
 		if len(lines) == 0 {
 			return nil, fmt.Errorf("spinner file is empty")
 		}
