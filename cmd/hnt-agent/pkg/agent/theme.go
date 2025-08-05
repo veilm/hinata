@@ -25,9 +25,14 @@ var (
 	// SnowTheme uses cold, winter-inspired true colors
 	// Official snowflake color: #6EC8FF (110, 200, 255)
 	SnowTheme = Theme{
-		Name:           "snow",
-		DefaultText:    color.RGB(255, 255, 255), // Explicit white
-		Stdout:         color.RGB(110, 200, 255), // Official snowflake blue
+		Name:        "snow",
+		DefaultText: color.RGB(255, 255, 255), // Explicit white
+		Stdout:      color.RGB(80, 140, 180),  // Softer blue (dimmed for less prominence)
+		// Stdout alternatives tested:
+		// - color.RGB(100, 150, 190) // Muted Sky
+		// - color.RGB(90, 160, 200)  // Gentle Blue
+		// - color.RGB(80, 150, 200)  // Faded Snowflake
+		// - color.RGB(70, 130, 160)  // Subtle Cyan
 		Stderr:         color.RGB(255, 150, 150), // Soft coral red
 		ExitCode:       color.RGB(255, 100, 100), // Warmer red
 		Reasoning:      color.RGB(200, 180, 255), // Lavender
@@ -38,7 +43,15 @@ var (
 		ErrorHighlight: color.RGB(255, 120, 120), // Error red
 		StatusMessage:  color.RGB(150, 150, 150), // Gray for subtle status messages
 		Spinner:        color.RGB(110, 200, 255), // Official snowflake blue
-		ShellBlockCode: color.RGB(160, 255, 200), // Mint green for shell commands
+		ShellBlockCode: color.RGB(110, 200, 255), // Official snowflake blue (prominent)
+		// ShellBlockCode alternatives tested:
+		// - color.RGB(100, 220, 220) // Icy Cyan/Turquoise
+		// - color.RGB(180, 120, 255) // Aurora Purple
+		// - color.RGB(240, 248, 255) // Frost White (Blue Tint)
+		// - color.RGB(135, 206, 235) // Winter Sky Blue
+		// - color.RGB(120, 180, 200) // Glacier Blue
+		// - color.RGB(255, 220, 140) // Soft Gold/Amber
+		// - color.RGB(160, 255, 200) // Mint Green (original)
 	}
 
 	// AnsiTheme uses standard ANSI colors (terminal-configurable)
