@@ -13,11 +13,11 @@ type Theme struct {
 	UserMargin     *color.Color
 	HinataLine     *color.Color
 	QuerentLine    *color.Color
-	TurnNumber      *color.Color
-	ErrorHighlight  *color.Color
-	StatusMessage   *color.Color // For status messages like "Executing command"
-	Spinner         *color.Color // For spinner text
-	ShellBlockCode  *color.Color // For code inside <hnt-shell> blocks
+	TurnNumber     *color.Color
+	ErrorHighlight *color.Color
+	StatusMessage  *color.Color // For status messages like "Executing command"
+	Spinner        *color.Color // For spinner text
+	ShellBlockCode *color.Color // For code inside <hnt-shell> blocks
 }
 
 // Themes
@@ -35,10 +35,10 @@ var (
 		HinataLine:     color.RGB(110, 200, 255), // Official snowflake blue
 		QuerentLine:    color.RGB(220, 160, 255), // Light purple
 		TurnNumber:     color.RGB(160, 255, 200), // Mint green
-		ErrorHighlight:  color.RGB(255, 120, 120), // Error red
-		StatusMessage:   color.RGB(150, 150, 150), // Gray for subtle status messages
-		Spinner:         color.RGB(110, 200, 255), // Official snowflake blue
-		ShellBlockCode:  color.RGB(160, 255, 200), // Mint green for shell commands
+		ErrorHighlight: color.RGB(255, 120, 120), // Error red
+		StatusMessage:  color.RGB(150, 150, 150), // Gray for subtle status messages
+		Spinner:        color.RGB(110, 200, 255), // Official snowflake blue
+		ShellBlockCode: color.RGB(160, 255, 200), // Mint green for shell commands
 	}
 
 	// AnsiTheme uses standard ANSI colors (terminal-configurable)
@@ -53,10 +53,10 @@ var (
 		HinataLine:     color.New(color.FgBlue),
 		QuerentLine:    color.New(color.FgMagenta),
 		TurnNumber:     color.New(color.FgGreen),
-		ErrorHighlight:  color.New(color.FgRed),
-		StatusMessage:   color.New(color.FgHiBlack), // Dark gray
-		Spinner:         color.New(color.FgCyan),
-		ShellBlockCode:  color.New(color.FgGreen),
+		ErrorHighlight: color.New(color.FgRed),
+		StatusMessage:  color.New(color.FgHiBlack), // Dark gray
+		Spinner:        color.New(color.FgCyan),
+		ShellBlockCode: color.New(color.FgGreen),
 	}
 )
 
