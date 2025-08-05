@@ -1518,9 +1518,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			contentWrapperDiv.innerHTML = ""; // Clear current text content
 			const textarea = document.createElement("textarea");
 			textarea.value = originalContent;
-			// autoresize textarea
-			textarea.style.height = "auto"; // Temporarily set to auto to get scrollHeight
-			textarea.style.height = `${textarea.scrollHeight}px`;
+
+			// Add event listener for auto-resize
 			textarea.addEventListener("input", () => {
 				// Save current scroll position
 				const scrollTop =
@@ -1533,8 +1532,16 @@ document.addEventListener("DOMContentLoaded", () => {
 				// Restore scroll position
 				window.scrollTo(0, scrollTop);
 			});
+
+			// Append textarea to DOM first
 			contentWrapperDiv.appendChild(textarea);
-			textarea.focus();
+
+			// Then calculate initial height after DOM insertion
+			requestAnimationFrame(() => {
+				textarea.style.height = "auto";
+				textarea.style.height = `${textarea.scrollHeight}px`;
+				textarea.focus();
+			});
 
 			actionsDiv.innerHTML = ""; // Clear Edit/Archive buttons
 			const saveButton = createActionButton(ICON_SAVE, "btn-save", () =>

@@ -742,7 +742,7 @@ li {
 	border-radius: 0;
 	font-family: inherit;
 	font-size: 1em; /* Should match the message's font size */
-	min-height: 100px; /* Or dynamically set based on content */
+	min-height: auto; /* Allow dynamic sizing from the start */
 }
 
 .message-content-wrapper textarea:focus {
