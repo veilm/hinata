@@ -357,11 +357,7 @@ func (a *Agent) Run(userMessage string) error {
 				stderrContent := strings.TrimSpace(result.Stderr)
 				exitCode := result.ExitCode
 
-				// Only print blank line before output if there's any output to display
-				hasOutput := stdoutContent != "" || stderrContent != "" || exitCode != 0
-				if hasOutput {
-					fmt.Println()
-				}
+				// Shell block already has proper spacing, no need for extra newline
 
 				if stdoutContent != "" {
 					a.theme.Stdout.Print(indentMultiline(stdoutContent))
