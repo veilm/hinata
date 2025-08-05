@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,6 +28,24 @@ import (
 )
 
 const MARGIN = 2
+
+var (
+	cursorHidden bool
+	cursorMutex  sync.Mutex
+)
+
+func init() {
+	// Set up signal handling to ensure cursor is shown on exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		// Restore cursor before exiting
+		showCursor()
+		os.Exit(1)
+	}()
+}
 
 type Agent struct {
 	ConversationDir string
@@ -1283,9 +1304,19 @@ func getTerminalWidth() int {
 }
 
 func hideCursor() {
-	fmt.Print("\033[?25l")
+	cursorMutex.Lock()
+	defer cursorMutex.Unlock()
+	if !cursorHidden {
+		fmt.Print("\033[?25l")
+		cursorHidden = true
+	}
 }
 
 func showCursor() {
-	fmt.Print("\033[?25h")
+	cursorMutex.Lock()
+	defer cursorMutex.Unlock()
+	if cursorHidden {
+		fmt.Print("\033[?25h")
+		cursorHidden = false
+	}
 }
