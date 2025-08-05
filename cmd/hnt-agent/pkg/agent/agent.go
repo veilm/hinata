@@ -39,7 +39,6 @@ type Agent struct {
 	SpinnerIndex    *int
 	UseEditor       bool
 	AutoExit        bool
-	ShellBox        bool
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -61,20 +60,9 @@ type Config struct {
 	SpinnerIndex    *int
 	UseEditor       bool
 	AutoExit        bool
-	ShellBox        bool
 	Theme           string
 }
 
-// ShellBlockState tracks the state of shell block detection during streaming
-type ShellBlockState struct {
-	InBlock          bool
-	StartLine        int      // Terminal line where block started
-	StartColumn      int      // Column position
-	Content          []string // Buffered lines
-	MaxWidth         int      // Track widest line
-	PlaceholderShown bool     // Whether we've shown the placeholder
-	PlaceholderLines int      // Number of lines used by placeholder
-}
 
 func New(cfg Config) (*Agent, error) {
 	if cfg.ConversationDir == "" {
@@ -145,7 +133,6 @@ func New(cfg Config) (*Agent, error) {
 		SpinnerIndex:     cfg.SpinnerIndex,
 		UseEditor:        cfg.UseEditor,
 		AutoExit:         cfg.AutoExit,
-		ShellBox:         cfg.ShellBox,
 		shellExecutor:    executor,
 		turnCounter:      1,
 		humanTurnCounter: 1,
@@ -408,16 +395,6 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	var contentBuffer strings.Builder
 	var reasoningChunkBuffer strings.Builder
 
-	// Shell block tracking
-	var shellBlockState *ShellBlockState
-	var tagBuffer strings.Builder
-
-	if a.ShellBox {
-		shellBlockState = &ShellBlockState{
-			Content: []string{""},
-		}
-	}
-
 	// Hide cursor before streaming starts
 	cursor.Hide()
 	defer cursor.Show()
@@ -426,24 +403,6 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 		select {
 		case event, ok := <-eventChan:
 			if !ok {
-				// Handle unclosed shell block
-				if a.ShellBox && shellBlockState != nil && shellBlockState.InBlock {
-					// Clear the placeholder and show error
-					fmt.Print("\033[u") // Restore cursor position
-					fmt.Print("\033[J") // Clear from cursor to end of screen
-
-					fmt.Print(marginStr())
-					a.theme.ErrorHighlight.Println("⚠️  Warning: Unclosed <hnt-shell> block detected")
-
-					// Print the accumulated content as normal text
-					for _, line := range shellBlockState.Content {
-						if line != "" {
-							fmt.Print(marginStr())
-							a.theme.DefaultText.Println(line)
-						}
-					}
-				}
-
 				// Flush any remaining buffered content
 				if contentBuffer.Len() > 0 {
 					a.printWrappedText(contentBuffer.String(), &currentColumn, wrapAt, a.theme.DefaultText)
@@ -464,174 +423,13 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 				// Always accumulate to response
 				response.WriteString(event.Content)
 
-				// Process content for shell blocks only if enabled
-				if a.ShellBox {
-					// Add to tag buffer to handle split tags
-					tagBuffer.WriteString(event.Content)
-					content := tagBuffer.String()
-					tagBuffer.Reset()
-
-					// Debug: check what we're processing
-					if strings.Contains(content, "hnt-shell") || strings.Contains(response.String(), "hnt-shell") {
-						if a.logger != nil {
-							a.logger.Printf("Shell tag detection - content chunk: %q", content)
-							a.logger.Printf("Currently in block: %v", shellBlockState.InBlock)
-							a.logger.Printf("Full response contains <hnt-shell>: %v", strings.Contains(response.String(), "<hnt-shell>"))
-						}
-					}
-
-					for len(content) > 0 {
-						if shellBlockState.InBlock {
-							// Look for closing tag
-							if idx := strings.Index(content, "</hnt-shell>"); idx != -1 {
-								// Add remaining content before closing tag
-								shellBlockState.Content[len(shellBlockState.Content)-1] += content[:idx]
-
-								// Clean up content - trim trailing spaces and remove empty first/last lines
-								for i := range shellBlockState.Content {
-									shellBlockState.Content[i] = strings.TrimRight(shellBlockState.Content[i], " \t")
-								}
-								if len(shellBlockState.Content) > 0 && shellBlockState.Content[0] == "" {
-									shellBlockState.Content = shellBlockState.Content[1:]
-								}
-								if len(shellBlockState.Content) > 0 && shellBlockState.Content[len(shellBlockState.Content)-1] == "" {
-									shellBlockState.Content = shellBlockState.Content[:len(shellBlockState.Content)-1]
-								}
-
-								// Render the complete shell block
-								a.renderShellBlock(shellBlockState, &currentColumn)
-
-								// Reset state
-								shellBlockState.InBlock = false
-								shellBlockState.Content = []string{""}
-								shellBlockState.MaxWidth = 0
-								shellBlockState.PlaceholderShown = false
-								shellBlockState.PlaceholderLines = 0
-
-								// Continue with remaining content
-								content = content[idx+12:] // len("</hnt-shell>") = 12
-								continue
-							} else {
-								// Check if we might have a partial closing tag
-								if strings.HasSuffix(content, "<") || strings.HasSuffix(content, "</") ||
-									strings.HasSuffix(content, "</h") || strings.HasSuffix(content, "</hn") ||
-									strings.HasSuffix(content, "</hnt") || strings.HasSuffix(content, "</hnt-") ||
-									strings.HasSuffix(content, "</hnt-s") || strings.HasSuffix(content, "</hnt-sh") ||
-									strings.HasSuffix(content, "</hnt-she") || strings.HasSuffix(content, "</hnt-shel") ||
-									strings.HasSuffix(content, "</hnt-shell") {
-									// Save partial tag for next chunk
-									tagBuffer.WriteString(content)
-									break
-								}
-
-								// Still inside block, accumulate content
-								shellBlockState.Content[len(shellBlockState.Content)-1] += content
-								// Split by newlines
-								lines := strings.Split(shellBlockState.Content[len(shellBlockState.Content)-1], "\n")
-								if len(lines) > 1 {
-									shellBlockState.Content[len(shellBlockState.Content)-1] = lines[0]
-									for i := 1; i < len(lines); i++ {
-										shellBlockState.Content = append(shellBlockState.Content, lines[i])
-									}
-								}
-								// Update max width
-								for _, line := range shellBlockState.Content {
-									if len(line) > shellBlockState.MaxWidth {
-										shellBlockState.MaxWidth = len(line)
-									}
-								}
-								break
-							}
-						} else {
-							// Look for opening tag
-							if idx := strings.Index(content, "<hnt-shell>"); idx != -1 {
-								if a.logger != nil {
-									a.logger.Printf("Found <hnt-shell> tag at index %d in content: %q", idx, content)
-								}
-								// Print any content before the tag
-								if idx > 0 {
-									if isFirstToken {
-										fmt.Print(marginStr())
-										currentColumn = 0
-										isFirstToken = false
-									}
-									a.printWrappedText(content[:idx], &currentColumn, wrapAt, a.theme.DefaultText)
-								}
-
-								// Start shell block
-								shellBlockState.InBlock = true
-								shellBlockState.StartLine = currentColumn
-
-								// Show placeholder
-								if !shellBlockState.PlaceholderShown {
-									if currentColumn > 0 {
-										fmt.Println()
-										currentColumn = 0
-									}
-									fmt.Println() // Extra line before placeholder
-									shellBlockState.PlaceholderLines = a.printShellPlaceholder()
-									shellBlockState.PlaceholderShown = true
-								}
-
-								// Continue with remaining content
-								content = content[idx+11:] // len("<hnt-shell>") = 11
-							} else {
-								// Check if the entire content might be building towards a tag
-								potentialTag := content
-								if potentialTag == "<" || potentialTag == "<h" ||
-									potentialTag == "<hn" || potentialTag == "<hnt" ||
-									potentialTag == "<hnt-" || potentialTag == "<hnt-s" ||
-									potentialTag == "<hnt-sh" || potentialTag == "<hnt-she" ||
-									potentialTag == "<hnt-shel" || potentialTag == "<hnt-shell" {
-									// This whole chunk might be part of an opening tag
-									tagBuffer.WriteString(content)
-									break
-								}
-
-								// Check if we might have a partial opening tag at the end
-								if strings.HasSuffix(content, "<") || strings.HasSuffix(content, "<h") ||
-									strings.HasSuffix(content, "<hn") || strings.HasSuffix(content, "<hnt") ||
-									strings.HasSuffix(content, "<hnt-") || strings.HasSuffix(content, "<hnt-s") ||
-									strings.HasSuffix(content, "<hnt-sh") || strings.HasSuffix(content, "<hnt-she") ||
-									strings.HasSuffix(content, "<hnt-shel") {
-									// Save partial tag for next chunk
-									tagBuffer.WriteString(content)
-									break
-								}
-
-								// If the full response contains the tag but we haven't detected it yet,
-								// it might be a casing or formatting issue
-								if !shellBlockState.PlaceholderShown && strings.Contains(strings.ToLower(response.String()), "<hnt-shell>") {
-									// Log this unusual situation
-									if a.logger != nil {
-										a.logger.Printf("WARNING: Response contains <hnt-shell> but not detected. Content: %q", content)
-									}
-								}
-
-								// Normal content, print it
-								if isFirstToken {
-									fmt.Print(marginStr())
-									currentColumn = 0
-									isFirstToken = false
-								}
-								a.printWrappedText(content, &currentColumn, wrapAt, a.theme.DefaultText)
-								break
-							}
-						}
-					} // End of for len(content) > 0 loop
-				} else {
-					// ShellBox disabled - just print content normally
-					if isFirstToken {
-						fmt.Print(marginStr())
-						currentColumn = 0
-						isFirstToken = false
-					}
-					a.printWrappedText(event.Content, &currentColumn, wrapAt, a.theme.DefaultText)
+				// Just print content normally
+				if isFirstToken {
+					fmt.Print(marginStr())
+					currentColumn = 0
+					isFirstToken = false
 				}
-
-				if a.logger != nil && a.ShellBox {
-					a.logger.Printf("Current response so far: %q", response.String())
-				}
+				a.printWrappedText(event.Content, &currentColumn, wrapAt, a.theme.DefaultText)
 			}
 
 			if event.Reasoning != "" && !a.IgnoreReasoning {
@@ -1153,112 +951,6 @@ func (a *Agent) printWrappedText(text string, currentColumn *int, wrapAt int, co
 	}
 }
 
-func (a *Agent) printShellPlaceholder() int {
-	placeholderText := "📦 Proposing shell block..."
-	// Account for emoji width (emoji typically renders as 2 columns)
-	displayWidth := runewidth.StringWidth(placeholderText)
-
-	// Top border
-	fmt.Print(marginStr())
-	a.theme.ShellBlock.Print("╔═")
-	a.theme.ShellBlock.Print(strings.Repeat("═", displayWidth)) // No extra padding needed
-	a.theme.ShellBlock.Print("═╗")
-	fmt.Println()
-
-	// Content
-	fmt.Print(marginStr())
-	a.theme.ShellBlock.Print("║ ")
-	a.theme.DefaultText.Print(placeholderText)
-	a.theme.ShellBlock.Print(" ║")
-	fmt.Println()
-
-	// Bottom border
-	fmt.Print(marginStr())
-	a.theme.ShellBlock.Print("╚═")
-	a.theme.ShellBlock.Print(strings.Repeat("═", displayWidth))
-	a.theme.ShellBlock.Print("═╝")
-	fmt.Println()
-
-	return 3 // 3 lines for the box
-}
-
-func (a *Agent) renderShellBlock(state *ShellBlockState, currentColumn *int) {
-	// First, clear the placeholder
-	if state.PlaceholderShown && state.PlaceholderLines > 0 {
-		// Move up to clear placeholder (including the extra line we added)
-		fmt.Printf("\033[%dA", state.PlaceholderLines+1) // +1 for the extra line before placeholder
-		fmt.Print("\033[J")                              // Clear from cursor to end of screen
-	}
-
-	// Determine the actual content width needed
-	maxWidth := state.MaxWidth
-	if maxWidth < 20 {
-		maxWidth = 20 // Minimum width
-	}
-
-	// Check terminal width constraints
-	termWidth := getTerminalWidth()
-	availableWidth := termWidth - (MARGIN * 2) - 4 // 4 for box borders and padding
-	if maxWidth > availableWidth {
-		maxWidth = availableWidth
-	}
-
-	// Top border - the border should match the content line width
-	// Content line is: "║ " + content + padding + " ║"
-	// So border needs to be: "╔" + "═"*(2 + maxWidth + 2) + "╗"
-	// But we draw it as: "╔═" + "═"*X + "═╗"
-	// So X = maxWidth + 2 - 2 = maxWidth
-	fmt.Print(marginStr())
-	a.theme.ShellBlock.Print("╔")
-	a.theme.ShellBlock.Print(strings.Repeat("═", maxWidth+2))
-	a.theme.ShellBlock.Print("╗")
-	fmt.Println()
-
-	// Content lines
-	for _, line := range state.Content {
-		if line == "" && len(state.Content) == 1 {
-			continue // Skip empty single line
-		}
-
-		fmt.Print(marginStr())
-		a.theme.ShellBlock.Print("║ ")
-
-		// Handle line wrapping if needed
-		if len(line) > maxWidth {
-			// Wrap long lines
-			for i := 0; i < len(line); i += maxWidth {
-				end := i + maxWidth
-				if end > len(line) {
-					end = len(line)
-				}
-				segment := line[i:end]
-				a.theme.DefaultText.Print(segment)
-				a.theme.DefaultText.Print(strings.Repeat(" ", maxWidth-len(segment)))
-				a.theme.ShellBlock.Print(" ║")
-				fmt.Println()
-				if end < len(line) {
-					fmt.Print(marginStr())
-					a.theme.ShellBlock.Print("║ ")
-				}
-			}
-		} else {
-			a.theme.DefaultText.Print(line)
-			a.theme.DefaultText.Print(strings.Repeat(" ", maxWidth-len(line)))
-			a.theme.ShellBlock.Print(" ║")
-			fmt.Println()
-		}
-	}
-
-	// Bottom border
-	fmt.Print(marginStr())
-	a.theme.ShellBlock.Print("╚")
-	a.theme.ShellBlock.Print(strings.Repeat("═", maxWidth+2))
-	a.theme.ShellBlock.Print("╝")
-	fmt.Println()
-
-	// Reset current column after block
-	*currentColumn = 0
-}
 
 func (a *Agent) printWord(word string, currentColumn *int, wrapAt int, colorFunc *color.Color) {
 	wordLen := len(word)

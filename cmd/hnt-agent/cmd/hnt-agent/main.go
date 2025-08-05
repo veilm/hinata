@@ -29,7 +29,6 @@ var (
 	useEditor       bool
 	useStdin        bool
 	autoExit        bool
-	shellBox        bool
 	theme           string
 )
 
@@ -63,7 +62,6 @@ func main() {
 	rootCmd.Flags().BoolVar(&useEditor, "use-editor", false, "Use an external editor ($EDITOR) for the user instruction message")
 	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read message from stdin")
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
-	rootCmd.Flags().BoolVar(&shellBox, "shell-box", false, "Enable fancy box rendering for shell blocks")
 	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
 
 	if err := rootCmd.Execute(); err != nil {
@@ -138,7 +136,6 @@ func run(cmd *cobra.Command, args []string) error {
 		SpinnerIndex:    spinnerPtr,
 		UseEditor:       useEditor,
 		AutoExit:        autoExit,
-		ShellBox:        shellBox,
 		Theme:           theme,
 	}
 
