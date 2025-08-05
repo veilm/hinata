@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/veilm/hinata/cmd/hnt-agent/pkg/cursor"
 )
 
 type Spinner struct {
@@ -196,8 +198,8 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, col
 	ticker := time.NewTicker(spinner.Speed)
 	defer ticker.Stop()
 
-	hideCursor()
-	defer showCursor()
+	cursor.Hide()
+	defer cursor.Show()
 
 	// Initial display
 	fmt.Print(margin)
@@ -252,14 +254,6 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, col
 			frameIndex = (frameIndex + 1) % len(spinner.Frames)
 		}
 	}
-}
-
-func hideCursor() {
-	fmt.Print("\033[?25l")
-}
-
-func showCursor() {
-	fmt.Print("\033[?25h")
 }
 
 func clearLine() {

@@ -7,17 +7,15 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/mattn/go-runewidth"
+	"github.com/veilm/hinata/cmd/hnt-agent/pkg/cursor"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/cmd/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/llm"
@@ -28,24 +26,6 @@ import (
 )
 
 const MARGIN = 2
-
-var (
-	cursorHidden bool
-	cursorMutex  sync.Mutex
-)
-
-func init() {
-	// Set up signal handling to ensure cursor is shown on exit
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		// Restore cursor before exiting
-		showCursor()
-		os.Exit(1)
-	}()
-}
 
 type Agent struct {
 	ConversationDir string
@@ -439,8 +419,8 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	}
 
 	// Hide cursor before streaming starts
-	hideCursor()
-	defer showCursor()
+	cursor.Hide()
+	defer cursor.Show()
 
 	for {
 		select {
@@ -1304,22 +1284,4 @@ func getTerminalWidth() int {
 		return 80
 	}
 	return width
-}
-
-func hideCursor() {
-	cursorMutex.Lock()
-	defer cursorMutex.Unlock()
-	if !cursorHidden {
-		fmt.Print("\033[?25l")
-		cursorHidden = true
-	}
-}
-
-func showCursor() {
-	cursorMutex.Lock()
-	defer cursorMutex.Unlock()
-	if cursorHidden {
-		fmt.Print("\033[?25h")
-		cursorHidden = false
-	}
 }
