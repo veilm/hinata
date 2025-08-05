@@ -235,8 +235,9 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool) {
 			// Get current frame
 			frame := spinner.Frames[frameIndex]
 
+			// Clear the line first, then display
 			// Display format: [margin][message][time][frame]
-			fmt.Printf("\r%s%s%s%s", margin, message, timeDisplayBlock, frame)
+			fmt.Printf("\r\033[K%s%s%s%s", margin, message, timeDisplayBlock, frame)
 
 			frameIndex = (frameIndex + 1) % len(spinner.Frames)
 		}
