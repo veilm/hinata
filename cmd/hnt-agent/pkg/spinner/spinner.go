@@ -190,7 +190,7 @@ func GetRandomLoadingMessage() string {
 	return loadingMessages[rand.Intn(len(loadingMessages))]
 }
 
-func Run(spinner Spinner, message string, margin string, stopCh <-chan bool) {
+func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, colorFunc func(string)) {
 	startTime := time.Now()
 	frameIndex := 0
 	ticker := time.NewTicker(spinner.Speed)
@@ -200,7 +200,12 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool) {
 	defer showCursor()
 
 	// Initial display
-	fmt.Printf("%s%s", margin, message)
+	fmt.Print(margin)
+	if colorFunc != nil {
+		colorFunc(message)
+	} else {
+		fmt.Print(message)
+	}
 
 	for {
 		select {
@@ -237,7 +242,12 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool) {
 
 			// Clear the line first, then display
 			// Display format: [margin][message][time][frame]
-			fmt.Printf("\r\033[K%s%s%s%s", margin, message, timeDisplayBlock, frame)
+			fmt.Printf("\r\033[K%s", margin)
+			if colorFunc != nil {
+				colorFunc(fmt.Sprintf("%s%s%s", message, timeDisplayBlock, frame))
+			} else {
+				fmt.Printf("%s%s%s", message, timeDisplayBlock, frame)
+			}
 
 			frameIndex = (frameIndex + 1) % len(spinner.Frames)
 		}

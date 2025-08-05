@@ -16,6 +16,8 @@ type Theme struct {
 	TurnNumber     *color.Color
 	ShellBlock     *color.Color
 	ErrorHighlight *color.Color
+	StatusMessage  *color.Color // For status messages like "Executing command"
+	Spinner        *color.Color // For spinner text
 }
 
 // Themes
@@ -35,6 +37,8 @@ var (
 		TurnNumber:     color.RGB(160, 255, 200), // Mint green
 		ShellBlock:     color.RGB(50, 120, 180),  // Darker blue for better contrast
 		ErrorHighlight: color.RGB(255, 120, 120), // Error red
+		StatusMessage:  color.RGB(150, 150, 150), // Gray for subtle status messages
+		Spinner:        color.RGB(110, 200, 255), // Official snowflake blue
 	}
 
 	// AnsiTheme uses standard ANSI colors (terminal-configurable)
@@ -51,6 +55,8 @@ var (
 		TurnNumber:     color.New(color.FgGreen),
 		ShellBlock:     color.New(color.FgBlue),
 		ErrorHighlight: color.New(color.FgRed),
+		StatusMessage:  color.New(color.FgHiBlack), // Dark gray
+		Spinner:        color.New(color.FgCyan),
 	}
 )
 

@@ -257,7 +257,7 @@ func (a *Agent) Run(userMessage string) error {
 		if len(shellCommands) == 0 {
 			fmt.Fprint(os.Stderr, "\n")
 			fmt.Fprint(os.Stderr, marginStr())
-			a.theme.DefaultText.Fprint(os.Stderr, "-> Hinata did not suggest a shell block.\n")
+			a.theme.StatusMessage.Fprint(os.Stderr, "◦ Hinata did not suggest a shell block.\n")
 
 			if a.AutoExit {
 				return nil
@@ -300,7 +300,7 @@ func (a *Agent) Run(userMessage string) error {
 					return nil
 				case executeSkip:
 					fmt.Fprint(os.Stderr, marginStr())
-					a.theme.DefaultText.Fprint(os.Stderr, "-> Chose to provide new instructions.\n")
+					a.theme.StatusMessage.Fprint(os.Stderr, "◦ Chose to provide new instructions.\n")
 					newMessage := a.promptForMessage()
 					if newMessage == "" {
 						return fmt.Errorf("no message provided")
@@ -318,7 +318,8 @@ func (a *Agent) Run(userMessage string) error {
 					continue
 				case executeYes:
 					fmt.Fprint(os.Stderr, marginStr())
-					a.theme.DefaultText.Fprint(os.Stderr, "-> Executing command.\n")
+					a.theme.StatusMessage.Fprint(os.Stderr, "◦ Executing command.\n")
+					fmt.Fprintln(os.Stderr) // Add blank line before spinner
 					// Continue with execution
 				}
 			}
@@ -686,7 +687,9 @@ func (a *Agent) executeShellCommands(commands string) (*shell.ExecutionResult, e
 
 	msg := spinner.GetRandomLoadingMessage()
 
-	go spinner.Run(sp, msg, marginStr(), stopCh)
+	go spinner.Run(sp, msg, marginStr(), stopCh, func(s string) {
+		a.theme.Spinner.Print(s)
+	})
 
 	result, err := a.shellExecutor.Execute(commands)
 
