@@ -285,10 +285,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		// Line breaks
 		html = html.replace(/  \n/g, "<br>\n");
-		html = html.replace(/\n\n/g, "</p><p>");
 
-		// Don't wrap in paragraph tags for compatibility with existing code
-		// The application may be expecting raw HTML without paragraph wrappers
+		// Split into paragraphs and wrap properly
+		const paragraphs = html.split(/\n\n+/);
+		html = paragraphs
+			.filter((p) => p.trim()) // Remove empty paragraphs
+			.map((p) => `<p>${p}</p>`)
+			.join("");
 
 		return html;
 	}
@@ -660,7 +663,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					if (msg.reasoning) {
 						const reasoningContainer = document.createElement("div");
 						reasoningContainer.className = "message-reasoning-container";
-						reasoningContainer.style.margin = "10px 0";
+						reasoningContainer.style.margin = "0 0 10px 0";
 
 						// Create toggle header
 						const reasoningHeader = document.createElement("div");
@@ -947,7 +950,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					if (msg.reasoning) {
 						const reasoningContainer = document.createElement("div");
 						reasoningContainer.className = "message-reasoning-container";
-						reasoningContainer.style.margin = "10px 0";
+						reasoningContainer.style.margin = "0 0 10px 0";
 
 						// Create toggle header
 						const reasoningHeader = document.createElement("div");
@@ -1953,7 +1956,7 @@ document.addEventListener("DOMContentLoaded", () => {
 										reasoningContainer = document.createElement("div");
 										reasoningContainer.className =
 											"message-reasoning-container";
-										reasoningContainer.style.margin = "10px 0";
+										reasoningContainer.style.margin = "0 0 10px 0";
 
 										reasoningHeader = document.createElement("div");
 										reasoningHeader.className = "reasoning-header";
@@ -2053,7 +2056,7 @@ document.addEventListener("DOMContentLoaded", () => {
 								// Create collapsible reasoning section (same as above)
 								reasoningContainer = document.createElement("div");
 								reasoningContainer.className = "message-reasoning-container";
-								reasoningContainer.style.margin = "10px 0";
+								reasoningContainer.style.margin = "0 0 10px 0";
 
 								reasoningHeader = document.createElement("div");
 								reasoningHeader.className = "reasoning-header";

@@ -70,6 +70,8 @@ li {
 	border-radius: 0; /* Minimal */
 	word-wrap: break-word;
 	white-space: pre-wrap; /* Preserve whitespace and newlines */
+	max-width: 85%;
+	/* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), 0 1px 6px rgba(0, 0, 0, 0.3); */
 }
 
 .message-footer {
@@ -94,14 +96,27 @@ li {
 }
 
 .message-system {
-	border-right: 4px solid #fcddf2; /* Light pink */
+	margin-left: auto; /* Push to right */
 }
 
 .message-user {
-	border-right: 4px solid #9d81ae; /* Soft purple */
+	margin-left: auto; /* Push to right */
 }
-.message-assistant {
+
+/* Apply borders to content wrapper instead */
+.message-system .message-content-wrapper {
+	border-right: 4px solid #fcddf2; /* Light pink */
+	padding: 3px 8px 3px 0; /* Top/bottom padding, right padding for border */
+}
+
+.message-user .message-content-wrapper {
+	border-right: 4px solid #9d81ae; /* Soft purple */
+	padding: 3px 8px 3px 0; /* Top/bottom padding, right padding for border */
+}
+
+.message-assistant .message-content-wrapper {
 	border-left: 4px solid #6ec8ff; /* Icy-blue */
+	padding: 3px 0 3px 8px; /* Top/bottom padding, left padding for border */
 }
 
 .message-assistant-reasoning {
@@ -1084,7 +1099,7 @@ html {
 
 /* Collapsible Reasoning Styles */
 .message-reasoning-container {
-	margin: 10px 0;
+	margin: 0 0 10px 0; /* Only bottom margin */
 }
 
 .reasoning-header {
