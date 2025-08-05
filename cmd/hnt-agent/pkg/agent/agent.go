@@ -423,6 +423,9 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	// Buffer to accumulate partial content between chunks
 	var contentBuffer strings.Builder
 	var reasoningChunkBuffer strings.Builder
+	
+	// Tag parser for shell blocks
+	tagParser := NewTagParser(a.logger)
 
 	// Hide cursor before streaming starts
 	cursor.Hide()
@@ -452,13 +455,62 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 				// Always accumulate to response
 				response.WriteString(event.Content)
 
-				// Just print content normally
-				if isFirstToken {
-					fmt.Print(marginStr())
-					currentColumn = 0
-					isFirstToken = false
+				// Parse content for shell blocks
+				results := tagParser.Parse(event.Content)
+				
+				if a.logger != nil {
+					a.logger.Printf("Streaming: Got %d parse results from chunk", len(results))
 				}
-				a.printWrappedText(event.Content, &currentColumn, wrapAt, a.theme.DefaultText)
+				
+				for i, result := range results {
+					if a.logger != nil {
+						a.logger.Printf("  Result %d: BeforeTag=%q, HasOpenTag=%v, HasCloseTag=%v, AfterTag=%q",
+							i, result.BeforeTag, result.HasOpenTag, result.HasCloseTag, result.AfterTag)
+					}
+					// Initialize if first token
+					if isFirstToken && result.BeforeTag != "" {
+						fmt.Print(marginStr())
+						currentColumn = 0
+						isFirstToken = false
+					}
+					
+					// Print content before tag (using appropriate color)
+					if result.BeforeTag != "" {
+						// Determine color based on context
+						colorFunc := a.theme.DefaultText
+						colorName := "default"
+						
+						if result.HasCloseTag {
+							// For closing tag, the content before tag is shell content
+							colorFunc = a.theme.ShellBlockCode
+							colorName = "shell"
+						} else if !result.HasOpenTag && tagParser.IsInShellBlock() {
+							// We're in a shell block and this result doesn't change that
+							colorFunc = a.theme.ShellBlockCode
+							colorName = "shell"
+						}
+						
+						if a.logger != nil {
+							a.logger.Printf("    Printing BeforeTag with %s color: %q", colorName, result.BeforeTag)
+						}
+						a.printWrappedText(result.BeforeTag, &currentColumn, wrapAt, colorFunc)
+					}
+					
+					// Don't print AfterTag for opening tag - it will be processed in next iteration
+					// Only print AfterTag for closing tag
+					if result.HasCloseTag && result.AfterTag != "" {
+						// If we just closed a shell block, use default color for after tag
+						if isFirstToken {
+							fmt.Print(marginStr())
+							currentColumn = 0
+							isFirstToken = false
+						}
+						if a.logger != nil {
+							a.logger.Printf("    Printing AfterTag (after close) with default color: %q", result.AfterTag)
+						}
+						a.printWrappedText(result.AfterTag, &currentColumn, wrapAt, a.theme.DefaultText)
+					}
+				}
 			}
 
 			if event.Reasoning != "" && !a.IgnoreReasoning {
