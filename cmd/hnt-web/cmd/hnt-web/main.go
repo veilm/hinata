@@ -634,6 +634,20 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to set access for new conversation: %v", err)
 	}
 
+	// Create title.txt with "hnt-web <timestamp>"
+	titleContent := fmt.Sprintf("hnt-web %d", time.Now().Unix())
+	titlePath := filepath.Join(convDir, "title.txt")
+	if err := os.WriteFile(titlePath, []byte(titleContent), 0644); err != nil {
+		log.Printf("Warning: Failed to create title.txt: %v", err)
+	}
+
+	// Create model.txt with default model
+	modelContent := "openrouter/google/gemini-2.5-pro"
+	modelPath := filepath.Join(convDir, "model.txt")
+	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
+		log.Printf("Warning: Failed to create model.txt: %v", err)
+	}
+
 	// Extract just the ID from the full path
 	convID := filepath.Base(convDir)
 
