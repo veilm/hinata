@@ -337,7 +337,7 @@ func (a *Agent) Run(userMessage string) error {
 					"exit_code": result.ExitCode,
 				}
 				jsonBytes, _ := json.MarshalIndent(jsonResult, "", "  ")
-				resultMessage = fmt.Sprintf("<hnt-shell-results>\n%s\n</hnt-shell-results>", string(jsonBytes))
+				resultMessage = fmt.Sprintf("<shell-results>\n%s\n</shell-results>", string(jsonBytes))
 			} else {
 				resultMessage = formatShellResults(result)
 			}
@@ -813,7 +813,7 @@ func (a *Agent) promptForMessage() string {
 }
 
 func extractShellCommands(text string) []string {
-	re := regexp.MustCompile(`(?s)<hnt-shell>(.*?)</hnt-shell>`)
+	re := regexp.MustCompile(`(?s)<shell>(.*?)</shell>`)
 	matches := re.FindAllStringSubmatch(text, -1)
 
 	var commands []string
@@ -828,7 +828,7 @@ func extractShellCommands(text string) []string {
 
 func formatShellResults(result *shell.ExecutionResult) string {
 	var parts []string
-	parts = append(parts, "<hnt-shell-results>")
+	parts = append(parts, "<shell-results>")
 
 	if result.Stdout != "" {
 		parts = append(parts, "<stdout>")
@@ -843,7 +843,7 @@ func formatShellResults(result *shell.ExecutionResult) string {
 	}
 
 	parts = append(parts, fmt.Sprintf("<exit-code>%d</exit-code>", result.ExitCode))
-	parts = append(parts, "</hnt-shell-results>")
+	parts = append(parts, "</shell-results>")
 
 	return strings.Join(parts, "\n")
 }

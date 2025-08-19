@@ -17,7 +17,7 @@ type Theme struct {
 	ErrorHighlight *color.Color
 	StatusMessage  *color.Color // For status messages like "Executing command"
 	Spinner        *color.Color // For spinner text
-	ShellBlockCode *color.Color // For code inside <hnt-shell> blocks
+	ShellBlockCode *color.Color // For code inside <shell> blocks
 }
 
 // Themes

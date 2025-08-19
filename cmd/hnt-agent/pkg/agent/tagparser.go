@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// TagParser handles detection of <hnt-shell> and </hnt-shell> tags
+// TagParser handles detection of <shell> and </shell> tags
 // across streaming token boundaries
 type TagParser struct {
 	partialTag   string
@@ -18,8 +18,8 @@ type ParseResult struct {
 	BeforeTag   string // Text before any tag
 	TagFound    string // The tag that was found (if any)
 	AfterTag    string // Text after the tag
-	HasOpenTag  bool   // True if <hnt-shell> was found
-	HasCloseTag bool   // True if </hnt-shell> was found
+	HasOpenTag  bool   // True if <shell> was found
+	HasCloseTag bool   // True if </shell> was found
 }
 
 // NewTagParser creates a new tag parser
@@ -48,7 +48,7 @@ func (p *TagParser) Parse(chunk string) []ParseResult {
 	for len(text) > 0 {
 		if p.inShellBlock {
 			// Look for closing tag
-			result := p.findTag(text, "</hnt-shell>")
+			result := p.findTag(text, "</shell>")
 			if result.TagFound != "" {
 				p.inShellBlock = false
 				result.HasCloseTag = true
@@ -75,7 +75,7 @@ func (p *TagParser) Parse(chunk string) []ParseResult {
 			}
 		} else {
 			// Look for opening tag
-			result := p.findTag(text, "<hnt-shell>")
+			result := p.findTag(text, "<shell>")
 			if result.TagFound != "" {
 				p.inShellBlock = true
 				result.HasOpenTag = true
