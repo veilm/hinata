@@ -1,0 +1,28 @@
+#!/bin/sh
+
+if ! git config get user.name > /dev/null
+then
+	notify-send "set user.name for $PWD!"
+	exit 1
+fi
+
+if ! git config get user.email > /dev/null
+then
+	notify-send "set user.email for $PWD!"
+	exit 1
+fi
+
+export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
+export HNT_AGENT_DEBUG=1
+
+hnt-agent -m "please do the following
+1. look at the git log to read the last 10 commit messages
+2. see which files have been changed
+	2a. read their git diff
+	2b. cat them to read in full, for additional context
+3. commit the changes
+	BUT make sure your commit messages matches the style you saw in step 1. even
+	if it's unideal or you personally dislike that style, we should make sure to
+	match it faithfully
+
+please don't take any other action unless the user explicitly gives you further instructions"

@@ -16,8 +16,14 @@ fi
 
 [ "$1" ] && comment="here is a brief comment by the developer (only relevant to deciding on the commit message): $@"
 
-# export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
-export HINATA_AGENT_MODEL=openrouter/moonshotai/kimi-k2
+# Maybe just various quantization levels of different providers but is
+# inconsistent. 1755111761 today was the last straw where it just repeated my
+# instructions verbatim instead of taking any action. but other times like 20% of
+# the time it e.g. uses </h-shell> instead of </hnt-shell>
+# export HINATA_AGENT_MODEL=openrouter/moonshotai/kimi-k2
+
+export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-pro
+# export HINATA_AGENT_MODEL=openrouter/google/gemini-2.5-flash
 export HNT_AGENT_DEBUG=1
 
 # hnt-agent --shell-box --auto-exit -m "please do the following
