@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/agent"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/pkg/prompt"
 	"github.com/veilm/hinata/pkg/terminal"
+	"golang.org/x/term"
 )
 
 var (
@@ -79,6 +81,21 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
+	// Print welcome message - right aligned at the very start
+	termWidth, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || termWidth <= 0 {
+		termWidth = 80 // fallback
+	}
+	welcome := "❄️ hinata"
+	padding := termWidth - runewidth.StringWidth(welcome) - 3
+	if padding > 0 {
+		fmt.Print(strings.Repeat(" ", padding))
+		fmt.Println(welcome)
+	} else {
+		fmt.Println(welcome)
+	}
+	fmt.Println()
+
 	var sysPrompt string
 
 	if systemPrompt != "" {
@@ -119,6 +136,7 @@ func run(cmd *cobra.Command, args []string) error {
 	} else if useStdin {
 		userMessage = stdinContent
 	} else {
+		// Show textarea prompt after the hinata header
 		msg, err := promptForMessageWithHeight(useEditor, promptHeight)
 		if err != nil {
 			return err

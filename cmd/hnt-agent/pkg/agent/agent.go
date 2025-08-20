@@ -183,20 +183,7 @@ func (a *Agent) Run(userMessage string) error {
 	isNewSession := !a.isExistingSession()
 
 	if isNewSession {
-		// Print welcome message - right aligned
-		termWidth, _, err := term.GetSize(int(os.Stdout.Fd()))
-		if err != nil || termWidth <= 0 {
-			termWidth = 80 // fallback
-		}
-		welcome := "❄️ hinata"
-		padding := termWidth - runewidth.StringWidth(welcome) - 3
-		if padding > 0 {
-			a.theme.DefaultText.Print(strings.Repeat(" ", padding))
-			a.theme.DefaultText.Println(welcome)
-		} else {
-			a.theme.DefaultText.Println(welcome)
-		}
-		fmt.Println()
+		// Welcome message is now shown at program start in main.go
 		if a.SystemPrompt != "" {
 			if err := a.writeMessage("system", a.SystemPrompt); err != nil {
 				return err
