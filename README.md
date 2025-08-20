@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-agentic AI pair programming in your terminal
+agentic, extensible AI pair programming in your terminal
 </p>
 
 ---
@@ -52,10 +52,10 @@ echo "explain quantum computing in one sentence" | hnt-llm
 
 ```mermaid
 graph LR
-    hnt-llm --> hnt-chat
-    hnt-chat --> hnt-edit
-    hnt-edit --> hnt-agent
-    hnt-chat --> hnt-web
+	hnt-chat --> hnt-llm
+	hnt-edit --> hnt-chat
+	hnt-agent --> hnt-edit
+	hnt-web --> hnt-chat
 ```
 
 Additional utilities extend functionality through standard CLI composition.

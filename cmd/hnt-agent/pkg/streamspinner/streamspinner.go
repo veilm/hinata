@@ -2,6 +2,7 @@ package streamspinner
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ type StreamingSpinner struct {
 	spinner   spinner.Spinner
 	margin    string
 	colorFunc func(string)
+	message   string // Loading message to display
 
 	// State management
 	mu         sync.Mutex
@@ -22,6 +24,7 @@ type StreamingSpinner struct {
 	contentCh  chan string // Channel to receive new content lines
 	startTime  time.Time
 	frameIndex int
+	hasContent bool // Track if any content has been printed yet
 }
 
 // New creates a new streaming spinner
@@ -30,6 +33,7 @@ func New(sp spinner.Spinner, margin string, colorFunc func(string)) *StreamingSp
 		spinner:   sp,
 		margin:    margin,
 		colorFunc: colorFunc,
+		message:   spinner.GetRandomLoadingMessage(),
 		contentCh: make(chan string, 10),
 		stopCh:    make(chan bool, 1),
 	}
@@ -49,7 +53,8 @@ func (s *StreamingSpinner) Start() {
 
 	cursor.Hide()
 
-	// Initial spinner display
+	// Initial spinner display with blank line before
+	fmt.Println()
 	s.drawSpinner()
 
 	go s.run()
@@ -63,6 +68,7 @@ func (s *StreamingSpinner) Stop() {
 		return
 	}
 	s.active = false
+	hasContent := s.hasContent
 	s.mu.Unlock()
 
 	// Signal stop
@@ -71,8 +77,12 @@ func (s *StreamingSpinner) Stop() {
 	default:
 	}
 
-	// Clear spinner line
+	// Clear spinner line and the blank line above it
 	s.clearLine()
+	if hasContent {
+		fmt.Print("\033[1A\033[K") // Move up one line and clear the blank line
+		fmt.Println()              // Add blank line after content
+	}
 	cursor.Show()
 }
 
@@ -108,15 +118,20 @@ func (s *StreamingSpinner) run() {
 			return
 
 		case line := <-s.contentCh:
-			// Clear spinner line
+			// Clear spinner line and the blank line above it
 			s.clearLine()
+			fmt.Print("\033[1A\033[K") // Move up one line and clear it
 
 			// Print content line
 			fmt.Printf("%s%s\n", s.margin, line)
 
-			// Redraw spinner on new line (if still active)
+			// Mark that we have content
 			s.mu.Lock()
+			s.hasContent = true
+
+			// Redraw spinner on new line with blank line before (if still active)
 			if s.active {
+				fmt.Println() // Blank line before spinner
 				s.drawSpinner()
 			}
 			s.mu.Unlock()
@@ -136,17 +151,37 @@ func (s *StreamingSpinner) run() {
 
 func (s *StreamingSpinner) drawSpinner() {
 	elapsedSeconds := int64(time.Since(s.startTime).Seconds())
+
+	// Format timer with spacing rules matching execution spinner
 	timeStr := fmt.Sprintf("(%ds)", elapsedSeconds)
+	var prefix string
+	if elapsedSeconds < 10 {
+		prefix = "  " // 2 spaces for single digit
+	} else {
+		prefix = " " // 1 space for double digit
+	}
+
+	// Total width for time display block is 10 characters
+	totalWidth := 10
+	currentWidth := len(prefix) + len(timeStr)
+
+	var timeDisplayBlock string
+	if currentWidth < totalWidth {
+		suffix := strings.Repeat(" ", totalWidth-currentWidth)
+		timeDisplayBlock = fmt.Sprintf("%s%s%s", prefix, timeStr, suffix)
+	} else {
+		timeDisplayBlock = fmt.Sprintf("%s%s ", prefix, timeStr)
+	}
+
+	// Get current frame
 	frame := s.spinner.Frames[s.frameIndex]
 
-	// Format: [margin]Thinking... (Xs) [frame]
-	message := fmt.Sprintf("Thinking... %s %s", timeStr, frame)
-
+	// Display format: [margin][message][time][frame]
 	fmt.Printf("%s", s.margin)
 	if s.colorFunc != nil {
-		s.colorFunc(message)
+		s.colorFunc(fmt.Sprintf("%s%s%s", s.message, timeDisplayBlock, frame))
 	} else {
-		fmt.Print(message)
+		fmt.Printf("%s%s%s", s.message, timeDisplayBlock, frame)
 	}
 }
 
