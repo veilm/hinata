@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -15,7 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/mattn/go-runewidth"
-	"github.com/veilm/hinata/cmd/hnt-agent/pkg/cursor"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/cmd/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/llm"
@@ -28,20 +26,19 @@ import (
 const MARGIN = 2
 
 type Agent struct {
-	ConversationDir      string
-	SystemPrompt         string
-	Model                string
-	IgnoreReasoning      bool
-	NoConfirm            bool
-	NoEscape             bool
-	ShellDisplay         bool
-	UseJSON              bool
-	SpinnerIndex         *int
-	SpinnerFile          string
-	UseEditor            bool
-	AutoExit             bool
-	PromptHeight         int
-	UseBufferedStreaming bool // Use line-buffered streaming with spinner
+	ConversationDir string
+	SystemPrompt    string
+	Model           string
+	IgnoreReasoning bool
+	NoConfirm       bool
+	NoEscape        bool
+	ShellDisplay    bool
+	UseJSON         bool
+	SpinnerIndex    *int
+	SpinnerFile     string
+	UseEditor       bool
+	AutoExit        bool
+	PromptHeight    int
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -52,22 +49,21 @@ type Agent struct {
 }
 
 type Config struct {
-	ConversationDir      string
-	SystemPrompt         string
-	Model                string
-	PWD                  string
-	IgnoreReasoning      bool
-	NoConfirm            bool
-	NoEscape             bool
-	ShellDisplay         bool
-	UseJSON              bool
-	SpinnerIndex         *int
-	SpinnerFile          string
-	UseEditor            bool
-	AutoExit             bool
-	Theme                string
-	PromptHeight         int
-	UseBufferedStreaming bool
+	ConversationDir string
+	SystemPrompt    string
+	Model           string
+	PWD             string
+	IgnoreReasoning bool
+	NoConfirm       bool
+	NoEscape        bool
+	ShellDisplay    bool
+	UseJSON         bool
+	SpinnerIndex    *int
+	SpinnerFile     string
+	UseEditor       bool
+	AutoExit        bool
+	Theme           string
+	PromptHeight    int
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -159,26 +155,25 @@ func New(cfg Config) (*Agent, error) {
 	}
 
 	return &Agent{
-		ConversationDir:      cfg.ConversationDir,
-		SystemPrompt:         cfg.SystemPrompt,
-		Model:                cfg.Model,
-		IgnoreReasoning:      cfg.IgnoreReasoning,
-		NoConfirm:            cfg.NoConfirm,
-		NoEscape:             cfg.NoEscape,
-		ShellDisplay:         cfg.ShellDisplay,
-		UseJSON:              cfg.UseJSON,
-		SpinnerIndex:         cfg.SpinnerIndex,
-		SpinnerFile:          cfg.SpinnerFile,
-		UseEditor:            cfg.UseEditor,
-		AutoExit:             cfg.AutoExit,
-		PromptHeight:         promptHeight,
-		UseBufferedStreaming: cfg.UseBufferedStreaming,
-		shellExecutor:        executor,
-		turnCounter:          1,
-		humanTurnCounter:     1,
-		logger:               logger,
-		theme:                GetTheme(cfg.Theme),
-		customSpinner:        customSpinner,
+		ConversationDir:  cfg.ConversationDir,
+		SystemPrompt:     cfg.SystemPrompt,
+		Model:            cfg.Model,
+		IgnoreReasoning:  cfg.IgnoreReasoning,
+		NoConfirm:        cfg.NoConfirm,
+		NoEscape:         cfg.NoEscape,
+		ShellDisplay:     cfg.ShellDisplay,
+		UseJSON:          cfg.UseJSON,
+		SpinnerIndex:     cfg.SpinnerIndex,
+		SpinnerFile:      cfg.SpinnerFile,
+		UseEditor:        cfg.UseEditor,
+		AutoExit:         cfg.AutoExit,
+		PromptHeight:     promptHeight,
+		shellExecutor:    executor,
+		turnCounter:      1,
+		humanTurnCounter: 1,
+		logger:           logger,
+		theme:            GetTheme(cfg.Theme),
+		customSpinner:    customSpinner,
 	}, nil
 }
 
@@ -400,140 +395,8 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 		IncludeReasoning: !a.IgnoreReasoning,
 	}
 
-	// Use buffered streaming if enabled
-	if a.UseBufferedStreaming {
-		return a.streamLLMResponseBuffered(config, packedBuf.String())
-	}
-
-	ctx := context.Background()
-	eventChan, errChan := llm.StreamLLMResponse(ctx, config, packedBuf.String())
-
-	var response strings.Builder
-	var reasoningBuffer strings.Builder
-	termWidth := getTerminalWidth()
-	wrapAt := termWidth - (MARGIN * 2)
-	if wrapAt < 20 {
-		wrapAt = 20 // Minimum wrap width
-	}
-
-	currentColumn := 0
-	isFirstToken := true
-	inReasoning := false
-
-	// Buffer to accumulate partial content between chunks
-	var contentBuffer strings.Builder
-	var reasoningChunkBuffer strings.Builder
-
-	// Tag parser for shell blocks
-	tagParser := NewTagParser(a.logger)
-
-	// Hide cursor before streaming starts
-	cursor.Hide()
-	defer cursor.Show()
-
-	for {
-		select {
-		case event, ok := <-eventChan:
-			if !ok {
-				// Flush any remaining buffered content
-				if contentBuffer.Len() > 0 {
-					a.printWrappedText(contentBuffer.String(), &currentColumn, wrapAt, a.theme.DefaultText)
-					contentBuffer.Reset()
-				}
-				if reasoningChunkBuffer.Len() > 0 {
-					a.printWrappedText(reasoningChunkBuffer.String(), &currentColumn, wrapAt, a.theme.Reasoning)
-					reasoningChunkBuffer.Reset()
-				}
-				return response.String(), reasoningBuffer.String(), nil
-			}
-
-			if event.Content != "" {
-				if a.logger != nil {
-					a.logger.Printf("Received content chunk: %q (len=%d)", event.Content, len(event.Content))
-				}
-
-				// Always accumulate to response
-				response.WriteString(event.Content)
-
-				// Parse content for shell blocks
-				results := tagParser.Parse(event.Content)
-
-				if a.logger != nil {
-					a.logger.Printf("Streaming: Got %d parse results from chunk", len(results))
-				}
-
-				for i, result := range results {
-					if a.logger != nil {
-						a.logger.Printf("  Result %d: BeforeTag=%q, HasOpenTag=%v, HasCloseTag=%v, AfterTag=%q",
-							i, result.BeforeTag, result.HasOpenTag, result.HasCloseTag, result.AfterTag)
-					}
-					// Initialize if first token
-					if isFirstToken && result.BeforeTag != "" {
-						fmt.Print(marginStr())
-						currentColumn = 0
-						isFirstToken = false
-					}
-
-					// Print content before tag (using appropriate color)
-					if result.BeforeTag != "" {
-						// Determine color based on context
-						colorFunc := a.theme.DefaultText
-						colorName := "default"
-
-						if result.HasCloseTag {
-							// For closing tag, the content before tag is shell content
-							colorFunc = a.theme.ShellBlockCode
-							colorName = "shell"
-						} else if !result.HasOpenTag && tagParser.IsInShellBlock() {
-							// We're in a shell block and this result doesn't change that
-							colorFunc = a.theme.ShellBlockCode
-							colorName = "shell"
-						}
-
-						if a.logger != nil {
-							a.logger.Printf("    Printing BeforeTag with %s color: %q", colorName, result.BeforeTag)
-						}
-						a.printWrappedText(result.BeforeTag, &currentColumn, wrapAt, colorFunc)
-					}
-
-					// Don't print AfterTag for opening tag - it will be processed in next iteration
-					// Only print AfterTag for closing tag
-					if result.HasCloseTag && result.AfterTag != "" {
-						// If we just closed a shell block, use default color for after tag
-						if isFirstToken {
-							fmt.Print(marginStr())
-							currentColumn = 0
-							isFirstToken = false
-						}
-						if a.logger != nil {
-							a.logger.Printf("    Printing AfterTag (after close) with default color: %q", result.AfterTag)
-						}
-						a.printWrappedText(result.AfterTag, &currentColumn, wrapAt, a.theme.DefaultText)
-					}
-				}
-			}
-
-			if event.Reasoning != "" && !a.IgnoreReasoning {
-				if isFirstToken {
-					fmt.Print(marginStr())
-					currentColumn = 0
-					isFirstToken = false
-				}
-
-				if !inReasoning {
-					inReasoning = true
-				}
-
-				// Print reasoning directly without buffering
-				a.printWrappedText(event.Reasoning, &currentColumn, wrapAt, a.theme.Reasoning)
-				reasoningBuffer.WriteString(event.Reasoning)
-			}
-		case err := <-errChan:
-			if err != nil {
-				return "", "", fmt.Errorf("LLM request failed: %w\nModel: %s", err, a.Model)
-			}
-		}
-	}
+	// Always use buffered streaming
+	return a.streamLLMResponseBuffered(config, packedBuf.String())
 }
 
 func (a *Agent) executeShellCommands(commands string) (*shell.ExecutionResult, error) {
@@ -981,80 +844,6 @@ func (a *Agent) resumeSession() {
 		a.printAssistantMessage(lastAssistantMessage)
 		fmt.Println()
 	}
-}
-
-func (a *Agent) printWrappedText(text string, currentColumn *int, wrapAt int, colorFunc *color.Color) {
-	if a.logger != nil {
-		a.logger.Printf("printWrappedText called with: %q (currentColumn=%d, wrapAt=%d)", text, *currentColumn, wrapAt)
-	}
-
-	// Process character by character to preserve exact spacing
-	for i := 0; i < len(text); i++ {
-		ch := text[i]
-
-		if ch == '\n' {
-			// Handle newline
-			fmt.Println()
-			fmt.Print(marginStr())
-			*currentColumn = 0
-		} else if ch == ' ' {
-			// Handle space - check if we need to wrap
-			if *currentColumn >= wrapAt {
-				fmt.Println()
-				fmt.Print(marginStr())
-				*currentColumn = 0
-			} else {
-				// Print the space
-				if colorFunc != nil {
-					colorFunc.Print(" ")
-				} else {
-					fmt.Print(" ")
-				}
-				*currentColumn++
-			}
-		} else {
-			// For non-space characters, find the whole word
-			wordStart := i
-			for i < len(text) && text[i] != ' ' && text[i] != '\n' {
-				i++
-			}
-			word := text[wordStart:i]
-			i-- // Back up one since the loop will increment
-
-			// Check if word fits on current line
-			if *currentColumn > 0 && *currentColumn+len(word) > wrapAt {
-				fmt.Println()
-				fmt.Print(marginStr())
-				*currentColumn = 0
-			}
-
-			// Print the word
-			if colorFunc != nil {
-				colorFunc.Print(word)
-			} else {
-				fmt.Print(word)
-			}
-			*currentColumn += len(word)
-		}
-	}
-}
-
-func (a *Agent) printWord(word string, currentColumn *int, wrapAt int, colorFunc *color.Color) {
-	wordLen := len(word)
-
-	// If word is longer than wrap width, print it anyway
-	if *currentColumn > 0 && *currentColumn+wordLen > wrapAt && wordLen < wrapAt {
-		fmt.Println()
-		fmt.Print(marginStr())
-		*currentColumn = 0
-	}
-
-	if colorFunc != nil {
-		colorFunc.Print(word)
-	} else {
-		fmt.Print(word)
-	}
-	*currentColumn += wordLen
 }
 
 func getTerminalWidth() int {

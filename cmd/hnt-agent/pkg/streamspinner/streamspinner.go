@@ -81,7 +81,6 @@ func (s *StreamingSpinner) Stop() {
 	s.clearLine()
 	if hasContent {
 		fmt.Print("\033[1A\033[K") // Move up one line and clear the blank line
-		fmt.Println()              // Add blank line after content
 	}
 	cursor.Show()
 }

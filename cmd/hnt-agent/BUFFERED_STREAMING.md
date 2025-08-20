@@ -1,6 +1,6 @@
 # Line-Buffered Streaming with Spinner
 
-This document describes the new line-buffered streaming feature for `hnt-agent` that provides a cleaner visual experience during LLM response streaming.
+This document describes the line-buffered streaming feature for `hnt-agent` that provides a cleaner visual experience during LLM response streaming. This is now the default behavior.
 
 ## Overview
 
@@ -38,10 +38,10 @@ The line-buffered streaming feature changes how LLM responses are displayed:
 
 ## Usage
 
-Enable line-buffered streaming with the `--buffered-streaming` flag:
+Line-buffered streaming is now enabled by default. Simply use:
 
 ```bash
-hnt-agent --buffered-streaming -m "Your message here"
+hnt-agent -m "Your message here"
 ```
 
 ## Visual Flow
