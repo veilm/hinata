@@ -28,19 +28,20 @@ import (
 const MARGIN = 2
 
 type Agent struct {
-	ConversationDir string
-	SystemPrompt    string
-	Model           string
-	IgnoreReasoning bool
-	NoConfirm       bool
-	NoEscape        bool
-	ShellDisplay    bool
-	UseJSON         bool
-	SpinnerIndex    *int
-	SpinnerFile     string
-	UseEditor       bool
-	AutoExit        bool
-	PromptHeight    int
+	ConversationDir      string
+	SystemPrompt         string
+	Model                string
+	IgnoreReasoning      bool
+	NoConfirm            bool
+	NoEscape             bool
+	ShellDisplay         bool
+	UseJSON              bool
+	SpinnerIndex         *int
+	SpinnerFile          string
+	UseEditor            bool
+	AutoExit             bool
+	PromptHeight         int
+	UseBufferedStreaming bool // Use line-buffered streaming with spinner
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -51,21 +52,22 @@ type Agent struct {
 }
 
 type Config struct {
-	ConversationDir string
-	SystemPrompt    string
-	Model           string
-	PWD             string
-	IgnoreReasoning bool
-	NoConfirm       bool
-	NoEscape        bool
-	ShellDisplay    bool
-	UseJSON         bool
-	SpinnerIndex    *int
-	SpinnerFile     string
-	UseEditor       bool
-	AutoExit        bool
-	Theme           string
-	PromptHeight    int
+	ConversationDir      string
+	SystemPrompt         string
+	Model                string
+	PWD                  string
+	IgnoreReasoning      bool
+	NoConfirm            bool
+	NoEscape             bool
+	ShellDisplay         bool
+	UseJSON              bool
+	SpinnerIndex         *int
+	SpinnerFile          string
+	UseEditor            bool
+	AutoExit             bool
+	Theme                string
+	PromptHeight         int
+	UseBufferedStreaming bool
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -157,25 +159,26 @@ func New(cfg Config) (*Agent, error) {
 	}
 
 	return &Agent{
-		ConversationDir:  cfg.ConversationDir,
-		SystemPrompt:     cfg.SystemPrompt,
-		Model:            cfg.Model,
-		IgnoreReasoning:  cfg.IgnoreReasoning,
-		NoConfirm:        cfg.NoConfirm,
-		NoEscape:         cfg.NoEscape,
-		ShellDisplay:     cfg.ShellDisplay,
-		UseJSON:          cfg.UseJSON,
-		SpinnerIndex:     cfg.SpinnerIndex,
-		SpinnerFile:      cfg.SpinnerFile,
-		UseEditor:        cfg.UseEditor,
-		AutoExit:         cfg.AutoExit,
-		PromptHeight:     promptHeight,
-		shellExecutor:    executor,
-		turnCounter:      1,
-		humanTurnCounter: 1,
-		logger:           logger,
-		theme:            GetTheme(cfg.Theme),
-		customSpinner:    customSpinner,
+		ConversationDir:      cfg.ConversationDir,
+		SystemPrompt:         cfg.SystemPrompt,
+		Model:                cfg.Model,
+		IgnoreReasoning:      cfg.IgnoreReasoning,
+		NoConfirm:            cfg.NoConfirm,
+		NoEscape:             cfg.NoEscape,
+		ShellDisplay:         cfg.ShellDisplay,
+		UseJSON:              cfg.UseJSON,
+		SpinnerIndex:         cfg.SpinnerIndex,
+		SpinnerFile:          cfg.SpinnerFile,
+		UseEditor:            cfg.UseEditor,
+		AutoExit:             cfg.AutoExit,
+		PromptHeight:         promptHeight,
+		UseBufferedStreaming: cfg.UseBufferedStreaming,
+		shellExecutor:        executor,
+		turnCounter:          1,
+		humanTurnCounter:     1,
+		logger:               logger,
+		theme:                GetTheme(cfg.Theme),
+		customSpinner:        customSpinner,
 	}, nil
 }
 
@@ -395,6 +398,11 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	config := llm.Config{
 		Model:            a.Model,
 		IncludeReasoning: !a.IgnoreReasoning,
+	}
+
+	// Use buffered streaming if enabled
+	if a.UseBufferedStreaming {
+		return a.streamLLMResponseBuffered(config, packedBuf.String())
 	}
 
 	ctx := context.Background()

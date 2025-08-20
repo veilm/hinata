@@ -19,24 +19,25 @@ import (
 )
 
 var (
-	systemPrompt    string
-	message         string
-	session         string
-	pwd             string
-	model           string
-	ignoreReasoning bool
-	noConfirm       bool
-	noEscape        bool
-	shellDisplay    bool
-	useJSON         bool
-	spinnerIndex    int
-	spinnerFile     string
-	useSpinner      bool
-	useEditor       bool
-	useStdin        bool
-	autoExit        bool
-	theme           string
-	promptHeight    int
+	systemPrompt         string
+	message              string
+	session              string
+	pwd                  string
+	model                string
+	ignoreReasoning      bool
+	noConfirm            bool
+	noEscape             bool
+	shellDisplay         bool
+	useJSON              bool
+	spinnerIndex         int
+	spinnerFile          string
+	useSpinner           bool
+	useEditor            bool
+	useStdin             bool
+	autoExit             bool
+	theme                string
+	promptHeight         int
+	useBufferedStreaming bool
 )
 
 func main() {
@@ -73,6 +74,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
 	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
 	rootCmd.Flags().IntVar(&promptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
+	rootCmd.Flags().BoolVar(&useBufferedStreaming, "buffered-streaming", false, "Use line-buffered streaming with spinner for LLM responses")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -150,21 +152,22 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := agent.Config{
-		ConversationDir: session,
-		SystemPrompt:    sysPrompt,
-		Model:           model,
-		PWD:             pwd,
-		IgnoreReasoning: ignoreReasoning,
-		NoConfirm:       noConfirm,
-		NoEscape:        noEscape,
-		ShellDisplay:    shellDisplay,
-		UseJSON:         useJSON,
-		SpinnerIndex:    spinnerPtr,
-		SpinnerFile:     spinnerFile,
-		UseEditor:       useEditor,
-		AutoExit:        autoExit,
-		Theme:           theme,
-		PromptHeight:    promptHeight,
+		ConversationDir:      session,
+		SystemPrompt:         sysPrompt,
+		Model:                model,
+		PWD:                  pwd,
+		IgnoreReasoning:      ignoreReasoning,
+		NoConfirm:            noConfirm,
+		NoEscape:             noEscape,
+		ShellDisplay:         shellDisplay,
+		UseJSON:              useJSON,
+		SpinnerIndex:         spinnerPtr,
+		SpinnerFile:          spinnerFile,
+		UseEditor:            useEditor,
+		AutoExit:             autoExit,
+		Theme:                theme,
+		PromptHeight:         promptHeight,
+		UseBufferedStreaming: useBufferedStreaming,
 	}
 
 	ag, err := agent.New(cfg)
