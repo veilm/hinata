@@ -28,6 +28,7 @@ type Options struct {
 	IgnoreReasoning bool
 	Verbose         bool
 	DebugUnsafe     bool
+	PromptHeight    int
 }
 
 type CreatedFilesGuard struct {
@@ -52,7 +53,7 @@ func (g *CreatedFilesGuard) Cleanup() {
 	}
 }
 
-func GetUserInstruction(message string, useEditor bool, useStdin bool, debugUnsafe bool) (string, bool, error) {
+func GetUserInstruction(message string, useEditor bool, useStdin bool, debugUnsafe bool, promptHeight int) (string, bool, error) {
 	if debugUnsafe {
 		// Create debug log directory if it doesn't exist
 		os.MkdirAll("/tmp/hinata", 0755)
@@ -106,7 +107,12 @@ func GetUserInstruction(message string, useEditor bool, useStdin bool, debugUnsa
 		}
 	}
 
-	instruction, err := prompt.GetUserInstruction(message, useEditor)
+	// Use default height of 3 if not specified
+	height := promptHeight
+	if height <= 0 {
+		height = 3
+	}
+	instruction, err := prompt.GetUserInstructionWithHeight(message, useEditor, height)
 	if err != nil {
 		return "", false, err
 	}
@@ -251,7 +257,7 @@ func Run(opts Options) error {
 			return fmt.Errorf("failed to get system message: %w", err)
 		}
 
-		instruction, fromEditor, err := GetUserInstruction(opts.Message, opts.UseEditor, opts.Stdin, opts.DebugUnsafe)
+		instruction, fromEditor, err := GetUserInstruction(opts.Message, opts.UseEditor, opts.Stdin, opts.DebugUnsafe, opts.PromptHeight)
 		if err != nil {
 			return err
 		}

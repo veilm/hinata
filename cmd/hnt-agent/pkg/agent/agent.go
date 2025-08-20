@@ -40,6 +40,7 @@ type Agent struct {
 	SpinnerFile     string
 	UseEditor       bool
 	AutoExit        bool
+	PromptHeight    int
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -64,6 +65,7 @@ type Config struct {
 	UseEditor       bool
 	AutoExit        bool
 	Theme           string
+	PromptHeight    int
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -148,6 +150,12 @@ func New(cfg Config) (*Agent, error) {
 		}
 	}
 
+	// Default prompt height if not specified
+	promptHeight := cfg.PromptHeight
+	if promptHeight <= 0 {
+		promptHeight = 3
+	}
+
 	return &Agent{
 		ConversationDir:  cfg.ConversationDir,
 		SystemPrompt:     cfg.SystemPrompt,
@@ -161,6 +169,7 @@ func New(cfg Config) (*Agent, error) {
 		SpinnerFile:      cfg.SpinnerFile,
 		UseEditor:        cfg.UseEditor,
 		AutoExit:         cfg.AutoExit,
+		PromptHeight:     promptHeight,
 		shellExecutor:    executor,
 		turnCounter:      1,
 		humanTurnCounter: 1,
@@ -795,10 +804,10 @@ func (a *Agent) promptForMessage() string {
 			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
 			TextRGB:   &[3]int{255, 255, 255}, // Explicit white for input text
 		}
-		instruction, err = prompt.GetUserInstructionWithColors("", a.UseEditor, colors)
+		instruction, err = prompt.GetUserInstructionWithColorsAndHeight("", a.UseEditor, colors, a.PromptHeight)
 	} else {
 		// Use default colors for ansi theme
-		instruction, err = prompt.GetUserInstruction("", a.UseEditor)
+		instruction, err = prompt.GetUserInstructionWithHeight("", a.UseEditor, a.PromptHeight)
 	}
 
 	if err != nil {

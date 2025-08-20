@@ -38,6 +38,7 @@ Example: hnt-edit -m 'Refactor foo function' src/main.py src/utils.py`,
 	rootCmd.Flags().BoolVar(&opts.IgnoreReasoning, "ignore-reasoning", false, "Do not ask the LLM for reasoning")
 	rootCmd.Flags().BoolVarP(&opts.Verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.Flags().BoolVar(&opts.DebugUnsafe, "debug-unsafe", false, "Enable unsafe debugging options")
+	rootCmd.Flags().IntVar(&opts.PromptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
 
 	// Note: --use-pane is not implemented as requested
 

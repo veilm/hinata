@@ -52,16 +52,7 @@ func (m textareaModel) View() string {
 		return ""
 	}
 
-	headerStyle := lipgloss.NewStyle().Bold(true)
-	if m.colors.HeaderRGB != nil {
-		headerStyle = headerStyle.Foreground(lipgloss.Color(fmt.Sprintf("#%02X%02X%02X",
-			(*m.colors.HeaderRGB)[0],
-			(*m.colors.HeaderRGB)[1],
-			(*m.colors.HeaderRGB)[2])))
-	} else {
-		headerStyle = headerStyle.Foreground(lipgloss.Color("12"))
-	}
-	header := headerStyle.Render("Enter your instructions:")
+	// Header removed - no longer showing "Enter your instructions:"
 
 	helpStyle := lipgloss.NewStyle().Faint(true)
 	if m.colors.HelpRGB != nil {
@@ -73,7 +64,6 @@ func (m textareaModel) View() string {
 	helpText := helpStyle.Render("• Ctrl+D to submit • Ctrl+C to cancel")
 
 	return strings.Join([]string{
-		header,
 		m.textarea.View(),
 		"",
 		helpText,
@@ -82,10 +72,10 @@ func (m textareaModel) View() string {
 }
 
 func PromptForInput() (string, error) {
-	return PromptForInputWithColors(ColorConfig{})
+	return PromptForInputWithColors(ColorConfig{}, 3)
 }
 
-func PromptForInputWithColors(colors ColorConfig) (string, error) {
+func PromptForInputWithColors(colors ColorConfig, height int) (string, error) {
 	ta := textarea.New()
 	ta.Placeholder = "Type your instructions here..."
 	ta.Focus()
@@ -94,7 +84,7 @@ func PromptForInputWithColors(colors ColorConfig) (string, error) {
 	ta.KeyMap.InsertNewline.SetEnabled(true)
 
 	ta.SetWidth(80)
-	ta.SetHeight(7)
+	ta.SetHeight(height)
 
 	// Style the prompt (left border) if color is provided
 	if colors.PromptRGB != nil {

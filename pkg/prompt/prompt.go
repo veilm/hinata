@@ -8,18 +8,18 @@ import (
 )
 
 func GetUserInstruction(message string, useEditor bool) (string, error) {
-	if message != "" {
-		return message, nil
-	}
+	return GetUserInstructionWithHeight(message, useEditor, 3)
+}
 
-	if useEditor {
-		return PromptWithEditor()
-	}
-
-	return PromptWithTUI()
+func GetUserInstructionWithHeight(message string, useEditor bool, height int) (string, error) {
+	return GetUserInstructionWithColorsAndHeight(message, useEditor, ColorConfig{}, height)
 }
 
 func GetUserInstructionWithColors(message string, useEditor bool, colors ColorConfig) (string, error) {
+	return GetUserInstructionWithColorsAndHeight(message, useEditor, colors, 3)
+}
+
+func GetUserInstructionWithColorsAndHeight(message string, useEditor bool, colors ColorConfig, height int) (string, error) {
 	if message != "" {
 		return message, nil
 	}
@@ -28,7 +28,7 @@ func GetUserInstructionWithColors(message string, useEditor bool, colors ColorCo
 		return PromptWithEditor()
 	}
 
-	return PromptWithTUIColors(colors)
+	return PromptWithTUIColorsAndHeight(colors, height)
 }
 
 func PromptWithEditor() (string, error) {
@@ -73,7 +73,11 @@ func PromptWithEditor() (string, error) {
 }
 
 func PromptWithTUI() (string, error) {
-	instruction, err := PromptForInput()
+	return PromptWithTUIHeight(3)
+}
+
+func PromptWithTUIHeight(height int) (string, error) {
+	instruction, err := PromptForInputWithColors(ColorConfig{}, height)
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +88,11 @@ func PromptWithTUI() (string, error) {
 }
 
 func PromptWithTUIColors(colors ColorConfig) (string, error) {
-	instruction, err := PromptForInputWithColors(colors)
+	return PromptWithTUIColorsAndHeight(colors, 3)
+}
+
+func PromptWithTUIColorsAndHeight(colors ColorConfig, height int) (string, error) {
+	instruction, err := PromptForInputWithColors(colors, height)
 	if err != nil {
 		return "", err
 	}

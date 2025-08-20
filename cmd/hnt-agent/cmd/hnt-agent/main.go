@@ -34,6 +34,7 @@ var (
 	useStdin        bool
 	autoExit        bool
 	theme           string
+	promptHeight    int
 )
 
 func main() {
@@ -69,6 +70,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read message from stdin")
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
 	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
+	rootCmd.Flags().IntVar(&promptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -117,7 +119,7 @@ func run(cmd *cobra.Command, args []string) error {
 	} else if useStdin {
 		userMessage = stdinContent
 	} else {
-		msg, err := promptForMessage(useEditor)
+		msg, err := promptForMessageWithHeight(useEditor, promptHeight)
 		if err != nil {
 			return err
 		}
@@ -144,6 +146,7 @@ func run(cmd *cobra.Command, args []string) error {
 		UseEditor:       useEditor,
 		AutoExit:        autoExit,
 		Theme:           theme,
+		PromptHeight:    promptHeight,
 	}
 
 	ag, err := agent.New(cfg)
@@ -200,6 +203,10 @@ func loadDefaultPrompt() (string, error) {
 }
 
 func promptForMessage(useEditor bool) (string, error) {
+	return promptForMessageWithHeight(useEditor, 3)
+}
+
+func promptForMessageWithHeight(useEditor bool, height int) (string, error) {
 	// Check theme to determine colors
 	if theme == "snow" {
 		// Use RGB colors for snow theme
@@ -209,10 +216,10 @@ func promptForMessage(useEditor bool) (string, error) {
 			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
 			TextRGB:   &[3]int{255, 255, 255}, // Explicit white for input text
 		}
-		return prompt.GetUserInstructionWithColors("", useEditor, colors)
+		return prompt.GetUserInstructionWithColorsAndHeight("", useEditor, colors, height)
 	} else {
 		// Use default colors for ansi theme
-		return prompt.GetUserInstruction("", useEditor)
+		return prompt.GetUserInstructionWithHeight("", useEditor, height)
 	}
 }
 
