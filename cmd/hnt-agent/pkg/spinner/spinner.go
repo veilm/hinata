@@ -218,37 +218,18 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, col
 			// Calculate elapsed time
 			elapsedSeconds := int64(time.Since(startTime).Seconds())
 
-			// Format timer with spacing rules matching Rust implementation
-			timeStr := fmt.Sprintf("(%ds)", elapsedSeconds)
-			var prefix string
-			if elapsedSeconds < 10 {
-				prefix = "  " // 2 spaces for single digit
-			} else {
-				prefix = " " // 1 space for double digit
-			}
-
-			// Total width for time display block is 10 characters
-			totalWidth := 10
-			currentWidth := len(prefix) + len(timeStr)
-
-			var timeDisplayBlock string
-			if currentWidth < totalWidth {
-				suffix := strings.Repeat(" ", totalWidth-currentWidth)
-				timeDisplayBlock = fmt.Sprintf("%s%s%s", prefix, timeStr, suffix)
-			} else {
-				timeDisplayBlock = fmt.Sprintf("%s%s ", prefix, timeStr)
-			}
-
 			// Get current frame
 			frame := spinner.Frames[frameIndex]
 
-			// Clear the line first, then display
-			// Display format: [margin][message][time][frame]
+			// Generate status line using shared function
+			statusLine := FormatStatusLine(message, elapsedSeconds, frame)
+
+			// Clear the line first, then display with margin
 			fmt.Printf("\r\033[K%s", margin)
 			if colorFunc != nil {
-				colorFunc(fmt.Sprintf("%s%s%s", message, timeDisplayBlock, frame))
+				colorFunc(statusLine)
 			} else {
-				fmt.Printf("%s%s%s", message, timeDisplayBlock, frame)
+				fmt.Print(statusLine)
 			}
 
 			frameIndex = (frameIndex + 1) % len(spinner.Frames)
@@ -277,4 +258,32 @@ func GetUnicodeSupportString() string {
 	default:
 		return "Unknown"
 	}
+}
+
+// FormatStatusLine creates a formatted status line with message, timer, and spinner frame
+// Returns the complete status line string without any margin/padding
+func FormatStatusLine(message string, elapsedSeconds int64, frame string) string {
+	// Format timer with spacing rules
+	timeStr := fmt.Sprintf("(%ds)", elapsedSeconds)
+	var prefix string
+	if elapsedSeconds < 10 {
+		prefix = "  " // 2 spaces for single digit
+	} else {
+		prefix = " " // 1 space for double digit
+	}
+
+	// Total width for time display block is 10 characters
+	totalWidth := 10
+	currentWidth := len(prefix) + len(timeStr)
+
+	var timeDisplayBlock string
+	if currentWidth < totalWidth {
+		suffix := strings.Repeat(" ", totalWidth-currentWidth)
+		timeDisplayBlock = fmt.Sprintf("%s%s%s", prefix, timeStr, suffix)
+	} else {
+		timeDisplayBlock = fmt.Sprintf("%s%s ", prefix, timeStr)
+	}
+
+	// Return formatted status line: [message][time][frame]
+	return fmt.Sprintf("%s%s%s", message, timeDisplayBlock, frame)
 }

@@ -2,7 +2,6 @@ package streamspinner
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -151,36 +150,18 @@ func (s *StreamingSpinner) run() {
 func (s *StreamingSpinner) drawSpinner() {
 	elapsedSeconds := int64(time.Since(s.startTime).Seconds())
 
-	// Format timer with spacing rules matching execution spinner
-	timeStr := fmt.Sprintf("(%ds)", elapsedSeconds)
-	var prefix string
-	if elapsedSeconds < 10 {
-		prefix = "  " // 2 spaces for single digit
-	} else {
-		prefix = " " // 1 space for double digit
-	}
-
-	// Total width for time display block is 10 characters
-	totalWidth := 10
-	currentWidth := len(prefix) + len(timeStr)
-
-	var timeDisplayBlock string
-	if currentWidth < totalWidth {
-		suffix := strings.Repeat(" ", totalWidth-currentWidth)
-		timeDisplayBlock = fmt.Sprintf("%s%s%s", prefix, timeStr, suffix)
-	} else {
-		timeDisplayBlock = fmt.Sprintf("%s%s ", prefix, timeStr)
-	}
-
 	// Get current frame
 	frame := s.spinner.Frames[s.frameIndex]
 
-	// Display format: [margin][message][time][frame]
+	// Generate status line using shared function
+	statusLine := spinner.FormatStatusLine(s.message, elapsedSeconds, frame)
+
+	// Display with margin
 	fmt.Printf("%s", s.margin)
 	if s.colorFunc != nil {
-		s.colorFunc(fmt.Sprintf("%s%s%s", s.message, timeDisplayBlock, frame))
+		s.colorFunc(statusLine)
 	} else {
-		fmt.Printf("%s%s%s", s.message, timeDisplayBlock, frame)
+		fmt.Print(statusLine)
 	}
 }
 
