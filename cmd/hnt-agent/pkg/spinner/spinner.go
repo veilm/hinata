@@ -193,9 +193,10 @@ func GetRandomLoadingMessage() string {
 }
 
 func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, colorFunc func(string)) {
-	startTime := time.Now()
-	frameIndex := 0
-	ticker := time.NewTicker(spinner.Speed)
+	animator := NewAnimator(spinner, message)
+	animator.Start()
+
+	ticker := time.NewTicker(animator.GetSpeed())
 	defer ticker.Stop()
 
 	cursor.Hide()
@@ -204,9 +205,9 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, col
 	// Initial display
 	fmt.Print(margin)
 	if colorFunc != nil {
-		colorFunc(message)
+		colorFunc(animator.GetCurrentStatus())
 	} else {
-		fmt.Print(message)
+		fmt.Print(animator.GetCurrentStatus())
 	}
 
 	for {
@@ -215,14 +216,8 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, col
 			clearLine()
 			return
 		case <-ticker.C:
-			// Calculate elapsed time
-			elapsedSeconds := int64(time.Since(startTime).Seconds())
-
-			// Get current frame
-			frame := spinner.Frames[frameIndex]
-
-			// Generate status line using shared function
-			statusLine := FormatStatusLine(message, elapsedSeconds, frame)
+			// Get next frame and status line
+			statusLine := animator.NextFrame()
 
 			// Clear the line first, then display with margin
 			fmt.Printf("\r\033[K%s", margin)
@@ -231,8 +226,6 @@ func Run(spinner Spinner, message string, margin string, stopCh <-chan bool, col
 			} else {
 				fmt.Print(statusLine)
 			}
-
-			frameIndex = (frameIndex + 1) % len(spinner.Frames)
 		}
 	}
 }

@@ -11,28 +11,25 @@ import (
 
 // StreamingSpinner manages a spinner that appears during LLM streaming
 type StreamingSpinner struct {
-	spinner   spinner.Spinner
+	animator  *spinner.Animator
 	margin    string
 	colorFunc func(string)
-	message   string // Loading message to display
 
 	// State management
 	mu         sync.Mutex
 	active     bool
 	stopCh     chan bool
 	contentCh  chan string // Channel to receive new content lines
-	startTime  time.Time
-	frameIndex int
-	hasContent bool // Track if any content has been printed yet
+	hasContent bool        // Track if any content has been printed yet
 }
 
 // New creates a new streaming spinner
 func New(sp spinner.Spinner, margin string, colorFunc func(string)) *StreamingSpinner {
+	message := spinner.GetRandomLoadingMessage()
 	return &StreamingSpinner{
-		spinner:   sp,
+		animator:  spinner.NewAnimator(sp, message),
 		margin:    margin,
 		colorFunc: colorFunc,
-		message:   spinner.GetRandomLoadingMessage(),
 		contentCh: make(chan string, 10),
 		stopCh:    make(chan bool, 1),
 	}
@@ -46,8 +43,7 @@ func (s *StreamingSpinner) Start() {
 		return
 	}
 	s.active = true
-	s.startTime = time.Now()
-	s.frameIndex = 0
+	s.animator.Start()
 	s.mu.Unlock()
 
 	cursor.Hide()
@@ -107,7 +103,7 @@ func (s *StreamingSpinner) PrintLine(line string) {
 }
 
 func (s *StreamingSpinner) run() {
-	ticker := time.NewTicker(s.spinner.Speed)
+	ticker := time.NewTicker(s.animator.GetSpeed())
 	defer ticker.Stop()
 
 	for {
@@ -138,7 +134,6 @@ func (s *StreamingSpinner) run() {
 			// Update spinner animation
 			s.mu.Lock()
 			if s.active {
-				s.frameIndex = (s.frameIndex + 1) % len(s.spinner.Frames)
 				s.clearLine()
 				s.drawSpinner()
 			}
@@ -148,13 +143,8 @@ func (s *StreamingSpinner) run() {
 }
 
 func (s *StreamingSpinner) drawSpinner() {
-	elapsedSeconds := int64(time.Since(s.startTime).Seconds())
-
-	// Get current frame
-	frame := s.spinner.Frames[s.frameIndex]
-
-	// Generate status line using shared function
-	statusLine := spinner.FormatStatusLine(s.message, elapsedSeconds, frame)
+	// Get next frame and status line
+	statusLine := s.animator.NextFrame()
 
 	// Display with margin
 	fmt.Printf("%s", s.margin)

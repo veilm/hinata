@@ -399,20 +399,24 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 	return a.streamLLMResponseBuffered(config, packedBuf.String())
 }
 
+// getSelectedSpinner returns the spinner based on agent configuration
+func (a *Agent) getSelectedSpinner() spinner.Spinner {
+	if a.customSpinner != nil {
+		// Use custom spinner from file
+		return *a.customSpinner
+	} else if a.SpinnerIndex != nil && *a.SpinnerIndex < len(spinner.SPINNERS) {
+		// Use spinner by index
+		return spinner.SPINNERS[*a.SpinnerIndex]
+	} else {
+		// Use random spinner
+		return spinner.GetRandomSpinner()
+	}
+}
+
 func (a *Agent) executeShellCommands(commands string) (*shell.ExecutionResult, error) {
 	stopCh := make(chan bool)
 
-	var sp spinner.Spinner
-	if a.customSpinner != nil {
-		// Use custom spinner from file
-		sp = *a.customSpinner
-	} else if a.SpinnerIndex != nil && *a.SpinnerIndex < len(spinner.SPINNERS) {
-		// Use spinner by index
-		sp = spinner.SPINNERS[*a.SpinnerIndex]
-	} else {
-		// Use random spinner
-		sp = spinner.GetRandomSpinner()
-	}
+	sp := a.getSelectedSpinner()
 
 	msg := spinner.GetRandomLoadingMessage()
 

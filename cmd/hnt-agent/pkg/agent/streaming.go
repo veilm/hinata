@@ -7,7 +7,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/linebuffer"
-	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/streamspinner"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/llm"
 )
@@ -33,8 +32,8 @@ func (a *Agent) streamLLMResponseBuffered(config llm.Config, packedContent strin
 	// Tag parser for shell blocks
 	tagParser := NewTagParser(a.logger)
 
-	// Setup streaming spinner
-	sp := spinner.GetRandomSpinner()
+	// Setup streaming spinner using the same selection logic
+	sp := a.getSelectedSpinner()
 	// Create wrapper function for color
 	colorFunc := func(s string) {
 		a.theme.Spinner.Print(s)
