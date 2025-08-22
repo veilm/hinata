@@ -610,11 +610,33 @@ func handleTitleCommand(cmd *cobra.Command, args []string) error {
 func determineConversationDir(cliPath string) (string, error) {
 	var convPath string
 
+	// 1. If -c flag is given, use it
 	if cliPath != "" {
 		convPath = cliPath
 	} else if envPath := os.Getenv("HINATA_CHAT_CONVERSATION"); envPath != "" {
-		convPath = envPath
+		// 2. If HINATA_CHAT_CONVERSATION is set
+		if filepath.IsAbs(envPath) {
+			// 2a. If it's an absolute path, use it
+			convPath = envPath
+		} else if strings.HasPrefix(envPath, "./") {
+			// 2d. If it explicitly starts with "./" then only look at current dir
+			convPath = envPath
+		} else {
+			// 2b. Check if it exists relative to conversations home dir
+			baseDir, err := chat.GetConversationsDir()
+			if err != nil {
+				return "", err
+			}
+			relativeToConvDir := filepath.Join(baseDir, envPath)
+			if info, err := os.Stat(relativeToConvDir); err == nil && info.IsDir() {
+				convPath = relativeToConvDir
+			} else {
+				// 2c. Look for it relative to current dir
+				convPath = envPath
+			}
+		}
 	} else {
+		// 3. Otherwise fallback to using the most recent conversation
 		baseDir, err := chat.GetConversationsDir()
 		if err != nil {
 			return "", err
