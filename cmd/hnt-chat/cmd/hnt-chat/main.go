@@ -609,30 +609,37 @@ func handleTitleCommand(cmd *cobra.Command, args []string) error {
 
 func determineConversationDir(cliPath string) (string, error) {
 	var convPath string
+	var inputPath string
 
-	// 1. If -c flag is given, use it
+	// Determine which input to use: -c flag or environment variable
 	if cliPath != "" {
-		convPath = cliPath
+		// 1. If -c flag is given, use it
+		inputPath = cliPath
 	} else if envPath := os.Getenv("HINATA_CHAT_CONVERSATION"); envPath != "" {
 		// 2. If HINATA_CHAT_CONVERSATION is set
-		if filepath.IsAbs(envPath) {
-			// 2a. If it's an absolute path, use it
-			convPath = envPath
-		} else if strings.HasPrefix(envPath, "./") {
-			// 2d. If it explicitly starts with "./" then only look at current dir
-			convPath = envPath
+		inputPath = envPath
+	}
+
+	// Apply the same resolution logic to the input path
+	if inputPath != "" {
+		if filepath.IsAbs(inputPath) {
+			// a. If it's an absolute path, use it
+			convPath = inputPath
+		} else if strings.HasPrefix(inputPath, "./") {
+			// d. If it explicitly starts with "./" then only look at current dir
+			convPath = inputPath
 		} else {
-			// 2b. Check if it exists relative to conversations home dir
+			// b. Check if it exists relative to conversations home dir
 			baseDir, err := chat.GetConversationsDir()
 			if err != nil {
 				return "", err
 			}
-			relativeToConvDir := filepath.Join(baseDir, envPath)
+			relativeToConvDir := filepath.Join(baseDir, inputPath)
 			if info, err := os.Stat(relativeToConvDir); err == nil && info.IsDir() {
 				convPath = relativeToConvDir
 			} else {
-				// 2c. Look for it relative to current dir
-				convPath = envPath
+				// c. Look for it relative to current dir
+				convPath = inputPath
 			}
 		}
 	} else {
