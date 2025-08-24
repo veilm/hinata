@@ -543,15 +543,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			// --- Title Handling ---
 			const convTitle = data.title || "-";
-			const updateDisplayedTitle = (currentTitle) => {
+			const updateDisplayedTitle = (currentTitle, isPinned = false) => {
 				const displayPageTitle =
 					currentTitle && currentTitle !== "-"
 						? escapeHtml(currentTitle)
 						: `Conversation ${safeConvId}`;
 				document.title = displayPageTitle;
-				mainTitleDisplayElement.textContent = displayPageTitle;
+
+				// Clear the h1 and rebuild with pin icon if needed
+				mainTitleDisplayElement.innerHTML = "";
+
+				if (isPinned) {
+					// Add pin icon
+					const pinIcon = document.createElement("span");
+					pinIcon.className = "title-pin-icon";
+					pinIcon.style.display = "inline-block";
+					pinIcon.style.marginRight = "8px";
+					pinIcon.style.verticalAlign = "middle";
+					pinIcon.innerHTML = ICON_PIN.replace(
+						'width="24"',
+						'width="20"',
+					).replace('height="24"', 'height="20"');
+					mainTitleDisplayElement.appendChild(pinIcon);
+				}
+
+				// Add title text
+				const titleSpan = document.createElement("span");
+				titleSpan.textContent = displayPageTitle;
+				mainTitleDisplayElement.appendChild(titleSpan);
 			};
-			updateDisplayedTitle(convTitle);
+			updateDisplayedTitle(convTitle, data.is_pinned);
 
 			if (modalTitleInput) {
 				modalTitleInput.value = escapeHtml(convTitle === "-" ? "" : convTitle);
@@ -574,7 +595,10 @@ document.addEventListener("DOMContentLoaded", () => {
 								modalTitleInput,
 							);
 							// updateConversationTitle handles updating dataset.originalTitle and input value on success
-							updateDisplayedTitle(modalTitleInput.dataset.originalTitle); // Update H1 and document title
+							updateDisplayedTitle(
+								modalTitleInput.dataset.originalTitle,
+								data.is_pinned,
+							); // Update H1 and document title
 						} catch (error) {
 							modalTitleInput.value = escapeHtml(
 								originalTitle === "-" ? "" : originalTitle,
@@ -2435,6 +2459,41 @@ document.addEventListener("DOMContentLoaded", () => {
 					// Fallback for elements without the span structure
 					buttonElement.textContent = responseData.is_pinned ? "Unpin" : "Pin";
 				}
+			}
+
+			// Update the h1 title to show/hide pin icon
+			const mainTitleDisplayElement = document.getElementById(
+				"conversation-id-display",
+			);
+			const modalTitleInput = document.getElementById("modal-title-input");
+			if (mainTitleDisplayElement && modalTitleInput) {
+				const currentTitle = modalTitleInput.dataset.originalTitle || "-";
+				const displayPageTitle =
+					currentTitle && currentTitle !== "-"
+						? escapeHtml(currentTitle)
+						: `Conversation ${conversationId}`;
+
+				// Clear the h1 and rebuild with pin icon if needed
+				mainTitleDisplayElement.innerHTML = "";
+
+				if (responseData.is_pinned) {
+					// Add pin icon
+					const pinIcon = document.createElement("span");
+					pinIcon.className = "title-pin-icon";
+					pinIcon.style.display = "inline-block";
+					pinIcon.style.marginRight = "8px";
+					pinIcon.style.verticalAlign = "middle";
+					pinIcon.innerHTML = ICON_PIN.replace(
+						'width="24"',
+						'width="20"',
+					).replace('height="24"', 'height="20"');
+					mainTitleDisplayElement.appendChild(pinIcon);
+				}
+
+				// Add title text
+				const titleSpan = document.createElement("span");
+				titleSpan.textContent = displayPageTitle;
+				mainTitleDisplayElement.appendChild(titleSpan);
 			}
 
 			// Show success toast
