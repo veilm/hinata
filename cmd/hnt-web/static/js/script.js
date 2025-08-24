@@ -499,10 +499,17 @@ document.addEventListener("DOMContentLoaded", () => {
 		const mainTitleDisplayElement = document.getElementById(
 			"conversation-id-display",
 		);
-		const titleEditInput = document.getElementById("conversation-title-input");
-		const modelEditInput = document.getElementById("conversation-model-input");
-		const pinToggleButton = document.getElementById("pin-toggle-btn");
-		const jumpToLatestBtn = document.getElementById("jump-to-latest-btn");
+		// Settings modal elements
+		const settingsModal = document.getElementById("settings-modal");
+		const settingsToggleBtn = document.getElementById("settings-toggle-btn");
+		const settingsCloseBtn = document.getElementById("settings-modal-close");
+		const modalTitleInput = document.getElementById("modal-title-input");
+		const modalModelInput = document.getElementById("modal-model-input");
+		const modalPinToggleBtn = document.getElementById("modal-pin-toggle-btn");
+		const modalPinText = document.getElementById("modal-pin-text");
+		const modalForkBtn = document.getElementById("modal-fork-btn");
+		const modalShareBtn = document.getElementById("modal-share-btn");
+		const modalJumpBtn = document.getElementById("modal-jump-btn");
 		const messagesContainer = document.getElementById("messages-container");
 		const otherFilesContainer = document.getElementById(
 			"other-files-container",
@@ -513,16 +520,17 @@ document.addEventListener("DOMContentLoaded", () => {
 		// Initial state for inputs and buttons
 		document.title = `Loading conversation...`;
 		mainTitleDisplayElement.textContent = `Loading conversation...`;
-		titleEditInput.value = "";
-		titleEditInput.disabled = true;
-		modelEditInput.value = "";
-		modelEditInput.disabled = true;
-		if (pinToggleButton) {
-			pinToggleButton.disabled = true;
-			pinToggleButton.textContent = "Pin"; // Default before loading
+		if (modalTitleInput) {
+			modalTitleInput.value = "";
+			modalTitleInput.disabled = true;
 		}
-		if (jumpToLatestBtn) {
-			jumpToLatestBtn.disabled = true;
+		if (modalModelInput) {
+			modalModelInput.value = "";
+			modalModelInput.disabled = true;
+		}
+		if (modalPinToggleBtn) {
+			modalPinToggleBtn.disabled = true;
+			if (modalPinText) modalPinText.textContent = "Pin Conversation"; // Default before loading
 		}
 
 		try {
@@ -545,87 +553,101 @@ document.addEventListener("DOMContentLoaded", () => {
 				mainTitleDisplayElement.textContent = displayPageTitle;
 			};
 			updateDisplayedTitle(convTitle);
-			titleEditInput.value = escapeHtml(convTitle === "-" ? "" : convTitle);
-			titleEditInput.dataset.originalTitle = convTitle;
-			titleEditInput.disabled = false;
 
-			titleEditInput.addEventListener("blur", async () => {
-				let newTitleAttempt = titleEditInput.value.trim();
-				const originalTitle = titleEditInput.dataset.originalTitle;
+			if (modalTitleInput) {
+				modalTitleInput.value = escapeHtml(convTitle === "-" ? "" : convTitle);
+				modalTitleInput.dataset.originalTitle = convTitle;
+				modalTitleInput.disabled = false;
 
-				if (newTitleAttempt === "") {
-					newTitleAttempt = "-"; // Default to "-" if input is cleared
-				}
+				modalTitleInput.addEventListener("blur", async () => {
+					let newTitleAttempt = modalTitleInput.value.trim();
+					const originalTitle = modalTitleInput.dataset.originalTitle;
 
-				if (newTitleAttempt !== originalTitle) {
-					try {
-						await updateConversationTitle(
-							conversationId,
-							newTitleAttempt,
-							titleEditInput,
-						);
-						// updateConversationTitle handles updating dataset.originalTitle and input value on success
-						updateDisplayedTitle(titleEditInput.dataset.originalTitle); // Update H1 and document title
-					} catch (error) {
-						titleEditInput.value = escapeHtml(
+					if (newTitleAttempt === "") {
+						newTitleAttempt = "-"; // Default to "-" if input is cleared
+					}
+
+					if (newTitleAttempt !== originalTitle) {
+						try {
+							await updateConversationTitle(
+								conversationId,
+								newTitleAttempt,
+								modalTitleInput,
+							);
+							// updateConversationTitle handles updating dataset.originalTitle and input value on success
+							updateDisplayedTitle(modalTitleInput.dataset.originalTitle); // Update H1 and document title
+						} catch (error) {
+							modalTitleInput.value = escapeHtml(
+								originalTitle === "-" ? "" : originalTitle,
+							);
+						}
+					} else {
+						modalTitleInput.value = escapeHtml(
 							originalTitle === "-" ? "" : originalTitle,
 						);
 					}
-				} else {
-					titleEditInput.value = escapeHtml(
-						originalTitle === "-" ? "" : originalTitle,
-					);
-				}
-			});
-			titleEditInput.addEventListener("keypress", (event) => {
-				if (event.key === "Enter") titleEditInput.blur();
-			});
+				});
+				modalTitleInput.addEventListener("keypress", (event) => {
+					if (event.key === "Enter") modalTitleInput.blur();
+				});
+			}
 
 			// --- Model Handling ---
 			const convModel = data.model || DEFAULT_MODEL_NAME; // Backend ensures default if missing/empty
-			modelEditInput.value = escapeHtml(convModel);
-			modelEditInput.dataset.originalModel = convModel;
-			modelEditInput.disabled = false;
+			if (modalModelInput) {
+				modalModelInput.value = escapeHtml(convModel);
+				modalModelInput.dataset.originalModel = convModel;
+				modalModelInput.disabled = false;
 
-			modelEditInput.addEventListener("blur", async () => {
-				let newModelAttempt = modelEditInput.value.trim(); // Can be empty
-				const originalModel = modelEditInput.dataset.originalModel;
+				modalModelInput.addEventListener("blur", async () => {
+					let newModelAttempt = modalModelInput.value.trim(); // Can be empty
+					const originalModel = modalModelInput.dataset.originalModel;
 
-				if (newModelAttempt !== originalModel) {
-					try {
-						await updateConversationModel(
-							conversationId,
-							newModelAttempt,
-							modelEditInput,
-						);
-						// updateConversationModel handles updating dataset.originalModel and input value
-					} catch (error) {
-						modelEditInput.value = escapeHtml(originalModel);
+					if (newModelAttempt !== originalModel) {
+						try {
+							await updateConversationModel(
+								conversationId,
+								newModelAttempt,
+								modalModelInput,
+							);
+							// updateConversationModel handles updating dataset.originalModel and input value
+						} catch (error) {
+							modalModelInput.value = escapeHtml(originalModel);
+						}
+					} else {
+						// Ensure field shows the clean originalModel if user just added/removed spaces
+						modalModelInput.value = escapeHtml(originalModel);
 					}
-				} else {
-					// Ensure field shows the clean originalModel if user just added/removed spaces
-					modelEditInput.value = escapeHtml(originalModel);
+				});
+				modalModelInput.addEventListener("keypress", (event) => {
+					if (event.key === "Enter") modalModelInput.blur();
+				});
+			}
+
+			// --- Pin/Unpin Button Setup in Modal ---
+			if (modalPinToggleBtn) {
+				if (modalPinText) {
+					modalPinText.textContent = data.is_pinned
+						? "Unpin Conversation"
+						: "Pin Conversation";
 				}
-			});
-			modelEditInput.addEventListener("keypress", (event) => {
-				if (event.key === "Enter") modelEditInput.blur();
-			});
-
-			// --- Pin/Unpin Button Setup ---
-			if (pinToggleButton) {
-				pinToggleButton.textContent = data.is_pinned ? "Unpin" : "Pin";
-				pinToggleButton.disabled = false;
-				// It's better to use addEventListener if this function might be called multiple times,
-				// but for a full page/details load, direct onclick assignment is often simpler.
-				// To be safe and avoid multiple listeners if this logic could be re-run without full DOM replacement:
-				const newPinButton = pinToggleButton.cloneNode(true); // Clone to remove old listeners
-				pinToggleButton.parentNode.replaceChild(newPinButton, pinToggleButton);
-				newPinButton.addEventListener("click", () =>
-					handlePinToggle(conversationId, newPinButton),
+				modalPinToggleBtn.disabled = false;
+				const newPinButton = modalPinToggleBtn.cloneNode(true); // Clone to remove old listeners
+				modalPinToggleBtn.parentNode.replaceChild(
+					newPinButton,
+					modalPinToggleBtn,
 				);
-
-				// Update the reference
-				// pinToggleButton = newPinButton; // if pinToggleButton is used later in this function
+				newPinButton.addEventListener("click", async () => {
+					await handlePinToggle(conversationId, newPinButton);
+					// Update text after successful toggle
+					const pinTextElem = newPinButton.querySelector("#modal-pin-text");
+					if (pinTextElem) {
+						const currentText = pinTextElem.textContent;
+						pinTextElem.textContent = currentText.includes("Unpin")
+							? "Pin Conversation"
+							: "Unpin Conversation";
+					}
+				});
 			}
 
 			// Render messages
@@ -1068,51 +1090,76 @@ document.addEventListener("DOMContentLoaded", () => {
 			setupMessageInputArea(conversationId);
 			updateSplitButtonState(conversationId); // Set initial button state
 
-			// Setup Fork button listener
-			const forkButton = document.getElementById("fork-conversation-btn");
-			if (forkButton) {
-				// Clone the button to remove any previously attached event listeners
-				const newForkButton = forkButton.cloneNode(true);
-				forkButton.parentNode.replaceChild(newForkButton, forkButton);
-
-				// Ensure the button is enabled (it might have been disabled from a previous action/error)
+			// Setup modal button listeners
+			if (modalForkBtn) {
+				const newForkButton = modalForkBtn.cloneNode(true);
+				modalForkBtn.parentNode.replaceChild(newForkButton, modalForkBtn);
 				newForkButton.disabled = false;
-
 				newForkButton.addEventListener("click", () => {
+					settingsModal.classList.add("hidden"); // Close modal
 					handleForkConversation(conversationId);
 				});
-			} else {
-				console.warn("Fork button (#fork-conversation-btn) not found in DOM.");
 			}
 
-			// Setup Share button listener
-			const shareButton = document.getElementById("share-conversation-btn");
-			if (shareButton) {
-				const newShareButton = shareButton.cloneNode(true);
-				shareButton.parentNode.replaceChild(newShareButton, shareButton);
+			if (modalShareBtn) {
+				const newShareButton = modalShareBtn.cloneNode(true);
+				modalShareBtn.parentNode.replaceChild(newShareButton, modalShareBtn);
 				newShareButton.disabled = false;
-
 				newShareButton.addEventListener("click", () => {
+					settingsModal.classList.add("hidden"); // Close settings modal
 					showShareModal(conversationId);
 				});
 			}
 
-			// Setup Jump to Latest button listener
-			const jumpToLatestButton = document.getElementById("jump-to-latest-btn");
-			if (jumpToLatestButton) {
-				// Clone to remove old listeners, consistent with other buttons
-				const newJumpButton = jumpToLatestButton.cloneNode(true);
-				jumpToLatestButton.parentNode.replaceChild(
-					newJumpButton,
-					jumpToLatestButton,
-				);
-				newJumpButton.disabled = false; // Enable the button
+			if (modalJumpBtn) {
+				const newJumpButton = modalJumpBtn.cloneNode(true);
+				modalJumpBtn.parentNode.replaceChild(newJumpButton, modalJumpBtn);
+				newJumpButton.disabled = false;
+				newJumpButton.addEventListener("click", () => {
+					settingsModal.classList.add("hidden"); // Close modal
+					jumpToLatestMessage();
+				});
+			}
 
-				newJumpButton.addEventListener("click", jumpToLatestMessage);
-			} else {
-				console.warn(
-					"Jump to latest button (#jump-to-latest-btn) not found in DOM.",
-				);
+			// Setup settings modal toggle
+			if (settingsToggleBtn) {
+				settingsToggleBtn.addEventListener("click", () => {
+					settingsModal.classList.remove("hidden");
+					// Focus on title input when opened via settings button
+					if (modalTitleInput) {
+						setTimeout(() => modalTitleInput.focus(), 100);
+					}
+				});
+			}
+
+			// Make h1 title clickable to open modal
+			if (mainTitleDisplayElement) {
+				mainTitleDisplayElement.addEventListener("click", () => {
+					settingsModal.classList.remove("hidden");
+					// Focus on title input when opened via h1 click
+					if (modalTitleInput) {
+						setTimeout(() => {
+							modalTitleInput.focus();
+							modalTitleInput.select(); // Select all text for easy editing
+						}, 100);
+					}
+				});
+			}
+
+			// Setup modal close button
+			if (settingsCloseBtn) {
+				settingsCloseBtn.addEventListener("click", () => {
+					settingsModal.classList.add("hidden");
+				});
+			}
+
+			// Close modal when clicking outside
+			if (settingsModal) {
+				settingsModal.addEventListener("click", (event) => {
+					if (event.target === settingsModal) {
+						settingsModal.classList.add("hidden");
+					}
+				});
 			}
 
 			// Auto-scroll to latest message on page load

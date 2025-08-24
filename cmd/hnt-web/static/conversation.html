@@ -29,41 +29,96 @@
 				</div>
 			</div>
 			<div class="title-section">
-				<h1 id="conversation-id-display">Loading conversation...</h1>
-				<div class="title-edit-container">
-					<label for="conversation-title-input">Title:</label>
-					<input type="text" id="conversation-title-input">
+				<div class="title-header">
+					<h1 id="conversation-id-display">Loading conversation...</h1>
+					<button
+						type="button"
+						id="settings-toggle-btn"
+						class="settings-toggle-btn"
+						title="Settings"
+					>
+						<svg
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<circle cx="12" cy="12" r="3"></circle>
+							<path
+								d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M23 12h-6m-6 0H1m13.22 4.22l4.24 4.24M1.54 22.46l4.24-4.24"
+							></path>
+						</svg>
+					</button>
 				</div>
-				<div class="model-edit-container">
-					<label for="conversation-model-input">Model:</label>
-					<input type="text" id="conversation-model-input">
-				</div>
-				<div class="page-actions-group">
+			</div>
+
+			<!-- Settings Modal -->
+			<div id="settings-modal" class="settings-modal-overlay hidden">
+				<div class="settings-modal-content">
 					<button
 						type="button"
-						id="fork-conversation-btn"
-						class="page-action-button"
+						class="settings-modal-close"
+						id="settings-modal-close"
 					>
-						Fork Conversation
+						&times;
 					</button>
-					<button type="button" id="pin-toggle-btn" class="page-action-button">
-						Pin
-					</button>
-					<!-- Pin button text (Pin/Unpin) dynamically set by JS -->
-					<button
-						type="button"
-						id="share-conversation-btn"
-						class="page-action-button"
-					>
-						Share
-					</button>
-					<button
-						type="button"
-						id="jump-to-latest-btn"
-						class="page-action-button"
-					>
-						Jump to Latest Message
-					</button>
+					<h2>Conversation Settings</h2>
+
+					<div class="settings-form">
+						<div class="settings-input-group">
+							<label for="modal-title-input">Title</label>
+							<input type="text" id="modal-title-input" class="settings-input">
+						</div>
+
+						<div class="settings-input-group">
+							<label for="modal-model-input">Model</label>
+							<input type="text" id="modal-model-input" class="settings-input">
+						</div>
+
+						<div class="settings-divider"></div>
+
+						<div class="settings-actions">
+							<button
+								type="button"
+								id="modal-pin-toggle-btn"
+								class="settings-action-btn"
+							>
+								<span class="action-icon">📌</span>
+								<span id="modal-pin-text">Pin Conversation</span>
+							</button>
+
+							<button
+								type="button"
+								id="modal-fork-btn"
+								class="settings-action-btn"
+							>
+								<span class="action-icon">🔀</span>
+								<span>Fork Conversation</span>
+							</button>
+
+							<button
+								type="button"
+								id="modal-share-btn"
+								class="settings-action-btn"
+							>
+								<span class="action-icon">🔗</span>
+								<span>Share Conversation</span>
+							</button>
+
+							<button
+								type="button"
+								id="modal-jump-btn"
+								class="settings-action-btn"
+							>
+								<span class="action-icon">↓</span>
+								<span>Jump to Latest Message</span>
+							</button>
+						</div>
+					</div>
 				</div>
 			</div>
 

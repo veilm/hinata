@@ -265,49 +265,11 @@ li {
 
 /* Style for the conversation title H1 on the conversation page */
 #conversation-id-display {
-	display: flex;
-	align-items: center;
 	word-break: break-all; /* In case of very long title without spaces */
-	/* Existing h1 styles from general rules will apply for font-size, color etc. */
-	margin-bottom: 10px; /* Space it out from the input */
 }
 
 .title-section {
 	margin-bottom: 20px;
-}
-
-.title-edit-container,
-.model-edit-container {
-	display: flex;
-	align-items: center;
-	margin-bottom: 10px; /* Add some space between title and model rows */
-}
-
-.title-edit-container label,
-.model-edit-container label {
-	margin-right: 10px;
-	font-weight: bold;
-	color: #c0c0c0;
-	min-width: 50px; /* Ensure labels align nicely */
-}
-
-#conversation-title-input,
-#conversation-model-input {
-	flex-grow: 1;
-	padding: 8px 10px;
-	background-color: #181818;
-	color: #e0e0e0;
-	border: 1px solid #333333;
-	border-radius: 0;
-	font-family: inherit;
-	font-size: 1.1em; /* Make it a bit prominent */
-}
-
-#conversation-title-input:focus,
-#conversation-model-input:focus {
-	outline: none;
-	border-color: #6ec8ff;
-	background-color: #151515;
 }
 
 .error-message {
@@ -763,75 +725,6 @@ li {
 	border-color: #b19dff; /* Match assistant reasoning theme */
 }
 
-/* Fork Conversation Button Style */
-/* Grouping for page-level action buttons */
-.page-actions-group {
-	display: flex;
-	align-items: flex-start; /* Align items to the start of the cross axis */
-	gap: 10px; /* Spacing between buttons in the group */
-	margin-top: 10px; /* Top margin for the group */
-}
-
-/* General style for page-level action buttons like Pin/Fork */
-.page-action-button {
-	padding: 10px 15px;
-	border: none;
-	border-radius: 0;
-	font-family: inherit;
-	font-size: 1em;
-	cursor: pointer;
-	transition: background-color 0.2s ease;
-	display: block; /* Behaves as flex item; width determined by content */
-	width: fit-content;
-	/* Margins are handled by the parent flex container (.page-actions-group) if applicable */
-}
-
-.page-action-button:disabled {
-	background-color: #222222 !important; /* Use !important to override specific styles if needed */
-	color: #888888 !important;
-	cursor: not-allowed;
-}
-
-/* Specific style for Fork Conversation Button */
-
-#fork-conversation-btn {
-	background-color: #101010;
-	color: #6ec8ff;
-}
-#fork-conversation-btn:hover {
-	background-color: #191919;
-}
-
-/* Specific style for Pin/Unpin Toggle Button */
-
-#pin-toggle-btn {
-	background-color: #101010;
-	color: #6ec8ff;
-}
-#pin-toggle-btn:hover {
-	background-color: #191919;
-}
-
-/* Specific style for Jump to Latest Message Button */
-
-#jump-to-latest-btn {
-	background-color: #101010; /* Match 'Add System' button background */
-	color: #6ec8ff;
-}
-#jump-to-latest-btn:hover {
-	background-color: #191919; /* Match 'Add System' button hover background */
-}
-
-/* Specific style for Share Button */
-
-#share-conversation-btn {
-	background-color: #101010;
-	color: #6ec8ff;
-}
-#share-conversation-btn:hover {
-	background-color: #191919;
-}
-
 /* Styling for pinned items in the conversation list */
 #conversation-list-container ul li.pinned-conversation a,
 #conversation-list-container
@@ -939,6 +832,164 @@ html {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
+}
+
+/* Title header with settings button */
+.title-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 20px;
+}
+
+.title-header h1 {
+	cursor: pointer;
+	transition: color 0.2s ease;
+	margin-bottom: 0;
+	flex: 1;
+}
+
+.title-header h1:hover {
+	color: #6ec8ff;
+}
+
+.settings-toggle-btn {
+	background: transparent;
+	border: 1px solid #333333;
+	color: #6ec8ff;
+	padding: 8px;
+	cursor: pointer;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s ease;
+}
+
+.settings-toggle-btn:hover {
+	background-color: #151515;
+	border-color: #6ec8ff;
+}
+
+/* Settings Modal Styles */
+.settings-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.8);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 2000;
+}
+
+.settings-modal-content {
+	background-color: #080808;
+	border: 1px solid #333333;
+	padding: 30px;
+	max-width: 500px;
+	width: 90%;
+	max-height: 80vh;
+	overflow-y: auto;
+	position: relative;
+}
+
+.settings-modal-content h2 {
+	margin-top: 0;
+	margin-bottom: 25px;
+	color: #6ec8ff;
+	font-size: 1.5em;
+}
+
+.settings-modal-close {
+	position: absolute;
+	top: 15px;
+	right: 15px;
+	background: transparent;
+	border: none;
+	color: #aaaaaa;
+	cursor: pointer;
+	font-size: 24px;
+	padding: 5px;
+	line-height: 1;
+}
+
+.settings-modal-close:hover {
+	color: #ffffff;
+}
+
+.settings-form {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.settings-input-group {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.settings-input-group label {
+	color: #c0c0c0;
+	font-weight: bold;
+	font-size: 0.95em;
+}
+
+.settings-input {
+	padding: 10px;
+	background-color: #181818;
+	color: #e0e0e0;
+	border: 1px solid #333333;
+	border-radius: 0;
+	font-family: inherit;
+	font-size: 1em;
+}
+
+.settings-input:focus {
+	outline: none;
+	border-color: #6ec8ff;
+	background-color: #151515;
+}
+
+.settings-divider {
+	border-top: 1px solid #333333;
+	margin: 10px 0;
+}
+
+.settings-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.settings-action-btn {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 15px;
+	background-color: #101010;
+	color: #e0e0e0;
+	border: 1px solid #222222;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 1em;
+	text-align: left;
+	transition: all 0.2s ease;
+}
+
+.settings-action-btn:hover {
+	background-color: #191919;
+	border-color: #6ec8ff;
+	color: #6ec8ff;
+}
+
+.settings-action-btn .action-icon {
+	font-size: 1.2em;
+	width: 24px;
+	text-align: center;
 }
 
 .user-info {
