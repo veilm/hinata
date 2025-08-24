@@ -638,14 +638,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				);
 				newPinButton.addEventListener("click", async () => {
 					await handlePinToggle(conversationId, newPinButton);
-					// Update text after successful toggle
-					const pinTextElem = newPinButton.querySelector("#modal-pin-text");
-					if (pinTextElem) {
-						const currentText = pinTextElem.textContent;
-						pinTextElem.textContent = currentText.includes("Unpin")
-							? "Pin Conversation"
-							: "Unpin Conversation";
-					}
+					// Text is already updated inside handlePinToggle
 				});
 			}
 
@@ -2435,7 +2428,9 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (buttonElement) {
 				const pinTextElem = buttonElement.querySelector("#modal-pin-text");
 				if (pinTextElem) {
-					pinTextElem.textContent = responseData.is_pinned ? "Unpin Conversation" : "Pin Conversation";
+					pinTextElem.textContent = responseData.is_pinned
+						? "Unpin Conversation"
+						: "Pin Conversation";
 				} else {
 					// Fallback for elements without the span structure
 					buttonElement.textContent = responseData.is_pinned ? "Unpin" : "Pin";
