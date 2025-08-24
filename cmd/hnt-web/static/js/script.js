@@ -695,8 +695,8 @@ document.addEventListener("DOMContentLoaded", () => {
 					const messageDiv = document.createElement("div");
 					messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
 					messageDiv.dataset.filename = msg.filename;
-					messageDiv.dataset.role = msg.role; // Store filename for actions
 					messageDiv.dataset.role = msg.role; // Store role for actions
+					messageDiv.dataset.originalContent = msg.content; // Store original content for edit/fork
 
 					// If this message has associated reasoning, display it first
 					if (msg.reasoning) {
@@ -1555,8 +1555,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		if (isEditing) {
 			// ---- Switching from Edit to View (Cancel or Save) ----
 			// Note: originalContent is passed as argument, could be the newly saved content
-			contentWrapperDiv.innerHTML = ""; // Clear textarea
-			contentWrapperDiv.textContent = originalContent; // Restore/set content
+			contentWrapperDiv.innerHTML = renderMarkdown(originalContent); // Restore/set content with proper formatting
 
 			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
 
@@ -1693,8 +1692,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		if (isForkEditing) {
 			// Switching from Fork-Edit to View (Cancel)
-			contentWrapperDiv.innerHTML = ""; // Clear textarea
-			contentWrapperDiv.textContent = originalContent; // Restore content
+			contentWrapperDiv.innerHTML = renderMarkdown(originalContent); // Restore content with proper formatting
 
 			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
 
@@ -2913,8 +2911,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				return;
 			}
 
-			// Get the current content
-			const currentContent = contentWrapperDiv.textContent;
+			// Get the original content from the data attribute
+			const currentContent =
+				messageElement.dataset.originalContent || contentWrapperDiv.textContent;
 
 			// Enter fork-edit mode
 			toggleForkEditState(
