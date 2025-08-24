@@ -51,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	const ICON_PIN = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pin-icon lucide-pin"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`;
 	const ICON_INFO = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info-icon lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
 	const ICON_PENCIL = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pen-line-icon lucide-pen-line"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>`;
+	const ICON_SPLIT = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-split-icon lucide-split"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>`;
 	const ICON_ARCHIVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-archive-icon lucide-archive"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`;
 	const ICON_SAVE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save-icon lucide-save"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>`;
 	const ICON_X = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
@@ -798,6 +799,11 @@ document.addEventListener("DOMContentLoaded", () => {
 					);
 					editButton.title = "Edit"; // Tooltip for accessibility
 
+					const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () =>
+						handleForkFromMessage(conversationId, msg.filename, msg.role),
+					);
+					forkButton.title = "Fork from here"; // Tooltip for accessibility
+
 					const archiveButton = createActionButton(
 						ICON_ARCHIVE,
 						"btn-archive",
@@ -819,6 +825,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					actionsDiv.appendChild(infoButton);
 					actionsDiv.appendChild(copyButton);
 					actionsDiv.appendChild(editButton);
+					actionsDiv.appendChild(forkButton);
 					actionsDiv.appendChild(archiveButton);
 
 					footerDiv.appendChild(infoDiv);
@@ -1105,6 +1112,45 @@ document.addEventListener("DOMContentLoaded", () => {
 			// After rendering messages and other files, set up the input area
 			setupMessageInputArea(conversationId);
 			updateSplitButtonState(conversationId); // Set initial button state
+
+			// Check if this is a forked conversation with actions to perform
+			const forkActionKey = `fork-action-${conversationId}`;
+			const forkActionData = localStorage.getItem(forkActionKey);
+			if (forkActionData) {
+				localStorage.removeItem(forkActionKey); // Clean up immediately
+				try {
+					const forkInfo = JSON.parse(forkActionData);
+					processForkActions(conversationId, forkInfo);
+				} catch (error) {
+					console.error("Error processing fork actions:", error);
+				}
+			} else {
+				// Check if we should trigger generation after a reload
+				const generateKey = `fork-generate-${conversationId}`;
+				if (localStorage.getItem(generateKey)) {
+					localStorage.removeItem(generateKey);
+					// Small delay to ensure everything is ready
+					setTimeout(() => {
+						const primaryBtn = document.getElementById("primary-action-btn");
+						const dropdownToggleBtn = document.getElementById(
+							"dropdown-toggle-btn",
+						);
+						const allButtons = [primaryBtn, dropdownToggleBtn].filter(Boolean);
+
+						if (allButtons.length > 0) {
+							handleGenAssistant(conversationId, allButtons);
+						} else {
+							// Fallback: click the button directly
+							const genButton = document.querySelector(
+								'button[data-action="gen-assistant"]',
+							);
+							if (genButton) {
+								genButton.click();
+							}
+						}
+					}, 500);
+				}
+			}
 
 			// Setup modal button listeners
 			if (modalForkBtn) {
@@ -1533,6 +1579,12 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 			editButton.title = "Edit";
 
+			const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
+				const role = messageElement.dataset.role || "unknown";
+				handleForkFromMessage(conversationId, filename, role);
+			});
+			forkButton.title = "Fork from here";
+
 			const archiveButton = createActionButton(
 				ICON_ARCHIVE,
 				"btn-archive",
@@ -1554,6 +1606,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			actionsDiv.appendChild(infoButton);
 			actionsDiv.appendChild(copyButton);
 			actionsDiv.appendChild(editButton);
+			actionsDiv.appendChild(forkButton);
 			actionsDiv.appendChild(archiveButton);
 
 			delete messageElement.dataset.editing;
@@ -2507,6 +2560,182 @@ document.addEventListener("DOMContentLoaded", () => {
 			);
 		} finally {
 			if (buttonElement) buttonElement.disabled = false;
+		}
+	}
+
+	async function processForkActions(conversationId, forkInfo) {
+		// Process fork actions: delete messages and trigger generation
+		try {
+			// Get all messages from the page
+			const messages = document.querySelectorAll(
+				"#messages-container .message:not(.archived-message)",
+			);
+
+			// Find the index of the target message
+			let targetIndex = -1;
+			for (let i = 0; i < messages.length; i++) {
+				const msgFilename = messages[i].dataset.filename;
+				if (msgFilename === forkInfo.fromMessage) {
+					targetIndex = i;
+					break;
+				}
+			}
+
+			if (targetIndex === -1) {
+				console.error("Could not find target message for fork action");
+				return;
+			}
+
+			// Determine which messages to delete
+			let messagesToDelete = [];
+			if (forkInfo.deleteAfter && forkInfo.messageRole === "assistant") {
+				// Delete from and including the assistant message
+				for (let i = targetIndex; i < messages.length; i++) {
+					const msgFilename = messages[i].dataset.filename;
+					if (msgFilename) {
+						messagesToDelete.push(msgFilename);
+					}
+				}
+			} else {
+				// Delete all messages after the target (for system/user messages)
+				for (let i = targetIndex + 1; i < messages.length; i++) {
+					const msgFilename = messages[i].dataset.filename;
+					if (msgFilename) {
+						messagesToDelete.push(msgFilename);
+					}
+				}
+			}
+
+			// Delete the messages
+			let deletedCount = 0;
+			if (messagesToDelete.length > 0) {
+				showToast(
+					`Cleaning up ${messagesToDelete.length} message(s)...`,
+					"info",
+				);
+
+				for (const filename of messagesToDelete) {
+					try {
+						// Archive the message instead of hard delete
+						const response = await authFetch(
+							`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(filename)}/archive`,
+							{
+								method: "POST",
+							},
+						);
+
+						if (response.ok) {
+							deletedCount++;
+						} else {
+							console.error(`Failed to archive message ${filename}`);
+						}
+					} catch (error) {
+						console.error(`Error archiving message ${filename}:`, error);
+					}
+				}
+
+				// If we deleted messages, reload to get the updated state
+				if (deletedCount > 0) {
+					showToast(
+						`Archived ${deletedCount} message(s). Reloading...`,
+						"info",
+					);
+					// Store that we should trigger generation after reload
+					if (forkInfo.triggerGenerate) {
+						localStorage.setItem(`fork-generate-${conversationId}`, "true");
+					}
+					// Reload the conversation to reflect changes
+					setTimeout(() => {
+						loadConversationDetails(conversationId);
+					}, 500);
+					return;
+				}
+			}
+
+			// If no messages were deleted, trigger generation immediately if requested
+			if (forkInfo.triggerGenerate) {
+				showToast("Starting generation...", "info");
+				// Get the buttons for handleGenAssistant
+				const primaryBtn = document.getElementById("primary-action-btn");
+				const dropdownToggleBtn = document.getElementById(
+					"dropdown-toggle-btn",
+				);
+				const allButtons = [primaryBtn, dropdownToggleBtn].filter(Boolean);
+
+				// Small delay to ensure page is ready
+				setTimeout(() => {
+					if (allButtons.length > 0) {
+						handleGenAssistant(conversationId, allButtons);
+					} else {
+						// Fallback: click the button directly
+						const genButton = document.querySelector(
+							'button[data-action="gen-assistant"]',
+						);
+						if (genButton) {
+							genButton.click();
+						}
+					}
+				}, 500);
+			}
+		} catch (error) {
+			console.error("Error processing fork actions:", error);
+			showToast("Error processing fork actions", "error");
+		}
+	}
+
+	async function handleForkFromMessage(
+		conversationId,
+		messageFilename,
+		messageRole,
+	) {
+		// Fork the conversation first
+		try {
+			const response = await authFetch(
+				`/api/conversation/${encodeURIComponent(conversationId)}/fork`,
+				{
+					method: "POST",
+				},
+			);
+
+			if (!response.ok) {
+				let errorDetail = "Failed to fork conversation.";
+				try {
+					const errorData = await response.json();
+					if (errorData && errorData.detail) {
+						errorDetail = errorData.detail;
+					}
+				} catch (e) {
+					errorDetail += ` Server responded with: ${response.status} ${response.statusText}`;
+				}
+				throw new Error(errorDetail);
+			}
+
+			const responseData = await response.json();
+			if (responseData && responseData.conversation_id) {
+				const newConversationId = responseData.conversation_id;
+
+				// Store the fork info in localStorage for the new page to process
+				const forkInfo = {
+					fromMessage: messageFilename,
+					messageRole: messageRole,
+					deleteAfter: messageRole === "assistant", // Delete including assistant message
+					triggerGenerate: true,
+				};
+				localStorage.setItem(
+					`fork-action-${newConversationId}`,
+					JSON.stringify(forkInfo),
+				);
+
+				// Redirect to the new forked conversation
+				window.location.href = `/c/${encodeURIComponent(newConversationId)}`;
+			} else {
+				throw new Error(
+					"Fork successful, but new conversation ID was not returned.",
+				);
+			}
+		} catch (error) {
+			console.error("Error forking conversation from message:", error);
+			showToast(error.message, "error");
 		}
 	}
 
