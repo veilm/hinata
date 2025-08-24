@@ -1680,6 +1680,168 @@ document.addEventListener("DOMContentLoaded", () => {
 		}
 	}
 
+	function toggleForkEditState(
+		messageElement,
+		contentWrapperDiv,
+		actionsDiv,
+		originalContent,
+		conversationId,
+		filename,
+		messageRole,
+	) {
+		const isForkEditing = messageElement.dataset.forkEditing === "true";
+
+		if (isForkEditing) {
+			// Switching from Fork-Edit to View (Cancel)
+			contentWrapperDiv.innerHTML = ""; // Clear textarea
+			contentWrapperDiv.textContent = originalContent; // Restore content
+
+			actionsDiv.innerHTML = ""; // Clear Save/Cancel buttons
+
+			// Restore normal action buttons
+			const infoButton = createActionButton(ICON_INFO, "btn-info", () => {
+				const role = messageElement.dataset.role || "unknown";
+				showMessageInfoModal(filename, originalContent, role);
+			});
+			infoButton.title = "Info";
+
+			const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
+				toggleEditState(
+					messageElement,
+					contentWrapperDiv,
+					actionsDiv,
+					originalContent,
+					conversationId,
+					filename,
+				),
+			);
+			editButton.title = "Edit";
+
+			const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
+				handleForkFromMessage(conversationId, filename, messageRole);
+			});
+			forkButton.title = "Fork from here";
+
+			const archiveButton = createActionButton(
+				ICON_ARCHIVE,
+				"btn-archive",
+				() => handleArchiveMessage(messageElement, conversationId, filename),
+			);
+			archiveButton.title = "Archive";
+
+			const copyButton = createActionButton(ICON_COPY, "btn-copy", () =>
+				handleCopyMessage(originalContent),
+			);
+			copyButton.title = "Copy";
+
+			actionsDiv.appendChild(infoButton);
+			actionsDiv.appendChild(copyButton);
+			actionsDiv.appendChild(editButton);
+			actionsDiv.appendChild(forkButton);
+			actionsDiv.appendChild(archiveButton);
+
+			delete messageElement.dataset.forkEditing;
+			delete messageElement.dataset.originalContentForFork;
+			updateGlobalActionButtonsState();
+		} else {
+			// Switching from View to Fork-Edit
+			messageElement.dataset.forkEditing = "true";
+			messageElement.dataset.originalContentForFork = originalContent;
+
+			contentWrapperDiv.innerHTML = ""; // Clear current text content
+			const textarea = document.createElement("textarea");
+			textarea.value = originalContent;
+
+			// Add event listener for auto-resize
+			textarea.addEventListener("input", () => {
+				const scrollTop =
+					window.pageYOffset || document.documentElement.scrollTop;
+				textarea.style.height = "auto";
+				textarea.style.height = `${textarea.scrollHeight}px`;
+				window.scrollTo(0, scrollTop);
+			});
+
+			// Append textarea to DOM first
+			contentWrapperDiv.appendChild(textarea);
+
+			// Then calculate initial height after DOM insertion
+			requestAnimationFrame(() => {
+				textarea.style.height = "auto";
+				textarea.style.height = `${textarea.scrollHeight}px`;
+				textarea.focus();
+			});
+
+			actionsDiv.innerHTML = ""; // Clear current buttons
+
+			// Create Save button that will fork
+			const saveButton = createActionButton(ICON_SAVE, "btn-save", () =>
+				handleForkSave(
+					messageElement,
+					contentWrapperDiv,
+					actionsDiv,
+					textarea,
+					conversationId,
+					filename,
+					messageRole,
+				),
+			);
+			saveButton.title = "Save and Fork";
+
+			// Create Cancel button
+			const cancelButton = createActionButton(ICON_X, "btn-cancel", () =>
+				toggleForkEditState(
+					messageElement,
+					contentWrapperDiv,
+					actionsDiv,
+					messageElement.dataset.originalContentForFork,
+					conversationId,
+					filename,
+					messageRole,
+				),
+			);
+			cancelButton.title = "Cancel";
+
+			actionsDiv.appendChild(saveButton);
+			actionsDiv.appendChild(cancelButton);
+			updateGlobalActionButtonsState();
+		}
+	}
+
+	async function handleForkSave(
+		messageElement,
+		contentWrapperDiv,
+		actionsDiv,
+		textareaElement,
+		conversationId,
+		filename,
+		messageRole,
+	) {
+		const editedContent = textareaElement.value;
+
+		// Clear previous errors
+		clearErrorMessages(actionsDiv);
+
+		// Disable Save/Cancel temporarily
+		const buttons = actionsDiv.querySelectorAll("button");
+		setButtonsDisabledState(Array.from(buttons), true);
+
+		try {
+			// Execute the fork with the edited content
+			await executeForkFromMessage(
+				conversationId,
+				filename,
+				messageRole,
+				editedContent,
+			);
+			// The executeForkFromMessage will redirect, so we don't need to update UI here
+		} catch (error) {
+			console.error("Error during fork:", error);
+			handleError(`Error during fork: ${error.message}`, actionsDiv);
+			// Re-enable buttons on error
+			setButtonsDisabledState(Array.from(buttons), false);
+		}
+	}
+
 	async function handleCopyMessage(content) {
 		try {
 			// Try modern clipboard API first
@@ -2564,7 +2726,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	}
 
 	async function processForkActions(conversationId, forkInfo) {
-		// Process fork actions: delete messages and trigger generation
+		// Process fork actions: edit message if needed, delete messages, and trigger generation
 		try {
 			// Get all messages from the page
 			const messages = document.querySelectorAll(
@@ -2584,6 +2746,34 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (targetIndex === -1) {
 				console.error("Could not find target message for fork action");
 				return;
+			}
+
+			// Edit the message if editedContent is provided
+			if (forkInfo.editedContent) {
+				showToast("Applying edit to forked message...", "info");
+				try {
+					const response = await authFetch(
+						`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(forkInfo.fromMessage)}/edit`,
+						{
+							method: "PUT",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ content: forkInfo.editedContent }),
+						},
+					);
+
+					if (!response.ok) {
+						const errorData = await response
+							.json()
+							.catch(() => ({ detail: "Failed to edit message." }));
+						throw new Error(
+							errorData.detail || `HTTP error ${response.status}`,
+						);
+					}
+				} catch (error) {
+					console.error("Error editing message:", error);
+					showToast(`Failed to edit message: ${error.message}`, "error");
+					// Continue with the rest of the fork actions even if edit fails
+				}
 			}
 
 			// Determine which messages to delete
@@ -2652,8 +2842,20 @@ document.addEventListener("DOMContentLoaded", () => {
 				}
 			}
 
-			// If no messages were deleted, trigger generation immediately if requested
-			if (forkInfo.triggerGenerate) {
+			// If we only edited without deleting messages, reload to show the edit
+			if (forkInfo.editedContent && messagesToDelete.length === 0) {
+				showToast("Edit applied. Reloading...", "info");
+				if (forkInfo.triggerGenerate) {
+					localStorage.setItem(`fork-generate-${conversationId}`, "true");
+				}
+				setTimeout(() => {
+					loadConversationDetails(conversationId);
+				}, 500);
+				return;
+			}
+
+			// If no messages were deleted and no edit, trigger generation immediately if requested
+			if (forkInfo.triggerGenerate && !forkInfo.editedContent) {
 				showToast("Starting generation...", "info");
 				// Get the buttons for handleGenAssistant
 				const primaryBtn = document.getElementById("primary-action-btn");
@@ -2688,6 +2890,54 @@ document.addEventListener("DOMContentLoaded", () => {
 		messageFilename,
 		messageRole,
 	) {
+		// For user and system messages, enter fork-edit mode
+		// For assistant messages, fork immediately
+		if (messageRole === "user" || messageRole === "system") {
+			// Find the message element
+			const messageElement = document.querySelector(
+				`[data-filename="${messageFilename}"]`,
+			);
+			if (!messageElement) {
+				showToast("Could not find message element", "error");
+				return;
+			}
+
+			// Find the content wrapper and actions div
+			const contentWrapperDiv = messageElement.querySelector(
+				".message-content-wrapper",
+			);
+			const actionsDiv = messageElement.querySelector(".message-actions");
+
+			if (!contentWrapperDiv || !actionsDiv) {
+				showToast("Could not find message components", "error");
+				return;
+			}
+
+			// Get the current content
+			const currentContent = contentWrapperDiv.textContent;
+
+			// Enter fork-edit mode
+			toggleForkEditState(
+				messageElement,
+				contentWrapperDiv,
+				actionsDiv,
+				currentContent,
+				conversationId,
+				messageFilename,
+				messageRole,
+			);
+		} else {
+			// For assistant messages, fork immediately as before
+			executeForkFromMessage(conversationId, messageFilename, messageRole);
+		}
+	}
+
+	async function executeForkFromMessage(
+		conversationId,
+		messageFilename,
+		messageRole,
+		editedContent = null,
+	) {
 		// Fork the conversation first
 		try {
 			const response = await authFetch(
@@ -2720,6 +2970,7 @@ document.addEventListener("DOMContentLoaded", () => {
 					messageRole: messageRole,
 					deleteAfter: messageRole === "assistant", // Delete including assistant message
 					triggerGenerate: true,
+					editedContent: editedContent, // Include edited content if provided
 				};
 				localStorage.setItem(
 					`fork-action-${newConversationId}`,
