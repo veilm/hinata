@@ -37,20 +37,10 @@
 						class="settings-toggle-btn"
 						title="Settings"
 					>
-						<svg
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<circle cx="12" cy="12" r="3"></circle>
-							<path
-								d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M23 12h-6m-6 0H1m13.22 4.22l4.24 4.24M1.54 22.46l4.24-4.24"
-							></path>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu-icon lucide-menu">
+							<path d="M4 12h16"/>
+							<path d="M4 18h16"/>
+							<path d="M4 6h16"/>
 						</svg>
 					</button>
 				</div>
@@ -87,7 +77,12 @@
 								id="modal-pin-toggle-btn"
 								class="settings-action-btn"
 							>
-								<span class="action-icon">📌</span>
+								<span class="action-icon">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pin">
+										<path d="M12 17v5"/>
+										<path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 0-1-1 2 2 0 0 0-2 2v3.76z"/>
+									</svg>
+								</span>
 								<span id="modal-pin-text">Pin Conversation</span>
 							</button>
 
@@ -96,7 +91,14 @@
 								id="modal-fork-btn"
 								class="settings-action-btn"
 							>
-								<span class="action-icon">🔀</span>
+								<span class="action-icon">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-split-icon lucide-split">
+										<path d="M16 3h5v5"/>
+										<path d="M8 3H3v5"/>
+										<path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/>
+										<path d="m15 9 6-6"/>
+									</svg>
+								</span>
 								<span>Fork Conversation</span>
 							</button>
 
@@ -105,18 +107,17 @@
 								id="modal-share-btn"
 								class="settings-action-btn"
 							>
-								<span class="action-icon">🔗</span>
+								<span class="action-icon">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-icon lucide-users">
+										<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+										<path d="M16 3.128a4 4 0 0 1 0 7.744"/>
+										<path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+										<circle cx="9" cy="7" r="4"/>
+									</svg>
+								</span>
 								<span>Share Conversation</span>
 							</button>
 
-							<button
-								type="button"
-								id="modal-jump-btn"
-								class="settings-action-btn"
-							>
-								<span class="action-icon">↓</span>
-								<span>Jump to Latest Message</span>
-							</button>
 						</div>
 					</div>
 				</div>

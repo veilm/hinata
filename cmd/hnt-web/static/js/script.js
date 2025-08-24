@@ -509,7 +509,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		const modalPinText = document.getElementById("modal-pin-text");
 		const modalForkBtn = document.getElementById("modal-fork-btn");
 		const modalShareBtn = document.getElementById("modal-share-btn");
-		const modalJumpBtn = document.getElementById("modal-jump-btn");
 		const messagesContainer = document.getElementById("messages-container");
 		const otherFilesContainer = document.getElementById(
 			"other-files-container",
@@ -1111,24 +1110,11 @@ document.addEventListener("DOMContentLoaded", () => {
 				});
 			}
 
-			if (modalJumpBtn) {
-				const newJumpButton = modalJumpBtn.cloneNode(true);
-				modalJumpBtn.parentNode.replaceChild(newJumpButton, modalJumpBtn);
-				newJumpButton.disabled = false;
-				newJumpButton.addEventListener("click", () => {
-					settingsModal.classList.add("hidden"); // Close modal
-					jumpToLatestMessage();
-				});
-			}
-
 			// Setup settings modal toggle
 			if (settingsToggleBtn) {
 				settingsToggleBtn.addEventListener("click", () => {
 					settingsModal.classList.remove("hidden");
-					// Focus on title input when opened via settings button
-					if (modalTitleInput) {
-						setTimeout(() => modalTitleInput.focus(), 100);
-					}
+					// Don't focus on title input when opened via settings button
 				});
 			}
 
@@ -2447,7 +2433,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 			const responseData = await response.json(); // Expects {"is_pinned": boolean, "status": "..."}
 			if (buttonElement) {
-				buttonElement.textContent = responseData.is_pinned ? "Unpin" : "Pin";
+				const pinTextElem = buttonElement.querySelector("#modal-pin-text");
+				if (pinTextElem) {
+					pinTextElem.textContent = responseData.is_pinned ? "Unpin Conversation" : "Pin Conversation";
+				} else {
+					// Fallback for elements without the span structure
+					buttonElement.textContent = responseData.is_pinned ? "Unpin" : "Pin";
+				}
 			}
 
 			// Show success toast
