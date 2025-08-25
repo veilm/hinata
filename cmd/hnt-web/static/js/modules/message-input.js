@@ -597,5 +597,5 @@ export {
 	setupMessageInputArea,
 	updateSplitButtonState,
 	handleAddMessage,
-	handleGenAssistant
+	handleGenAssistant,
 };

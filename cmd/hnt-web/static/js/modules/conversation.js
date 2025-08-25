@@ -11,25 +11,25 @@ import {
 	showMessageInfoModal,
 	updateGlobalActionButtonsState,
 } from "./ui-utils.js";
-import { 
-	DEFAULT_MODEL_NAME, 
+import {
+	DEFAULT_MODEL_NAME,
 	ICON_PIN,
 	ICON_INFO,
 	ICON_PENCIL,
 	ICON_SPLIT,
 	ICON_ARCHIVE,
-	ICON_COPY
+	ICON_COPY,
 } from "./constants.js";
 import {
 	toggleEditState,
 	handleArchiveMessage,
 	handleCopyMessage,
-	toggleForkEditState
+	toggleForkEditState,
 } from "./message-actions.js";
-import { 
+import {
 	setupMessageInputArea,
 	updateSplitButtonState,
-	setLoadConversationDetails
+	setLoadConversationDetails,
 } from "./message-input.js";
 import { showShareModal } from "./share.js";
 
