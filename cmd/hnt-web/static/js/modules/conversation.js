@@ -25,11 +25,14 @@ import {
 	handleArchiveMessage,
 	handleCopyMessage,
 	toggleForkEditState,
+	setForkFunctions,
+	setLoadConversationDetailsRef,
 } from "./message-actions.js";
 import {
 	setupMessageInputArea,
 	updateSplitButtonState,
 	setLoadConversationDetails,
+	handleGenAssistant,
 } from "./message-input.js";
 import { showShareModal } from "./share.js";
 
@@ -1467,3 +1470,9 @@ export {
 
 // Set the loadConversationDetails function in message-input module to avoid circular dependency
 setLoadConversationDetails(loadConversationDetails);
+
+// Set the fork functions in message-actions module to avoid circular dependency
+setForkFunctions(handleForkFromMessage, executeForkFromMessage);
+
+// Set the loadConversationDetails function in message-actions module to avoid circular dependency
+setLoadConversationDetailsRef(loadConversationDetails);

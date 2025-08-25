@@ -10,6 +10,7 @@ import {
 	setButtonsDisabledState,
 	updateGlobalActionButtonsState,
 	showMessageInfoModal,
+	jumpToLatestMessage,
 } from "./ui-utils.js";
 import {
 	ICON_INFO,
@@ -20,6 +21,21 @@ import {
 	ICON_SAVE,
 	ICON_X,
 } from "./constants.js";
+import { updateSplitButtonState } from "./message-input.js";
+
+// Store references to functions to avoid circular dependency
+let handleForkFromMessageRef = null;
+let executeForkFromMessageRef = null;
+let loadConversationDetailsRef = null;
+
+function setForkFunctions(handleFork, executeFork) {
+	handleForkFromMessageRef = handleFork;
+	executeForkFromMessageRef = executeFork;
+}
+
+function setLoadConversationDetailsRef(fn) {
+	loadConversationDetailsRef = fn;
+}
 
 function toggleEditState(
 	messageElement,
@@ -60,7 +76,11 @@ function toggleEditState(
 
 		const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
 			const role = messageElement.dataset.role || "unknown";
-			handleForkFromMessage(conversationId, filename, role);
+			if (handleForkFromMessageRef) {
+				handleForkFromMessageRef(conversationId, filename, role);
+			} else {
+				console.error("handleForkFromMessage not initialized");
+			}
 		});
 		forkButton.title = "Fork from here";
 
@@ -187,7 +207,11 @@ function toggleForkEditState(
 		editButton.title = "Edit";
 
 		const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
-			handleForkFromMessage(conversationId, filename, messageRole);
+			if (handleForkFromMessageRef) {
+				handleForkFromMessageRef(conversationId, filename, messageRole);
+			} else {
+				console.error("handleForkFromMessage not initialized");
+			}
 		});
 		forkButton.title = "Fork from here";
 
@@ -293,12 +317,16 @@ async function handleForkSave(
 
 	try {
 		// Execute the fork with the edited content
-		await executeForkFromMessage(
-			conversationId,
-			filename,
-			messageRole,
-			editedContent,
-		);
+		if (executeForkFromMessageRef) {
+			await executeForkFromMessageRef(
+				conversationId,
+				filename,
+				messageRole,
+				editedContent,
+			);
+		} else {
+			throw new Error("executeForkFromMessage not initialized");
+		}
 		// The executeForkFromMessage will redirect, so we don't need to update UI here
 	} catch (error) {
 		console.error("Error during fork:", error);
@@ -403,7 +431,11 @@ async function handleArchiveMessage(
 		showToast("Message archived", "success");
 
 		// Reload the conversation to update the "Deleted Messages" section
-		loadConversationDetails(conversationId);
+		if (loadConversationDetailsRef) {
+			loadConversationDetailsRef(conversationId);
+		} else {
+			console.error("loadConversationDetails not initialized");
+		}
 	} catch (error) {
 		console.error("Error archiving message:", error);
 		handleError(
@@ -477,4 +509,6 @@ export {
 	handleCopyMessage,
 	handleArchiveMessage,
 	handleSaveMessage,
+	setForkFunctions,
+	setLoadConversationDetailsRef,
 };
