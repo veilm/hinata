@@ -162,6 +162,9 @@ function renderMarkdown(text) {
 	html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
 	html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
 
+	// Horizontal rules (*** alone on a line) - handle before code blocks
+	html = html.replace(/^\*\*\*$/gm, "<hr>");
+
 	// Code blocks (```) - protect from further processing
 	const codeBlocks = [];
 	html = html.replace(/```([\s\S]*?)```/g, function (match, code) {
