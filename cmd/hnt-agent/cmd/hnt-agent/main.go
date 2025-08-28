@@ -280,7 +280,7 @@ func runSpinnerDemo(cmd *cobra.Command, args []string) error {
 	var sp spinner.Spinner
 	if spinnerFile != "" {
 		// Load spinner from file
-		sp, err = loadSpinnerFromFile(spinnerFile)
+		sp, err = spinner.LoadSpinnerFromFile(spinnerFile)
 		if err != nil {
 			return fmt.Errorf("failed to load spinner from file: %w", err)
 		}
@@ -313,27 +313,4 @@ func runSpinnerDemo(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	return nil
-}
-
-func loadSpinnerFromFile(path string) (spinner.Spinner, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return spinner.Spinner{}, err
-	}
-
-	// Split by newlines without trimming to preserve leading spaces in frames
-	lines := strings.Split(string(content), "\n")
-	// Remove empty trailing line if exists
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	if len(lines) == 0 {
-		return spinner.Spinner{}, fmt.Errorf("spinner file is empty")
-	}
-
-	return spinner.Spinner{
-		Name:   filepath.Base(path),
-		Frames: lines,
-		Speed:  150 * time.Millisecond, // Default speed
-	}, nil
 }

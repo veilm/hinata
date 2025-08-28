@@ -126,26 +126,11 @@ func New(cfg Config) (*Agent, error) {
 	// Load custom spinner if specified
 	var customSpinner *spinner.Spinner
 	if cfg.SpinnerFile != "" {
-		content, err := os.ReadFile(cfg.SpinnerFile)
+		sp, err := spinner.LoadSpinnerFromFile(cfg.SpinnerFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read spinner file: %w", err)
+			return nil, fmt.Errorf("failed to load spinner from file: %w", err)
 		}
-
-		// Split by newlines without trimming to preserve leading spaces in frames
-		lines := strings.Split(string(content), "\n")
-		// Remove empty trailing line if exists
-		if len(lines) > 0 && lines[len(lines)-1] == "" {
-			lines = lines[:len(lines)-1]
-		}
-		if len(lines) == 0 {
-			return nil, fmt.Errorf("spinner file is empty")
-		}
-
-		customSpinner = &spinner.Spinner{
-			Name:   filepath.Base(cfg.SpinnerFile),
-			Frames: lines,
-			Speed:  150 * time.Millisecond,
-		}
+		customSpinner = &sp
 	}
 
 	// Default prompt height if not specified

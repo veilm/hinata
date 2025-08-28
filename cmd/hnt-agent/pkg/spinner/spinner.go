@@ -118,22 +118,14 @@ func loadSpinnersFromConfig() error {
 
 		// Read frames from text file
 		framesPath := filepath.Join(configDir, sc.Filename)
-		framesData, err := os.ReadFile(framesPath)
+		sp, err := LoadSpinnerFromFile(framesPath)
 		if err != nil {
 			continue
 		}
 
-		// Split into lines
-		lines := strings.Split(strings.TrimSpace(string(framesData)), "\n")
-		if len(lines) == 0 {
-			continue
-		}
-
-		SPINNERS = append(SPINNERS, Spinner{
-			Name:   sc.Filename,
-			Frames: lines,
-			Speed:  time.Duration(sc.Interval) * time.Millisecond,
-		})
+		// Override speed from config
+		sp.Speed = time.Duration(sc.Interval) * time.Millisecond
+		SPINNERS = append(SPINNERS, sp)
 	}
 
 	// Filter spinners based on Unicode support
@@ -251,6 +243,32 @@ func GetUnicodeSupportString() string {
 	default:
 		return "Unknown"
 	}
+}
+
+// LoadSpinnerFromFile loads a spinner from a text file
+// Each line in the file becomes a frame in the spinner
+// Empty trailing lines are removed, but leading spaces are preserved
+func LoadSpinnerFromFile(path string) (Spinner, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return Spinner{}, err
+	}
+
+	// Split by newlines without trimming to preserve leading spaces in frames
+	lines := strings.Split(string(content), "\n")
+	// Remove empty trailing line if exists
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		return Spinner{}, fmt.Errorf("spinner file is empty")
+	}
+
+	return Spinner{
+		Name:   filepath.Base(path),
+		Frames: lines,
+		Speed:  150 * time.Millisecond, // Default speed
+	}, nil
 }
 
 // FormatStatusLine creates a formatted status line with message, timer, and spinner frame
