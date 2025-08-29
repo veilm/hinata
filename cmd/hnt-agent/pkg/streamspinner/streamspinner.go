@@ -135,7 +135,7 @@ func (s *StreamingSpinner) run() {
 			s.mu.Lock()
 			if s.active {
 				s.clearLine()
-				s.drawSpinner()
+				s.drawSpinnerWithFrame(true) // Advance frame on ticker
 			}
 			s.mu.Unlock()
 		}
@@ -143,8 +143,17 @@ func (s *StreamingSpinner) run() {
 }
 
 func (s *StreamingSpinner) drawSpinner() {
-	// Get next frame and status line
-	statusLine := s.animator.NextFrame()
+	s.drawSpinnerWithFrame(false)
+}
+
+func (s *StreamingSpinner) drawSpinnerWithFrame(advance bool) {
+	// Get frame and status line
+	var statusLine string
+	if advance {
+		statusLine = s.animator.NextFrame()
+	} else {
+		statusLine = s.animator.GetCurrentStatus()
+	}
 
 	// Display with margin
 	fmt.Printf("%s", s.margin)
