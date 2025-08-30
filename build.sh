@@ -47,7 +47,7 @@ printf "${GREEN}${BOLD}[✓]${NC} Found ${BOLD}%s${NC}\n" "$GO_VERSION"
 bins="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-agent shell-exec tui-select hnt-web"
 
 # Count total binaries
-total=$(echo $bins | wc -w)
+total=$(echo $bins | wc -w | tr -d ' ')
 current=0
 
 # Download dependencies for the main module
