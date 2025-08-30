@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/keymanagement"
 )
@@ -34,6 +37,26 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 	go func() {
 		defer close(eventChan)
 		defer close(errChan)
+
+		// Setup debug logging if enabled
+		var debugLogger *log.Logger
+		if debugPath := os.Getenv("HINATA_STREAM_DEBUG"); debugPath != "" {
+			logDir := filepath.Join(os.TempDir(), "hinata-stream-debug")
+			os.MkdirAll(logDir, 0755)
+
+			timestamp := time.Now().Format("20060102-150405")
+			logFile := filepath.Join(logDir, fmt.Sprintf("stream-%s.log", timestamp))
+
+			if file, err := os.Create(logFile); err == nil {
+				debugLogger = log.New(file, "", log.Ldate|log.Ltime|log.Lmicroseconds)
+				debugLogger.Printf("=== Stream Debug Log Started ===")
+				debugLogger.Printf("Model: %s", config.Model)
+				defer func() {
+					debugLogger.Printf("=== Stream Debug Log Ended ===")
+					file.Close()
+				}()
+			}
+		}
 
 		providerName, modelName := "openrouter", config.Model
 		if idx := strings.Index(config.Model, "/"); idx != -1 {
@@ -118,12 +141,20 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 
 		reader := bufio.NewReader(resp.Body)
 		var buffer bytes.Buffer
+		isDone := false
 
 		for {
 			chunk, err := reader.ReadBytes('\n')
 			if err != nil && err != io.EOF {
+				if debugLogger != nil {
+					debugLogger.Printf("Read error: %v", err)
+				}
 				errChan <- err
 				return
+			}
+
+			if debugLogger != nil && len(chunk) > 0 {
+				debugLogger.Printf("Read %d bytes: %q", len(chunk), string(chunk))
 			}
 
 			buffer.Write(chunk)
@@ -146,7 +177,11 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 				dataStr = strings.TrimSpace(dataStr)
 
 				if dataStr == "[DONE]" {
-					return
+					if debugLogger != nil {
+						debugLogger.Printf("Received [DONE] signal, will process remaining buffer")
+					}
+					isDone = true
+					continue // Process remaining events in buffer before returning
 				}
 
 				var chunk ApiResponseChunk
@@ -158,6 +193,9 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 					delta := chunk.Choices[0].Delta
 
 					if delta.Content != nil && *delta.Content != "" {
+						if debugLogger != nil {
+							debugLogger.Printf("Sending content: %q", *delta.Content)
+						}
 						eventChan <- StreamEvent{Content: *delta.Content}
 					}
 
@@ -171,9 +209,15 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 				}
 			}
 
-			if err == io.EOF {
+			// Check if we should exit:
+			// 1. We've seen [DONE] and processed all events in buffer
+			// 2. We've reached EOF
+			if isDone || err == io.EOF {
+				if debugLogger != nil {
+					debugLogger.Printf("Exit condition: isDone=%v, EOF=%v, bufferLen=%d", isDone, err == io.EOF, buffer.Len())
+				}
 				// Process any remaining data in the buffer before returning
-				if buffer.Len() > 0 {
+				if buffer.Len() > 0 && !isDone {
 					// Check if there's an incomplete SSE event in the buffer
 					eventStr := strings.TrimSpace(buffer.String())
 					if strings.HasPrefix(eventStr, "data: ") {
@@ -200,7 +244,14 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 						}
 					}
 				}
-				return
+
+				// Only return if we've seen [DONE] or reached EOF with no more data
+				if isDone || err == io.EOF {
+					if debugLogger != nil {
+						debugLogger.Printf("Exiting stream loop")
+					}
+					return
+				}
 			}
 		}
 	}()
