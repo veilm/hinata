@@ -17,10 +17,13 @@ export HNT_AGENT_DEBUG=1
 
 hnt-agent -m "please do the following
 1. look at the git log to read the last 10 commit messages
-2. see which files have been changed
-	2a. read their git diff
-	2b. cat them to read in full, for additional context
-3. commit the changes
+	make sure you see them in full, including any summary or body. we shouldn't
+	just look at a summary and guess at what the body's format is, for example
+2. look at the current branch name, in case it gives further context
+3. see which files have been changed
+	3a. read their git diff
+	3b. cat them to read in full, for additional context
+4. commit the changes
 	BUT make sure your commit messages matches the style you saw in step 1. even
 	if it's unideal or you personally dislike that style, we should make sure to
 	match it faithfully

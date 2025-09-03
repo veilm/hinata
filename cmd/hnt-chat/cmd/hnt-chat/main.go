@@ -625,8 +625,8 @@ func determineConversationDir(cliPath string) (string, error) {
 		if filepath.IsAbs(inputPath) {
 			// a. If it's an absolute path, use it
 			convPath = inputPath
-		} else if strings.HasPrefix(inputPath, "./") {
-			// d. If it explicitly starts with "./" then only look at current dir
+		} else if strings.HasPrefix(inputPath, "./") || inputPath == "." {
+			// d. If it explicitly starts with "./" or is "." then only look at current dir
 			convPath = inputPath
 		} else {
 			// b. Check if it exists relative to conversations home dir
