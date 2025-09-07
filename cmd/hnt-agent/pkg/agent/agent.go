@@ -113,6 +113,10 @@ func New(cfg Config) (*Agent, error) {
 		}
 	}
 
+	if existingAliases, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-aliases.txt")); err == nil {
+		executor.Aliases = string(existingAliases)
+	}
+
 	// Create debug log file
 	var logger *log.Logger
 	if debugEnv := os.Getenv("HNT_AGENT_DEBUG"); debugEnv != "" {
@@ -442,7 +446,12 @@ func (a *Agent) saveState() error {
 		return err
 	}
 
-	return os.WriteFile(envFile, envData, 0644)
+	if err := os.WriteFile(envFile, envData, 0644); err != nil {
+		return err
+	}
+
+	aliasFile := filepath.Join(a.ConversationDir, "hnt-agent-aliases.txt")
+	return os.WriteFile(aliasFile, []byte(a.shellExecutor.Aliases), 0644)
 }
 
 func (a *Agent) printTurnHeader(role string, turn int) {

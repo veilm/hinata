@@ -9,22 +9,25 @@ import (
 )
 
 type ExecutionResult struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
-	FinalPwd string
-	FinalEnv map[string]string
+	Stdout       string
+	Stderr       string
+	ExitCode     int
+	FinalPwd     string
+	FinalEnv     map[string]string
+	FinalAliases string
 }
 
 type Executor struct {
 	WorkingDir string
 	Env        map[string]string
+	Aliases    string
 }
 
 func NewExecutor(workingDir string) *Executor {
 	return &Executor{
 		WorkingDir: workingDir,
 		Env:        make(map[string]string),
+		Aliases:    "",
 	}
 }
 
@@ -45,6 +48,11 @@ func (e *Executor) Execute(commands string) (*ExecutionResult, error) {
 		return nil, fmt.Errorf("failed to write env file: %w", err)
 	}
 
+	aliasFile := filepath.Join(tmpDir, "aliases.sh")
+	if err := e.writeAliasFile(aliasFile); err != nil {
+		return nil, fmt.Errorf("failed to write alias file: %w", err)
+	}
+
 	pwdFile := filepath.Join(tmpDir, "pwd.txt")
 	if err := os.WriteFile(pwdFile, []byte(e.WorkingDir), 0600); err != nil {
 		return nil, fmt.Errorf("failed to write pwd file: %w", err)
@@ -52,6 +60,7 @@ func (e *Executor) Execute(commands string) (*ExecutionResult, error) {
 
 	finalPwdFile := filepath.Join(tmpDir, "final_pwd.txt")
 	finalEnvFile := filepath.Join(tmpDir, "final_env.txt")
+	finalAliasFile := filepath.Join(tmpDir, "final_aliases.txt")
 
 	wrapperScript := fmt.Sprintf(`#!/bin/bash
 set -o allexport
@@ -61,14 +70,21 @@ if [ -f "%s" ]; then
 fi
 set +o allexport
 
+# Enable alias expansion and load aliases
+shopt -s expand_aliases
+if [ -f "%s" ]; then
+    . "%s" 2>/dev/null || true
+fi
+
 . "%s"
 HINATA_EXIT_CODE=$?
 
 pwd > "%s"
 set > "%s"
+alias > "%s"
 
 exit $HINATA_EXIT_CODE
-`, e.WorkingDir, envFile, envFile, commandsFile, finalPwdFile, finalEnvFile)
+`, e.WorkingDir, envFile, envFile, aliasFile, aliasFile, commandsFile, finalPwdFile, finalEnvFile, finalAliasFile)
 
 	wrapperFile := filepath.Join(tmpDir, "wrapper.sh")
 	if err := os.WriteFile(wrapperFile, []byte(wrapperScript), 0700); err != nil {
@@ -108,15 +124,23 @@ exit $HINATA_EXIT_CODE
 		return nil, fmt.Errorf("failed to parse final env: %w", err)
 	}
 
+	finalAliases, err := os.ReadFile(finalAliasFile)
+	if err != nil {
+		// If we can't read aliases, just use empty string
+		finalAliases = []byte{}
+	}
+
 	e.WorkingDir = strings.TrimSpace(string(finalPwd))
 	e.Env = finalEnv
+	e.Aliases = string(finalAliases)
 
 	return &ExecutionResult{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		ExitCode: exitCode,
-		FinalPwd: e.WorkingDir,
-		FinalEnv: e.Env,
+		Stdout:       stdout.String(),
+		Stderr:       stderr.String(),
+		ExitCode:     exitCode,
+		FinalPwd:     e.WorkingDir,
+		FinalEnv:     e.Env,
+		FinalAliases: e.Aliases,
 	}, nil
 }
 
@@ -126,6 +150,29 @@ func (e *Executor) writeEnvFile(path string) error {
 		lines = append(lines, fmt.Sprintf("export %s=%q", k, v))
 	}
 	content := strings.Join(lines, "\n")
+	return os.WriteFile(path, []byte(content), 0600)
+}
+
+func (e *Executor) writeAliasFile(path string) error {
+	// The 'alias' command output doesn't include the 'alias' prefix
+	// but we need it when sourcing. Convert "ll='ls -l'" to "alias ll='ls -l'"
+	if e.Aliases == "" {
+		return os.WriteFile(path, []byte(""), 0600)
+	}
+
+	lines := strings.Split(strings.TrimSpace(e.Aliases), "\n")
+	var prefixedLines []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "alias ") {
+			line = "alias " + line
+		}
+		if line != "" {
+			prefixedLines = append(prefixedLines, line)
+		}
+	}
+
+	content := strings.Join(prefixedLines, "\n")
 	return os.WriteFile(path, []byte(content), 0600)
 }
 

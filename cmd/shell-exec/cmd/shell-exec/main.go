@@ -15,6 +15,7 @@ func main() {
 	var (
 		workingDir = flag.String("pwd", "", "Initial working directory (default: current directory)")
 		envFile    = flag.String("env", "", "JSON file containing initial environment variables")
+		aliasFile  = flag.String("aliases", "", "File containing initial aliases (output of 'alias' command)")
 		jsonOutput = flag.Bool("json", false, "Output result as JSON")
 	)
 	flag.Parse()
@@ -46,6 +47,15 @@ func main() {
 		executor.Env = env
 	}
 
+	if *aliasFile != "" {
+		data, err := os.ReadFile(*aliasFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading alias file: %v\n", err)
+			os.Exit(1)
+		}
+		executor.Aliases = string(data)
+	}
+
 	commands, err := readAllInput()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
@@ -60,11 +70,12 @@ func main() {
 
 	if *jsonOutput {
 		output := map[string]interface{}{
-			"stdout":    result.Stdout,
-			"stderr":    result.Stderr,
-			"exit_code": result.ExitCode,
-			"final_pwd": result.FinalPwd,
-			"final_env": result.FinalEnv,
+			"stdout":        result.Stdout,
+			"stderr":        result.Stderr,
+			"exit_code":     result.ExitCode,
+			"final_pwd":     result.FinalPwd,
+			"final_env":     result.FinalEnv,
+			"final_aliases": result.FinalAliases,
 		}
 
 		encoder := json.NewEncoder(os.Stdout)
