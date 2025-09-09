@@ -100,21 +100,32 @@ func New(cfg Config) (*Agent, error) {
 		}
 	}
 
-	executor := shell.NewExecutor(pwd)
+	// Load or create shell state
+	stateFile := filepath.Join(cfg.ConversationDir, "hnt-agent-state.json")
+	var executor *shell.Executor
 
-	if existingPwd, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-pwd.txt")); err == nil {
-		executor.WorkingDir = strings.TrimSpace(string(existingPwd))
-	}
+	if state, err := shell.LoadState(stateFile); err == nil {
+		// Loaded existing state
+		executor = shell.NewExecutorFromState(state)
+	} else {
+		// Create new state
+		executor = shell.NewExecutor(pwd)
 
-	if existingEnv, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-env.json")); err == nil {
-		var env map[string]string
-		if err := json.Unmarshal(existingEnv, &env); err == nil {
-			executor.Env = env
+		// Check for legacy state files and migrate if they exist
+		if existingPwd, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-pwd.txt")); err == nil {
+			executor.WorkingDir = strings.TrimSpace(string(existingPwd))
 		}
-	}
 
-	if existingAliases, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-aliases.txt")); err == nil {
-		executor.Aliases = string(existingAliases)
+		if existingEnv, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-env.json")); err == nil {
+			var env map[string]string
+			if err := json.Unmarshal(existingEnv, &env); err == nil {
+				executor.Env = env
+			}
+		}
+
+		if existingAliases, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-aliases.txt")); err == nil {
+			executor.Aliases = string(existingAliases)
+		}
 	}
 
 	// Create debug log file
@@ -435,23 +446,9 @@ func (a *Agent) writeMessage(role, content string) error {
 }
 
 func (a *Agent) saveState() error {
-	pwdFile := filepath.Join(a.ConversationDir, "hnt-agent-pwd.txt")
-	if err := os.WriteFile(pwdFile, []byte(a.shellExecutor.WorkingDir), 0644); err != nil {
-		return err
-	}
-
-	envFile := filepath.Join(a.ConversationDir, "hnt-agent-env.json")
-	envData, err := json.MarshalIndent(a.shellExecutor.Env, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(envFile, envData, 0644); err != nil {
-		return err
-	}
-
-	aliasFile := filepath.Join(a.ConversationDir, "hnt-agent-aliases.txt")
-	return os.WriteFile(aliasFile, []byte(a.shellExecutor.Aliases), 0644)
+	stateFile := filepath.Join(a.ConversationDir, "hnt-agent-state.json")
+	state := a.shellExecutor.GetState()
+	return shell.SaveState(state, stateFile)
 }
 
 func (a *Agent) printTurnHeader(role string, turn int) {

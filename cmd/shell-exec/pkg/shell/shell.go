@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,12 +24,66 @@ type Executor struct {
 	Aliases    string
 }
 
+// State represents the complete shell state as JSON
+type State struct {
+	Pwd     string            `json:"pwd"`
+	Env     map[string]string `json:"env"`
+	Aliases string            `json:"aliases"`
+}
+
 func NewExecutor(workingDir string) *Executor {
 	return &Executor{
 		WorkingDir: workingDir,
 		Env:        make(map[string]string),
 		Aliases:    "",
 	}
+}
+
+// NewExecutorFromState creates an Executor from a State
+func NewExecutorFromState(state *State) *Executor {
+	return &Executor{
+		WorkingDir: state.Pwd,
+		Env:        state.Env,
+		Aliases:    state.Aliases,
+	}
+}
+
+// GetState returns the current state of the Executor
+func (e *Executor) GetState() *State {
+	return &State{
+		Pwd:     e.WorkingDir,
+		Env:     e.Env,
+		Aliases: e.Aliases,
+	}
+}
+
+// LoadState loads state from a JSON file
+func LoadState(path string) (*State, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var state State
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, err
+	}
+
+	// Initialize env map if nil
+	if state.Env == nil {
+		state.Env = make(map[string]string)
+	}
+
+	return &state, nil
+}
+
+// SaveState saves state to a JSON file
+func SaveState(state *State, path string) error {
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func (e *Executor) Execute(commands string) (*ExecutionResult, error) {
