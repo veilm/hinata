@@ -64,6 +64,7 @@ type Config struct {
 	AutoExit        bool
 	Theme           string
 	PromptHeight    int
+	ShellStartup    string
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -125,6 +126,35 @@ func New(cfg Config) (*Agent, error) {
 
 		if existingAliases, err := os.ReadFile(filepath.Join(cfg.ConversationDir, "hnt-agent-aliases.txt")); err == nil {
 			executor.Aliases = string(existingAliases)
+		}
+	}
+
+	// Run shell startup script if provided
+	if cfg.ShellStartup != "" {
+		// Check if file exists
+		if _, err := os.Stat(cfg.ShellStartup); err != nil {
+			return nil, fmt.Errorf("shell startup script not found: %w", err)
+		}
+
+		// Source the startup script
+		sourceCmd := fmt.Sprintf(". %s", cfg.ShellStartup)
+		result, err := executor.Execute(sourceCmd)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute shell startup script: %w", err)
+		}
+
+		// Check for errors in the startup script
+		if result.ExitCode != 0 {
+			return nil, fmt.Errorf("shell startup script failed with exit code %d: %s", result.ExitCode, result.Stderr)
+		}
+
+		// Save the state immediately after startup
+		state := executor.GetState()
+		if err := shell.SaveState(state, stateFile); err != nil {
+			// Log but don't fail if we can't save initial state
+			if debugEnv := os.Getenv("HNT_AGENT_DEBUG"); debugEnv != "" {
+				fmt.Fprintf(os.Stderr, "Warning: failed to save initial state after startup: %v\n", err)
+			}
 		}
 	}
 

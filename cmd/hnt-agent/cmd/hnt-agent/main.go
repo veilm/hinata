@@ -37,6 +37,7 @@ var (
 	autoExit        bool
 	theme           string
 	promptHeight    int
+	shellStartup    string
 )
 
 func main() {
@@ -73,6 +74,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
 	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
 	rootCmd.Flags().IntVar(&promptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
+	rootCmd.Flags().StringVar(&shellStartup, "shell-startup", "", "Shell script to source at startup (e.g., for aliases and environment)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -165,6 +167,7 @@ func run(cmd *cobra.Command, args []string) error {
 		AutoExit:        autoExit,
 		Theme:           theme,
 		PromptHeight:    promptHeight,
+		ShellStartup:    shellStartup,
 	}
 
 	ag, err := agent.New(cfg)
