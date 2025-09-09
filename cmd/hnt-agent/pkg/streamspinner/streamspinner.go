@@ -19,6 +19,7 @@ type StreamingSpinner struct {
 	mu         sync.Mutex
 	active     bool
 	stopCh     chan bool
+	done       chan bool   // Signal when goroutine is done
 	contentCh  chan string // Channel to receive new content lines
 	hasContent bool        // Track if any content has been printed yet
 }
@@ -32,6 +33,7 @@ func New(sp spinner.Spinner, margin string, colorFunc func(string)) *StreamingSp
 		colorFunc: colorFunc,
 		contentCh: make(chan string, 10),
 		stopCh:    make(chan bool, 1),
+		done:      make(chan bool, 1),
 	}
 }
 
@@ -66,16 +68,23 @@ func (s *StreamingSpinner) Stop() {
 	hasContent := s.hasContent
 	s.mu.Unlock()
 
-	// Signal stop
+	// Signal stop to goroutine
 	select {
 	case s.stopCh <- true:
 	default:
 	}
 
-	// Clear spinner line and the blank line above it
+	// Wait for goroutine to finish (it will drain content)
+	select {
+	case <-s.done:
+	case <-time.After(100 * time.Millisecond):
+		// Timeout fallback
+	}
+
+	// Clear the spinner line and blank line above if we had content
 	s.clearLine()
 	if hasContent {
-		fmt.Print("\033[1A\033[K") // Move up one line and clear the blank line
+		fmt.Print("\033[1A\033[K") // Move up and clear the blank line
 	}
 	cursor.Show()
 }
@@ -105,11 +114,25 @@ func (s *StreamingSpinner) PrintLine(line string) {
 func (s *StreamingSpinner) run() {
 	ticker := time.NewTicker(s.animator.GetSpeed())
 	defer ticker.Stop()
+	defer func() {
+		select {
+		case s.done <- true:
+		default:
+		}
+	}()
 
 	for {
 		select {
 		case <-s.stopCh:
-			return
+			// Drain any remaining content before exiting
+			for {
+				select {
+				case line := <-s.contentCh:
+					fmt.Printf("%s%s\n", s.margin, line)
+				default:
+					return
+				}
+			}
 
 		case line := <-s.contentCh:
 			// Clear spinner line and the blank line above it
