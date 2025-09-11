@@ -1,12 +1,12 @@
 #!/bin/sh
 
-if ! git config get user.name > /dev/null
+if ! git config --get user.name > /dev/null
 then
 	notify-send "set user.name for $PWD!"
 	exit 1
 fi
 
-if ! git config get user.email > /dev/null
+if ! git config --get user.email > /dev/null
 then
 	notify-send "set user.email for $PWD!"
 	exit 1
