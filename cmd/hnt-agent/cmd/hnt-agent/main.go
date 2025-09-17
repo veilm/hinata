@@ -38,6 +38,7 @@ var (
 	theme           string
 	promptHeight    int
 	shellStartup    string
+	useV2Streaming  bool
 )
 
 func main() {
@@ -75,6 +76,7 @@ func main() {
 	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
 	rootCmd.Flags().IntVar(&promptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
 	rootCmd.Flags().StringVar(&shellStartup, "shell-startup", "", "Shell script to source at startup (e.g., for aliases and environment)")
+	rootCmd.Flags().BoolVar(&useV2Streaming, "v2-streaming", true, "Use improved OutputCoordinator-based streaming (default true)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -168,6 +170,7 @@ func run(cmd *cobra.Command, args []string) error {
 		Theme:           theme,
 		PromptHeight:    promptHeight,
 		ShellStartup:    shellStartup,
+		UseV2Streaming:  useV2Streaming,
 	}
 
 	ag, err := agent.New(cfg)

@@ -169,7 +169,14 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 				buffer.Next(pos + termLen)
 
 				eventStr := string(event)
+				if debugLogger != nil {
+					debugLogger.Printf("Extracted event from buffer (len=%d): %q", len(eventStr), eventStr)
+				}
+
 				if !strings.HasPrefix(eventStr, "data: ") {
+					if debugLogger != nil {
+						debugLogger.Printf("DROPPING event (no 'data:' prefix): %q", eventStr)
+					}
 					continue
 				}
 
@@ -186,6 +193,9 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 
 				var chunk ApiResponseChunk
 				if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
+					if debugLogger != nil {
+						debugLogger.Printf("JSON unmarshal error for data: %q, error: %v", dataStr, err)
+					}
 					continue
 				}
 
@@ -220,6 +230,9 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 				if buffer.Len() > 0 && !isDone {
 					// Check if there's an incomplete SSE event in the buffer
 					eventStr := strings.TrimSpace(buffer.String())
+					if debugLogger != nil {
+						debugLogger.Printf("Processing remaining buffer at EOF (len=%d): %q", len(eventStr), eventStr)
+					}
 					if strings.HasPrefix(eventStr, "data: ") {
 						dataStr := strings.TrimPrefix(eventStr, "data: ")
 						dataStr = strings.TrimSpace(dataStr)
@@ -230,6 +243,9 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 								delta := chunk.Choices[0].Delta
 
 								if delta.Content != nil && *delta.Content != "" {
+									if debugLogger != nil {
+										debugLogger.Printf("Sending final buffer content: %q", *delta.Content)
+									}
 									eventChan <- StreamEvent{Content: *delta.Content}
 								}
 
@@ -240,8 +256,12 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 										eventChan <- StreamEvent{Reasoning: *delta.ReasoningContent}
 									}
 								}
+							} else if debugLogger != nil && err != nil {
+								debugLogger.Printf("JSON unmarshal error for final buffer data: %q, error: %v", dataStr, err)
 							}
 						}
+					} else if debugLogger != nil {
+						debugLogger.Printf("DROPPING final buffer (no 'data:' prefix): %q", eventStr)
 					}
 				}
 

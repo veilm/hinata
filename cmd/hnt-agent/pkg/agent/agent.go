@@ -39,6 +39,7 @@ type Agent struct {
 	UseEditor       bool
 	AutoExit        bool
 	PromptHeight    int
+	UseV2Streaming  bool  // Use the new OutputCoordinator-based streaming
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -65,6 +66,7 @@ type Config struct {
 	Theme           string
 	PromptHeight    int
 	ShellStartup    string
+	UseV2Streaming  bool  // Use the new OutputCoordinator-based streaming
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -198,6 +200,7 @@ func New(cfg Config) (*Agent, error) {
 		UseEditor:        cfg.UseEditor,
 		AutoExit:         cfg.AutoExit,
 		PromptHeight:     promptHeight,
+		UseV2Streaming:   cfg.UseV2Streaming,
 		shellExecutor:    executor,
 		turnCounter:      1,
 		humanTurnCounter: 1,
@@ -425,7 +428,10 @@ func (a *Agent) streamLLMResponse() (string, string, error) {
 		IncludeReasoning: !a.IgnoreReasoning,
 	}
 
-	// Always use buffered streaming
+	// Use V2 streaming if enabled, otherwise use buffered streaming
+	if a.UseV2Streaming {
+		return a.streamLLMResponseV2(config, packedBuf.String())
+	}
 	return a.streamLLMResponseBuffered(config, packedBuf.String())
 }
 
