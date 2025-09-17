@@ -55,9 +55,26 @@ The refactor is incremental:
 - Cleaner spinner state management
 - More predictable output behavior
 
+## Recent Improvements (Phase 2)
+
+### 1. Shell Command Synchronization
+- Removed hacky `time.Sleep(50ms)` after spinner
+- Shell commands now use OutputCoordinator when V2 is enabled
+- Proper synchronization via `Flush()` method
+
+### 2. EOF Handling in SSE Parser
+- Fixed bug where data could be lost when `ReadBytes` returns both data and `io.EOF`
+- Now always processes data before checking error conditions
+
+### 3. Proper Backpressure
+- OutputCoordinator methods now block properly instead of using timeouts
+- Removed fallback direct printing that caused race conditions
+- Added `TryPrintLine` for non-blocking attempts when needed
+- Commands queue properly applies backpressure to producers
+
 ## Future Work
 
 1. Remove old streaming method once V2 is proven stable
 2. Add metrics/logging to OutputCoordinator
-3. Consider adding output buffering for performance
-4. Implement proper backpressure handling
+3. Handle extremely long words that exceed wrap width in LineBuffer
+4. Add SSE buffer size limits to prevent memory exhaustion

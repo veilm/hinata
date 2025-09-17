@@ -2,7 +2,6 @@ package output
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -93,7 +92,22 @@ func (c *Coordinator) Stop() {
 }
 
 // PrintLine prints a content line, handling spinner state appropriately
+// This method blocks until the command is sent
 func (c *Coordinator) PrintLine(margin string, content string, color *color.Color) {
+	cmd := Command{
+		Type:    CmdPrintLine,
+		Content: content,
+		Color:   color,
+		Margin:  margin,
+	}
+
+	// Block until we can send - this provides proper backpressure
+	c.commands <- cmd
+}
+
+// TryPrintLine attempts to print a line without blocking
+// Returns false if the channel is full
+func (c *Coordinator) TryPrintLine(margin string, content string, color *color.Color) bool {
 	cmd := Command{
 		Type:    CmdPrintLine,
 		Content: content,
@@ -103,21 +117,14 @@ func (c *Coordinator) PrintLine(margin string, content string, color *color.Colo
 
 	select {
 	case c.commands <- cmd:
-	case <-time.After(100 * time.Millisecond):
-		// Channel full - print directly as fallback
-		c.directPrint(margin, content, color)
+		return true
+	default:
+		return false
 	}
 }
 
 // ShowSpinner starts displaying a spinner
 func (c *Coordinator) ShowSpinner(sp spinner.Spinner, message string, margin string, colorFunc func(string)) {
-	cmd := Command{
-		Type:      CmdShowSpinner,
-		Content:   message,
-		Margin:    margin,
-		Callback:  make(chan bool, 1),
-	}
-
 	// Store spinner config
 	c.mu.Lock()
 	c.animator = spinner.NewAnimator(sp, message)
@@ -125,12 +132,16 @@ func (c *Coordinator) ShowSpinner(sp spinner.Spinner, message string, margin str
 	c.colorFunc = colorFunc
 	c.mu.Unlock()
 
-	select {
-	case c.commands <- cmd:
-		// Wait for confirmation
-		<-cmd.Callback
-	case <-time.After(100 * time.Millisecond):
+	cmd := Command{
+		Type:      CmdShowSpinner,
+		Content:   message,
+		Margin:    margin,
+		Callback:  make(chan bool, 1),
 	}
+
+	// Send command and wait for confirmation - blocks for backpressure
+	c.commands <- cmd
+	<-cmd.Callback
 }
 
 // UpdateSpinner updates the spinner animation
@@ -149,12 +160,9 @@ func (c *Coordinator) HideSpinner() {
 		Callback: make(chan bool, 1),
 	}
 
-	select {
-	case c.commands <- cmd:
-		// Wait for confirmation
-		<-cmd.Callback
-	case <-time.After(100 * time.Millisecond):
-	}
+	// Send command and wait for confirmation - blocks for backpressure
+	c.commands <- cmd
+	<-cmd.Callback
 }
 
 // Flush ensures all pending output has been written
@@ -164,12 +172,9 @@ func (c *Coordinator) Flush() {
 		Callback: make(chan bool, 1),
 	}
 
-	select {
-	case c.commands <- cmd:
-		// Wait for confirmation
-		<-cmd.Callback
-	case <-time.After(100 * time.Millisecond):
-	}
+	// Send command and wait for confirmation - blocks for backpressure
+	c.commands <- cmd
+	<-cmd.Callback
 }
 
 // run is the main goroutine that processes all output commands
@@ -348,15 +353,4 @@ func (c *Coordinator) updateSpinnerFrame() {
 // clearSpinner clears the spinner line
 func (c *Coordinator) clearSpinner() {
 	fmt.Print("\r\033[K")
-}
-
-// directPrint is a fallback for when the channel is full
-func (c *Coordinator) directPrint(margin string, content string, color *color.Color) {
-	var output strings.Builder
-	output.WriteString(margin)
-	output.WriteString(content)
-	output.WriteString("\n")
-
-	// Single atomic write
-	fmt.Print(output.String())
 }

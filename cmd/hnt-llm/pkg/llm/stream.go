@@ -145,6 +145,16 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 
 		for {
 			chunk, err := reader.ReadBytes('\n')
+
+			// Always process any data we got, even if there was an error
+			if len(chunk) > 0 {
+				if debugLogger != nil {
+					debugLogger.Printf("Read %d bytes: %q", len(chunk), string(chunk))
+				}
+				buffer.Write(chunk)
+			}
+
+			// Now handle the error after processing data
 			if err != nil && err != io.EOF {
 				if debugLogger != nil {
 					debugLogger.Printf("Read error: %v", err)
@@ -152,12 +162,6 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 				errChan <- err
 				return
 			}
-
-			if debugLogger != nil && len(chunk) > 0 {
-				debugLogger.Printf("Read %d bytes: %q", len(chunk), string(chunk))
-			}
-
-			buffer.Write(chunk)
 
 			for {
 				pos, termLen := findSSETerminator(buffer.Bytes())

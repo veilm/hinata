@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/mattn/go-runewidth"
+	"github.com/veilm/hinata/cmd/hnt-agent/pkg/output"
 	"github.com/veilm/hinata/cmd/hnt-agent/pkg/spinner"
 	"github.com/veilm/hinata/cmd/hnt-chat/pkg/chat"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/llm"
@@ -450,6 +451,12 @@ func (a *Agent) getSelectedSpinner() spinner.Spinner {
 }
 
 func (a *Agent) executeShellCommands(commands string) (*shell.ExecutionResult, error) {
+	// Use V2 spinner if enabled for better synchronization
+	if a.UseV2Streaming {
+		return a.executeShellCommandsV2(commands)
+	}
+
+	// Legacy implementation with sleep
 	stopCh := make(chan bool)
 
 	sp := a.getSelectedSpinner()
@@ -464,6 +471,30 @@ func (a *Agent) executeShellCommands(commands string) (*shell.ExecutionResult, e
 
 	close(stopCh)
 	time.Sleep(50 * time.Millisecond)
+
+	return result, err
+}
+
+func (a *Agent) executeShellCommandsV2(commands string) (*shell.ExecutionResult, error) {
+	sp := a.getSelectedSpinner()
+	msg := spinner.GetRandomLoadingMessage()
+
+	// Create output coordinator for shell execution
+	coordinator := output.New(10)
+	coordinator.Start()
+	defer coordinator.Stop()
+
+	// Show spinner
+	coordinator.ShowSpinner(sp, msg, marginStr(), func(s string) {
+		a.theme.Spinner.Print(s)
+	})
+
+	// Execute command
+	result, err := a.shellExecutor.Execute(commands)
+
+	// Hide spinner with proper synchronization
+	coordinator.HideSpinner()
+	coordinator.Flush() // Ensure all output is written
 
 	return result, err
 }
