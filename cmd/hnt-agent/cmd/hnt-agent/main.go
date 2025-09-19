@@ -73,7 +73,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&useEditor, "use-editor", false, "Use an external editor ($EDITOR) for the user instruction message")
 	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read message from stdin")
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
-	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color), dust (grayscale), or ansi (terminal colors)")
+	rootCmd.Flags().StringVar(&theme, "theme", "dust", "Color theme: snow (true color), dust (default, grayscale), or ansi (terminal colors)")
 	rootCmd.Flags().IntVar(&promptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
 	rootCmd.Flags().StringVar(&shellStartup, "shell-startup", "", "Shell script to source at startup (e.g., for aliases and environment)")
 	rootCmd.Flags().BoolVar(&useV2Streaming, "v2-streaming", true, "Use improved OutputCoordinator-based streaming (default true)")
@@ -272,7 +272,7 @@ func newSpinnerDemoCmd() *cobra.Command {
 	// Add local flags for spinner demo
 	cmd.Flags().IntVar(&spinnerIndex, "spinner", -1, "Use specific spinner by index")
 	cmd.Flags().StringVar(&spinnerFile, "spinner-file", "", "Path to a text file containing spinner frames")
-	cmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color), dust (grayscale), or ansi (terminal colors)")
+	cmd.Flags().StringVar(&theme, "theme", "dust", "Color theme: snow (true color), dust (default, grayscale), or ansi (terminal colors)")
 
 	return cmd
 }

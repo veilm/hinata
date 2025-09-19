@@ -20,7 +20,20 @@ echo "Press Ctrl+C after observing the colors..."
 echo 'test' | ../hnt-agent --stdin --theme snow
 
 echo
-echo "2. Testing ANSI theme"
+echo "2. Testing DUST theme (new grayscale theme)"
+echo "   Expected:"
+echo "   - Select menu: Dark gray background with light gray text"
+echo "   - Prefix ▌ should be light gray"
+echo "   - Textarea header should be light gray"
+echo "   - Help text should be medium-light gray"
+echo "   - Everything should be in grayscale (no colors)"
+echo
+echo "Running: echo 'test' | ../hnt-agent --stdin --theme dust"
+echo "Press Ctrl+C after observing the colors..."
+echo 'test' | ../hnt-agent --stdin --theme dust
+
+echo
+echo "3. Testing ANSI theme"
 echo "   Expected:"
 echo "   - Select menu: Terminal's blue background (ANSI 4)"
 echo "   - Prefix ▌ should be terminal's blue"
