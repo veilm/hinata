@@ -18,6 +18,15 @@ type Theme struct {
 	StatusMessage  *color.Color // For status messages like "Executing command"
 	Spinner        *color.Color // For spinner text
 	ShellBlockCode *color.Color // For code inside <shell> blocks
+	HelpText       *color.Color // For help text in selectors and editors
+	Background     *color.Color // For background in selectors and editors
+	FallbackLine   *color.Color // Fallback line color for unknown roles
+
+	// RGB values for snow theme (nil for ansi theme)
+	DefaultTextRGB    *[3]int
+	HinataLineRGB     *[3]int
+	HelpTextRGB       *[3]int
+	BackgroundRGB     *[3]int
 }
 
 // Themes
@@ -44,6 +53,14 @@ var (
 		StatusMessage:  color.RGB(150, 150, 150), // Gray for subtle status messages
 		Spinner:        color.RGB(110, 200, 255), // Official snowflake blue
 		ShellBlockCode: color.RGB(110, 200, 255), // Official snowflake blue (prominent)
+		HelpText:       color.RGB(160, 200, 255), // Lighter blue for help text
+		Background:     color.RGB(0, 0, 0),       // Black background
+		FallbackLine:   color.RGB(255, 255, 255), // White for unknown roles
+		// RGB values for selector/editor
+		DefaultTextRGB: &[3]int{255, 255, 255},
+		HinataLineRGB:  &[3]int{110, 200, 255},
+		HelpTextRGB:    &[3]int{160, 200, 255},
+		BackgroundRGB:  &[3]int{0, 0, 0},
 		// ShellBlockCode alternatives tested:
 		// - color.RGB(100, 220, 220) // Icy Cyan/Turquoise
 		// - color.RGB(180, 120, 255) // Aurora Purple
@@ -70,6 +87,9 @@ var (
 		StatusMessage:  color.New(color.FgHiBlack), // Dark gray
 		Spinner:        color.New(color.FgCyan),
 		ShellBlockCode: color.New(color.FgGreen),
+		HelpText:       color.New(color.FgCyan),    // Cyan for help text
+		Background:     color.New(color.BgBlack),   // Black background
+		FallbackLine:   color.New(color.FgWhite),   // White for unknown roles
 	}
 )
 

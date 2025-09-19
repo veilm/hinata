@@ -537,7 +537,7 @@ func (a *Agent) printTurnHeader(role string, turn int) {
 		lineColor = a.theme.QuerentLine
 	default:
 		icon = "?"
-		lineColor = color.New(color.FgWhite)
+		lineColor = a.theme.FallbackLine
 	}
 
 	roleText := fmt.Sprintf("%s %s", icon, role)
@@ -630,11 +630,11 @@ func (a *Agent) promptContinue() bool {
 
 	if a.theme.Name == "snow" {
 		// Use RGB colors for snow theme
-		opts.BackgroundRGB = &[3]int{0, 0, 0}       // Black background
-		opts.ForegroundRGB = &[3]int{110, 200, 255} // Official snowflake blue text
-		opts.PrefixRGB = &[3]int{110, 200, 255}     // Official snowflake blue prefix
-		opts.NormalRGB = &[3]int{255, 255, 255}     // Explicit white for non-selected
-		opts.HelpRGB = &[3]int{160, 200, 255}       // Lighter blue for help text
+		opts.BackgroundRGB = a.theme.BackgroundRGB
+		opts.ForegroundRGB = a.theme.HinataLineRGB
+		opts.PrefixRGB = a.theme.HinataLineRGB
+		opts.NormalRGB = a.theme.DefaultTextRGB
+		opts.HelpRGB = a.theme.HelpTextRGB
 	} else {
 		// Use ANSI color for ansi theme
 		opts.Color = 4 // Blue
@@ -676,11 +676,11 @@ func (a *Agent) promptExecute() executeChoice {
 
 	if a.theme.Name == "snow" {
 		// Use RGB colors for snow theme
-		opts.BackgroundRGB = &[3]int{0, 0, 0}       // Black background
-		opts.ForegroundRGB = &[3]int{110, 200, 255} // Official snowflake blue text
-		opts.PrefixRGB = &[3]int{110, 200, 255}     // Official snowflake blue prefix
-		opts.NormalRGB = &[3]int{255, 255, 255}     // Explicit white for non-selected
-		opts.HelpRGB = &[3]int{160, 200, 255}       // Lighter blue for help text
+		opts.BackgroundRGB = a.theme.BackgroundRGB
+		opts.ForegroundRGB = a.theme.HinataLineRGB
+		opts.PrefixRGB = a.theme.HinataLineRGB
+		opts.NormalRGB = a.theme.DefaultTextRGB
+		opts.HelpRGB = a.theme.HelpTextRGB
 	} else {
 		// Use ANSI color for ansi theme
 		opts.Color = 4 // Blue
@@ -719,10 +719,10 @@ func (a *Agent) promptForMessage() string {
 	if a.theme.Name == "snow" {
 		// Use RGB colors for snow theme
 		colors := prompt.ColorConfig{
-			HeaderRGB: &[3]int{255, 255, 255}, // White header
-			HelpRGB:   &[3]int{160, 200, 255}, // Lighter blue for help text
-			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
-			TextRGB:   &[3]int{255, 255, 255}, // Explicit white for input text
+			HeaderRGB: a.theme.DefaultTextRGB,
+			HelpRGB:   a.theme.HelpTextRGB,
+			PromptRGB: a.theme.HinataLineRGB,
+			TextRGB:   a.theme.DefaultTextRGB,
 		}
 		instruction, err = prompt.GetUserInstructionWithColorsAndHeight("", a.UseEditor, colors, a.PromptHeight)
 	} else {
