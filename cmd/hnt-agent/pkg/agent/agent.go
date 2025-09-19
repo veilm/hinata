@@ -628,8 +628,8 @@ func (a *Agent) promptContinue() bool {
 	var opts selector.Options
 	opts.Height = 2
 
-	if a.theme.Name == "snow" {
-		// Use RGB colors for snow theme
+	// Use RGB colors if available (snow, dust, etc.), otherwise fall back to ANSI
+	if a.theme.BackgroundRGB != nil {
 		opts.BackgroundRGB = a.theme.BackgroundRGB
 		opts.ForegroundRGB = a.theme.HinataLineRGB
 		opts.PrefixRGB = a.theme.HinataLineRGB
@@ -674,8 +674,8 @@ func (a *Agent) promptExecute() executeChoice {
 	var opts selector.Options
 	opts.Height = 3
 
-	if a.theme.Name == "snow" {
-		// Use RGB colors for snow theme
+	// Use RGB colors if available (snow, dust, etc.), otherwise fall back to ANSI
+	if a.theme.BackgroundRGB != nil {
 		opts.BackgroundRGB = a.theme.BackgroundRGB
 		opts.ForegroundRGB = a.theme.HinataLineRGB
 		opts.PrefixRGB = a.theme.HinataLineRGB
@@ -716,8 +716,8 @@ func (a *Agent) promptForMessage() string {
 	var instruction string
 	var err error
 
-	if a.theme.Name == "snow" {
-		// Use RGB colors for snow theme
+	// Use RGB colors if available (snow, dust, etc.), otherwise fall back to ANSI
+	if a.theme.DefaultTextRGB != nil {
 		colors := prompt.ColorConfig{
 			HeaderRGB: a.theme.DefaultTextRGB,
 			HelpRGB:   a.theme.HelpTextRGB,

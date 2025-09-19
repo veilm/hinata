@@ -73,7 +73,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&useEditor, "use-editor", false, "Use an external editor ($EDITOR) for the user instruction message")
 	rootCmd.Flags().BoolVar(&useStdin, "stdin", false, "Read message from stdin")
 	rootCmd.Flags().BoolVar(&autoExit, "auto-exit", false, "Automatically exit if no shell block is provided")
-	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
+	rootCmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color), dust (grayscale), or ansi (terminal colors)")
 	rootCmd.Flags().IntVar(&promptHeight, "prompt-height", 3, "Height of the prompt textarea (default 3)")
 	rootCmd.Flags().StringVar(&shellStartup, "shell-startup", "", "Shell script to source at startup (e.g., for aliases and environment)")
 	rootCmd.Flags().BoolVar(&useV2Streaming, "v2-streaming", true, "Use improved OutputCoordinator-based streaming (default true)")
@@ -231,14 +231,16 @@ func promptForMessage(useEditor bool) (string, error) {
 }
 
 func promptForMessageWithHeight(useEditor bool, height int) (string, error) {
-	// Check theme to determine colors
-	if theme == "snow" {
-		// Use RGB colors for snow theme
+	// Get theme to determine colors
+	currentTheme := agent.GetTheme(theme)
+
+	// Use RGB colors if available (snow, dust, etc.), otherwise fall back to ANSI
+	if currentTheme.DefaultTextRGB != nil {
 		colors := prompt.ColorConfig{
-			HeaderRGB: &[3]int{255, 255, 255}, // White header
-			HelpRGB:   &[3]int{160, 200, 255}, // Lighter blue for help text
-			PromptRGB: &[3]int{110, 200, 255}, // Official snowflake blue for prompt
-			TextRGB:   &[3]int{255, 255, 255}, // Explicit white for input text
+			HeaderRGB: currentTheme.DefaultTextRGB,
+			HelpRGB:   currentTheme.HelpTextRGB,
+			PromptRGB: currentTheme.HinataLineRGB,
+			TextRGB:   currentTheme.DefaultTextRGB,
 		}
 		return prompt.GetUserInstructionWithColorsAndHeight("", useEditor, colors, height)
 	} else {
@@ -270,7 +272,7 @@ func newSpinnerDemoCmd() *cobra.Command {
 	// Add local flags for spinner demo
 	cmd.Flags().IntVar(&spinnerIndex, "spinner", -1, "Use specific spinner by index")
 	cmd.Flags().StringVar(&spinnerFile, "spinner-file", "", "Path to a text file containing spinner frames")
-	cmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color) or ansi (terminal colors)")
+	cmd.Flags().StringVar(&theme, "theme", "snow", "Color theme: snow (default, true color), dust (grayscale), or ansi (terminal colors)")
 
 	return cmd
 }

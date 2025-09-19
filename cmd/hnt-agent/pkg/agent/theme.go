@@ -71,6 +71,33 @@ var (
 		// - color.RGB(160, 255, 200) // Mint Green (original)
 	}
 
+	// DustTheme uses grayscale values for a muted, dusty appearance
+	// Like looking through a dusty window - everything is visible but muted
+	DustTheme = Theme{
+		Name:        "dust",
+		DefaultText: color.RGB(220, 220, 220), // Off-white, slightly dusty
+		Stdout:      color.RGB(160, 160, 160), // Medium gray for output
+		Stderr:      color.RGB(200, 200, 200), // Light gray for errors (still visible)
+		ExitCode:    color.RGB(200, 200, 200), // Light gray for exit codes
+		Reasoning:   color.RGB(180, 180, 180), // Medium-light gray for reasoning
+		UserMargin:  color.RGB(140, 140, 140), // Darker gray for margin
+		HinataLine:  color.RGB(190, 190, 190), // Light gray for hinata
+		QuerentLine: color.RGB(170, 170, 170), // Medium-light gray for querent
+		TurnNumber:  color.RGB(210, 210, 210), // Very light gray for turn numbers
+		ErrorHighlight: color.RGB(240, 240, 240), // Near-white for emphasis
+		StatusMessage:  color.RGB(130, 130, 130), // Dark gray for subtle messages
+		Spinner:        color.RGB(190, 190, 190), // Light gray for spinner
+		ShellBlockCode: color.RGB(200, 200, 200), // Light gray for code
+		HelpText:       color.RGB(170, 170, 170), // Medium-light gray for help
+		Background:     color.RGB(20, 20, 20),    // Very dark gray background
+		FallbackLine:   color.RGB(220, 220, 220), // Off-white for unknown roles
+		// RGB values for selector/editor
+		DefaultTextRGB: &[3]int{220, 220, 220},
+		HinataLineRGB:  &[3]int{190, 190, 190},
+		HelpTextRGB:    &[3]int{170, 170, 170},
+		BackgroundRGB:  &[3]int{20, 20, 20},
+	}
+
 	// AnsiTheme uses standard ANSI colors (terminal-configurable)
 	AnsiTheme = Theme{
 		Name:           "ansi",
@@ -100,6 +127,8 @@ func GetTheme(name string) Theme {
 		return AnsiTheme
 	case "snow":
 		return SnowTheme
+	case "dust":
+		return DustTheme
 	default:
 		return SnowTheme
 	}
