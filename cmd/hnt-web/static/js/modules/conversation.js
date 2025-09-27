@@ -232,7 +232,7 @@ async function handleCreateConversation() {
 		}
 	}
 }
-async function loadConversationDetails(conversationId) {
+async function loadConversationDetails(conversationId, shouldScrollToBottom = true) {
 	const mainTitleDisplayElement = document.getElementById(
 		"conversation-id-display",
 	);
@@ -944,10 +944,12 @@ async function loadConversationDetails(conversationId) {
 			});
 		}
 
-		// Auto-scroll to latest message on page load
-		setTimeout(() => {
-			jumpToLatestMessage();
-		}, 100); // Small delay to ensure DOM is fully rendered
+		// Auto-scroll to latest message on page load (if requested)
+		if (shouldScrollToBottom) {
+			setTimeout(() => {
+				jumpToLatestMessage();
+			}, 100); // Small delay to ensure DOM is fully rendered
+		}
 	} catch (error) {
 		handleError(
 			`Failed to load conversation: ${safeConvId}.`,

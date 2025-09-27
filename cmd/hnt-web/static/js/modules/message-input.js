@@ -589,7 +589,8 @@ async function handleGenAssistant(conversationId, allButtons) {
 		// Regardless of success or failure of the stream, reload the conversation details
 		// to get the final state from the server (new messages, files, etc.)
 		// This will also remove the placeholder and re-enable buttons correctly.
-		loadConversationDetails(conversationId);
+		// Pass false to prevent auto-scrolling after LLM generation completes
+		loadConversationDetails(conversationId, false);
 	}
 }
 

@@ -300,15 +300,17 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		conv := ConversationInfo{
-			ID:    entry.Name(),
-			Title: entry.Name(),
+		// Check for title.txt file - skip conversations without it
+		titlePath := filepath.Join(convDir, "title.txt")
+		titleData, err := os.ReadFile(titlePath)
+		if err != nil {
+			// No title.txt file, skip this conversation
+			continue
 		}
 
-		// Check for .title file
-		titlePath := filepath.Join(convDir, "title.txt")
-		if data, err := os.ReadFile(titlePath); err == nil {
-			conv.Title = strings.TrimSpace(string(data))
+		conv := ConversationInfo{
+			ID:    entry.Name(),
+			Title: strings.TrimSpace(string(titleData)),
 		}
 
 		// Check for .pin file
