@@ -482,6 +482,10 @@ async function handleSaveMessage(
 		// const responseData = await response.json(); // Contains new_content, archived_as
 		// Successfully saved. Update UI to view mode with new content.
 		// The newContent is now the "original" content for future edits.
+
+		// Update the original content data attribute so fork uses the new content
+		messageElement.dataset.originalContent = newContent;
+
 		toggleEditState(
 			messageElement,
 			contentWrapperDiv,
