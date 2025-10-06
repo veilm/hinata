@@ -906,6 +906,17 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			});
 		}
 
+		const modalPackBtn = document.getElementById("modal-pack-btn");
+		if (modalPackBtn) {
+			const newPackButton = modalPackBtn.cloneNode(true);
+			modalPackBtn.parentNode.replaceChild(newPackButton, modalPackBtn);
+			newPackButton.disabled = false;
+			newPackButton.addEventListener("click", () => {
+				settingsModal.classList.add("hidden"); // Close settings modal
+				packConversationToClipboard();
+			});
+		}
+
 		// Setup settings modal toggle
 		if (settingsToggleBtn) {
 			settingsToggleBtn.addEventListener("click", () => {
@@ -1406,6 +1417,68 @@ async function executeForkFromMessage(
 		showToast(error.message, "error");
 	}
 }
+function escapeHinataXml(content) {
+	// Escape hinata XML tags by adding an underscore before the tag name
+	// <hnt-system> -> <_hnt-system>, etc.
+	return content
+		.replace(/<hnt-system>/g, "<_hnt-system>")
+		.replace(/<\/hnt-system>/g, "</_hnt-system>")
+		.replace(/<hnt-user>/g, "<_hnt-user>")
+		.replace(/<\/hnt-user>/g, "</_hnt-user>")
+		.replace(/<hnt-assistant>/g, "<_hnt-assistant>")
+		.replace(/<\/hnt-assistant>/g, "</_hnt-assistant>");
+}
+
+function packConversationToClipboard() {
+	// Get all non-archived messages from the DOM
+	const messages = document.querySelectorAll(
+		"#messages-container .message:not(.archived-message)",
+	);
+
+	if (messages.length === 0) {
+		showToast("No messages to pack", "error");
+		return;
+	}
+
+	// Build the packed conversation
+	const parts = [];
+
+	messages.forEach((messageElement) => {
+		const role = messageElement.dataset.role;
+		const content = messageElement.dataset.originalContent;
+
+		if (!role || !content) {
+			return; // Skip messages without role/content
+		}
+
+		// Escape the content
+		const escapedContent = escapeHinataXml(content);
+
+		// Map role to tag name (handle assistant-reasoning by skipping it)
+		let tagName;
+		if (role === "system") {
+			tagName = "hnt-system";
+		} else if (role === "user") {
+			tagName = "hnt-user";
+		} else if (role === "assistant") {
+			tagName = "hnt-assistant";
+		} else if (role === "assistant-reasoning") {
+			// Skip reasoning messages - they're already attached to assistant messages
+			return;
+		} else {
+			return; // Skip unknown roles
+		}
+
+		parts.push(`<${tagName}>${escapedContent}</${tagName}>`);
+	});
+
+	const packedConversation = parts.join("\n");
+
+	// Copy to clipboard using the existing function
+	handleCopyMessage(packedConversation);
+	showToast("Conversation packed to clipboard", "success");
+}
+
 async function handleForkConversation(conversationId) {
 	const forkBtn = document.getElementById("fork-conversation-btn");
 	if (forkBtn) forkBtn.disabled = true;
