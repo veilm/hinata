@@ -44,7 +44,7 @@ printf "${GREEN}${BOLD}[✓]${NC} Found ${BOLD}%s${NC}\n" "$GO_VERSION"
 # print_header "Building Hinata Binaries"
 
 # List of all Go binaries to build
-bins="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-agent shell-exec tui-select hnt-web"
+bins="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-agent hnt-input shell-exec tui-select hnt-web"
 
 # Count total binaries
 total=$(echo $bins | wc -w | tr -d ' ')
@@ -64,7 +64,7 @@ print_header "Compiling Binaries"
 for bin in $bins; do
     current=$((current + 1))
     # printf "${WHITE}${BOLD}[$current/$total]${NC} ${YELLOW}⚙${NC} Building ${BOLD}%s${NC}...\n" "$bin"
-    printf "${WHITE}${BOLD}[$current/$total]${NC} ${YELLOW}❄️${NC} Building ${BOLD}%s${NC}...\n" "$bin"
+    printf "${WHITE}${BOLD}[%*d/%d]${NC} ${YELLOW}❄️${NC} Building ${BOLD}%s${NC}...\n" "${#total}" "$current" "$total" "$bin"
     
     if go build -o "bin/$bin.out" "./cmd/$bin/cmd/$bin" 2>/dev/null; then
         # print_success "Built ${BOLD}$bin${NC} successfully"

@@ -70,7 +70,7 @@ INSTALL_DIR="/usr/local/bin/"
 mkdir -p bin
 
 # List of binaries to install (in order similar to Rust version)
-bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-agent shell-exec tui-select hnt-web"
+bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-agent hnt-input shell-exec tui-select hnt-web"
 
 print_header "Installing Binaries"
 printf "${BLUE}${BOLD}[hinata]${NC} ${CYAN}Target directory: ${BOLD}%s${NC}${CYAN}${NC}\n" "$INSTALL_DIR"
