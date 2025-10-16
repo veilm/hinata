@@ -128,7 +128,7 @@ export function handleError(message, contextElement) {
 }
 
 // Message info modal
-export function showMessageInfoModal(filename, content, role = "unknown") {
+export function showMessageInfoModal(filename, content, role = "unknown", fullPath = null) {
 	const lineCount = content.split("\n").length;
 	const charCount = content.length;
 
@@ -138,12 +138,22 @@ export function showMessageInfoModal(filename, content, role = "unknown") {
 	const modalContent = document.createElement("div");
 	modalContent.className = "info-modal-content";
 
-	modalContent.innerHTML = `
-		<p><strong>File:</strong> ${escapeHtml(filename)}</p>
+	// Build the HTML with reordered fields
+	let infoHtml = `
 		<p><strong>Type:</strong> ${escapeHtml(role.charAt(0).toUpperCase() + role.slice(1))}</p>
 		<p><strong>Lines:</strong> ${lineCount}</p>
 		<p><strong>Characters:</strong> ${charCount}</p>
 	`;
+
+	// Add Path if we have it
+	if (fullPath) {
+		infoHtml += `<p><strong>Path:</strong> ${escapeHtml(fullPath)}</p>`;
+	}
+
+	// Add File at the end
+	infoHtml += `<p><strong>File:</strong> ${escapeHtml(filename)}</p>`;
+
+	modalContent.innerHTML = infoHtml;
 
 	const closeButton = document.createElement("button");
 	closeButton.className = "info-modal-close";

@@ -50,6 +50,7 @@ type ConversationDetail struct {
 	OtherFiles       []OtherFile   `json:"other_files"`
 	ArchivedMessages []MessageFile `json:"archived_messages"`
 	IsPinned         bool          `json:"is_pinned"`
+	ConvDir          string        `json:"conversation_dir"` // Full path to conversation directory
 }
 
 type TitleUpdateRequest struct {
@@ -481,6 +482,7 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		Model:      "openrouter/deepseek/deepseek-chat-v3-0324:free",
 		Messages:   []MessageFile{},
 		OtherFiles: []OtherFile{},
+		ConvDir:    convDir, // Include full path to conversation directory
 	}
 
 	// Read title

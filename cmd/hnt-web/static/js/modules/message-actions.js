@@ -45,6 +45,7 @@ function toggleEditState(
 	conversationId,
 	filename,
 	reasoning = null,
+	conversationDir = null,
 ) {
 	const isEditing = messageElement.dataset.editing === "true";
 
@@ -57,7 +58,8 @@ function toggleEditState(
 
 		const infoButton = createActionButton(ICON_INFO, "btn-info", () => {
 			const role = messageElement.dataset.role || "unknown";
-			showMessageInfoModal(filename, originalContent, role);
+			const fullPath = conversationDir ? `${conversationDir}/${filename}` : null;
+			showMessageInfoModal(filename, originalContent, role, fullPath);
 		});
 		infoButton.title = "Info";
 
@@ -70,6 +72,7 @@ function toggleEditState(
 				conversationId,
 				filename,
 				reasoning,
+				conversationDir, // Pass conversation directory
 			),
 		);
 		editButton.title = "Edit";
@@ -147,6 +150,7 @@ function toggleEditState(
 				conversationId,
 				filename,
 				reasoning,
+				conversationDir, // Pass conversation directory
 			),
 		);
 		saveButton.title = "Save";
@@ -161,6 +165,7 @@ function toggleEditState(
 				conversationId,
 				filename,
 				reasoning,
+				conversationDir, // Pass conversation directory
 			),
 		);
 		cancelButton.title = "Cancel";
@@ -178,6 +183,7 @@ function toggleForkEditState(
 	conversationId,
 	filename,
 	messageRole,
+	conversationDir = null,
 ) {
 	const isForkEditing = messageElement.dataset.forkEditing === "true";
 
@@ -190,7 +196,8 @@ function toggleForkEditState(
 		// Restore normal action buttons
 		const infoButton = createActionButton(ICON_INFO, "btn-info", () => {
 			const role = messageElement.dataset.role || "unknown";
-			showMessageInfoModal(filename, originalContent, role);
+			const fullPath = conversationDir ? `${conversationDir}/${filename}` : null;
+			showMessageInfoModal(filename, originalContent, role, fullPath);
 		});
 		infoButton.title = "Info";
 
@@ -202,6 +209,8 @@ function toggleForkEditState(
 				originalContent,
 				conversationId,
 				filename,
+				null, // reasoning
+				conversationDir, // Pass conversation directory
 			),
 		);
 		editButton.title = "Edit";
@@ -288,6 +297,7 @@ function toggleForkEditState(
 				conversationId,
 				filename,
 				messageRole,
+				conversationDir, // Pass conversation directory
 			),
 		);
 		cancelButton.title = "Cancel";
@@ -452,6 +462,7 @@ async function handleSaveMessage(
 	conversationId,
 	filename,
 	reasoning = null,
+	conversationDir = null,
 ) {
 	const newContent = textareaElement.value;
 
@@ -494,6 +505,7 @@ async function handleSaveMessage(
 			conversationId,
 			filename,
 			reasoning,
+			conversationDir, // Pass conversation directory
 		);
 
 		// Show success toast

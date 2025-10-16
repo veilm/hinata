@@ -515,9 +515,11 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				const actionsDiv = document.createElement("div");
 				actionsDiv.className = "message-actions";
 
-				const infoButton = createActionButton(ICON_INFO, "btn-info", () =>
-					showMessageInfoModal(msg.filename, msg.content, msg.role),
-				);
+				const infoButton = createActionButton(ICON_INFO, "btn-info", () => {
+					// Construct full path from conversation dir
+					const fullPath = data.conversation_dir ? `${data.conversation_dir}/${msg.filename}` : null;
+					showMessageInfoModal(msg.filename, msg.content, msg.role, fullPath);
+				});
 				infoButton.title = "Info";
 
 				const editButton = createActionButton(ICON_PENCIL, "btn-edit", () =>
@@ -529,6 +531,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 						conversationId,
 						msg.filename,
 						msg.reasoning,
+						data.conversation_dir, // Pass conversation directory
 					),
 				);
 				editButton.title = "Edit"; // Tooltip for accessibility
