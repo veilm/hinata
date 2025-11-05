@@ -944,33 +944,37 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 done:
-	// Write reasoning and assistant messages to separate files
-	if reasoningBuffer.Len() > 0 {
-		// Save reasoning to a separate file with RoleAssistantReasoning
-		reasoningContent := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
-		_, err := chat.WriteMessageFile(convDir, chat.RoleAssistantReasoning, reasoningContent)
-		if err != nil {
-			fmt.Fprintf(w, "data: [ERROR] Failed to save reasoning\n\n")
-			flusher.Flush()
-			return
-		}
-	}
+	// Write reasoning and assistant messages to separate files with shared timestamp
+	if reasoningBuffer.Len() > 0 || contentBuffer.Len() > 0 {
+		// Capture timestamp once for both files
+		timestampNs := time.Now().UnixNano()
 
-	// Write the assistant message content (without reasoning)
-	if contentBuffer.Len() > 0 {
-		_, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, contentBuffer.String())
-		if err != nil {
-			fmt.Fprintf(w, "data: [ERROR] Failed to save message\n\n")
-			flusher.Flush()
-			return
+		if reasoningBuffer.Len() > 0 {
+			reasoningContent := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
+			err := chat.WriteReasoningFile(convDir, reasoningContent, timestampNs)
+			if err != nil {
+				fmt.Fprintf(w, "data: [ERROR] Failed to save reasoning\n\n")
+				flusher.Flush()
+				return
+			}
 		}
 
-		// Log the assistant message addition
-		title := getConversationTitle(convDir)
-		if title == "" {
-			title = convID
+		// Write the assistant message content (without reasoning)
+		if contentBuffer.Len() > 0 {
+			_, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, contentBuffer.String(), timestampNs)
+			if err != nil {
+				fmt.Fprintf(w, "data: [ERROR] Failed to save message\n\n")
+				flusher.Flush()
+				return
+			}
+
+			// Log the assistant message addition
+			title := getConversationTitle(convDir)
+			if title == "" {
+				title = convID
+			}
+			log.Printf("Assistant message generated for conversation (%s)\n", title)
 		}
-		log.Printf("Assistant message generated for conversation (%s)\n", title)
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")

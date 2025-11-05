@@ -445,15 +445,17 @@ done:
 	}
 	fmt.Println()
 
-	// Save messages
+	// Save messages with shared timestamp
+	timestampNs := time.Now().UnixNano()
+
 	if !opts.IgnoreReasoning && reasoningBuffer.Len() > 0 {
 		reasoningMessage := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
-		if _, err := chat.WriteMessageFile(conversationDir, chat.RoleAssistantReasoning, reasoningMessage); err != nil {
+		if err := chat.WriteReasoningFile(conversationDir, reasoningMessage, timestampNs); err != nil {
 			return fmt.Errorf("failed to write reasoning message: %w", err)
 		}
 	}
 
-	if _, err := chat.WriteMessageFile(conversationDir, chat.RoleAssistant, contentBuffer.String()); err != nil {
+	if _, err := chat.WriteMessageFileWithTimestamp(conversationDir, chat.RoleAssistant, contentBuffer.String(), timestampNs); err != nil {
 		return fmt.Errorf("failed to write assistant message: %w", err)
 	}
 
