@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-chat/pkg/chat"
@@ -171,11 +172,14 @@ func handleAddCommand(cmd *cobra.Command, args []string) error {
 			reasoningContent := contentStr[:splitPos]
 			mainContent := strings.TrimLeft(contentStr[splitPos:], " \t\n")
 
-			if _, err := chat.WriteMessageFile(convDir, chat.RoleAssistantReasoning, reasoningContent); err != nil {
+			// Capture timestamp once for both files
+			timestampNs := time.Now().UnixNano()
+
+			if err := chat.WriteReasoningFile(convDir, reasoningContent, timestampNs); err != nil {
 				return fmt.Errorf("failed to write reasoning file: %w", err)
 			}
 
-			relativePath, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, mainContent)
+			relativePath, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, mainContent, timestampNs)
 			if err != nil {
 				return fmt.Errorf("failed to write assistant message: %w", err)
 			}
@@ -296,13 +300,16 @@ done:
 
 	if shouldWrite {
 		if includeReasoning {
+			// Capture timestamp once for both files
+			timestampNs := time.Now().UnixNano()
+
 			if reasoningBuffer.Len() > 0 {
 				reasoningContent := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
-				if _, err := chat.WriteMessageFile(convDir, chat.RoleAssistantReasoning, reasoningContent); err != nil {
+				if err := chat.WriteReasoningFile(convDir, reasoningContent, timestampNs); err != nil {
 					return fmt.Errorf("failed to write reasoning file: %w", err)
 				}
 			}
-			path, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, contentBuffer.String())
+			path, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, contentBuffer.String(), timestampNs)
 			if err != nil {
 				return fmt.Errorf("failed to write assistant message: %w", err)
 			}

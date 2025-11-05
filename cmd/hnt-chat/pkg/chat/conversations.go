@@ -89,6 +89,41 @@ func WriteMessageFile(convDir string, role Role, content string) (string, error)
 	return filename, nil
 }
 
+func WriteMessageFileWithTimestamp(convDir string, role Role, content string, timestampNs int64) (string, error) {
+	filename := fmt.Sprintf("%d-%s.md", timestampNs, role)
+	filePath := filepath.Join(convDir, filename)
+
+	if _, err := os.Stat(filePath); err == nil {
+		return "", fmt.Errorf("file collision detected for path: %s", filePath)
+	}
+
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("failed to write message file: %w", err)
+	}
+
+	return filename, nil
+}
+
+func WriteReasoningFile(convDir string, content string, timestampNs int64) error {
+	reasoningDir := filepath.Join(convDir, "reasoning")
+	if err := os.MkdirAll(reasoningDir, 0755); err != nil {
+		return fmt.Errorf("failed to create reasoning directory: %w", err)
+	}
+
+	filename := fmt.Sprintf("%d.md", timestampNs)
+	filePath := filepath.Join(reasoningDir, filename)
+
+	if _, err := os.Stat(filePath); err == nil {
+		return fmt.Errorf("file collision detected for path: %s", filePath)
+	}
+
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write reasoning file: %w", err)
+	}
+
+	return nil
+}
+
 func ListMessages(convDir string) ([]ChatMessage, error) {
 	entries, err := os.ReadDir(convDir)
 	if err != nil {
