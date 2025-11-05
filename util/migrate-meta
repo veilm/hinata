@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Migration script to move metadata files to meta/ subdirectory
-# This script will move fork_source.txt, access.txt, model.txt, title.txt, and forks.txt
+# This script will move fork_source.txt, access.txt, model.txt, title.txt, forks.txt, and pinned.txt
 # from the conversation directory root to a meta/ subdirectory
+# Additionally, pinned.txt will be renamed to pinned.flag
 
 set -e
 
@@ -42,6 +43,11 @@ for conv_dir in "$CONVERSATIONS_DIR"/*; do
         fi
     done
 
+    # Check for pinned.txt separately (will be renamed to pinned.flag)
+    if [ -f "$conv_dir/pinned.txt" ]; then
+        files_to_migrate+=("pinned.txt")
+    fi
+
     if [ ${#files_to_migrate[@]} -eq 0 ]; then
         skipped=$((skipped + 1))
         continue
@@ -54,8 +60,13 @@ for conv_dir in "$CONVERSATIONS_DIR"/*; do
 
     # Move files to meta directory
     for file in "${files_to_migrate[@]}"; do
-        echo "  Moving $file -> meta/$file"
-        mv "$conv_dir/$file" "$meta_dir/$file"
+        if [ "$file" = "pinned.txt" ]; then
+            echo "  Moving $file -> meta/pinned.flag"
+            mv "$conv_dir/$file" "$meta_dir/pinned.flag"
+        else
+            echo "  Moving $file -> meta/$file"
+            mv "$conv_dir/$file" "$meta_dir/$file"
+        fi
     done
 
     migrated=$((migrated + 1))

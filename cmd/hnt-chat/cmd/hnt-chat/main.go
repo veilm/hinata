@@ -387,8 +387,8 @@ func handleListCommand(cmd *cobra.Command, args []string) error {
 			conv.Title = strings.TrimSpace(string(data))
 		}
 
-		// Check for pin file
-		pinPath := filepath.Join(convDir, "pinned.txt")
+		// Check for pinned flag
+		pinPath := filepath.Join(convDir, "meta", "pinned.flag")
 		if _, err := os.Stat(pinPath); err == nil {
 			conv.IsPinned = true
 		}
@@ -485,7 +485,12 @@ func handlePinCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to determine conversation directory: %w", err)
 	}
 
-	pinPath := filepath.Join(convDir, "pinned.txt")
+	// Ensure meta directory exists
+	if err := os.MkdirAll(filepath.Join(convDir, "meta"), 0755); err != nil {
+		return fmt.Errorf("failed to create meta directory: %w", err)
+	}
+
+	pinPath := filepath.Join(convDir, "meta", "pinned.flag")
 	if err := os.WriteFile(pinPath, []byte(""), 0644); err != nil {
 		return fmt.Errorf("failed to pin conversation: %w", err)
 	}
@@ -500,7 +505,7 @@ func handleUnpinCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to determine conversation directory: %w", err)
 	}
 
-	pinPath := filepath.Join(convDir, "pinned.txt")
+	pinPath := filepath.Join(convDir, "meta", "pinned.flag")
 	if err := os.Remove(pinPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to unpin conversation: %w", err)
 	}

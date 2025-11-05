@@ -315,8 +315,8 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 			Title: strings.TrimSpace(string(titleData)),
 		}
 
-		// Check for .pin file
-		pinPath := filepath.Join(convDir, "pinned.txt")
+		// Check for pinned flag
+		pinPath := filepath.Join(convDir, "meta", "pinned.flag")
 		if _, err := os.Stat(pinPath); err == nil {
 			conv.IsPinned = true
 		}
@@ -497,7 +497,7 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 	}
 
 	// Check pin status
-	if _, err := os.Stat(filepath.Join(convDir, "pinned.txt")); err == nil {
+	if _, err := os.Stat(filepath.Join(convDir, "meta", "pinned.flag")); err == nil {
 		detail.IsPinned = true
 	}
 
@@ -543,45 +543,66 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		detail.Messages = append(detail.Messages, messageFile)
 	}
 
-	// Get other files
+	// Helper function to process files
+	processFile := func(name, filePath string) OtherFile {
+		file := OtherFile{
+			Filename: name,
+			IsText:   false,
+		}
+
+		// Try to read file content
+		if data, err := os.ReadFile(filePath); err == nil {
+			// Check if it's likely text (no null bytes in first 4096 bytes)
+			peekSize := 4096
+			if len(data) < peekSize {
+				peekSize = len(data)
+			}
+
+			if peekSize > 0 && !containsNull(data[:peekSize]) {
+				// Try to decode as UTF-8
+				content := string(data)
+				if isValidUTF8(content) {
+					file.IsText = true
+					file.Content = &content
+				} else {
+					errMsg := "[File content not displayed: not valid UTF-8]"
+					file.ErrorMessage = &errMsg
+				}
+			} else {
+				errMsg := "[File content not displayed: likely binary]"
+				file.ErrorMessage = &errMsg
+			}
+		} else {
+			errMsg := fmt.Sprintf("[Error accessing file: %s]", err.Error())
+			file.ErrorMessage = &errMsg
+		}
+
+		return file
+	}
+
+	// Get other files from conversation root
 	entries, _ := os.ReadDir(convDir)
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, ".") && !entry.IsDir() && !strings.HasSuffix(name, ".md") {
-			file := OtherFile{
-				Filename: name,
-				IsText:   false,
-			}
-
-			// Try to read file content
 			filePath := filepath.Join(convDir, name)
-			if data, err := os.ReadFile(filePath); err == nil {
-				// Check if it's likely text (no null bytes in first 4096 bytes)
-				peekSize := 4096
-				if len(data) < peekSize {
-					peekSize = len(data)
-				}
-
-				if peekSize > 0 && !containsNull(data[:peekSize]) {
-					// Try to decode as UTF-8
-					content := string(data)
-					if isValidUTF8(content) {
-						file.IsText = true
-						file.Content = &content
-					} else {
-						errMsg := "[File content not displayed: not valid UTF-8]"
-						file.ErrorMessage = &errMsg
-					}
-				} else {
-					errMsg := "[File content not displayed: likely binary]"
-					file.ErrorMessage = &errMsg
-				}
-			} else {
-				errMsg := fmt.Sprintf("[Error accessing file: %s]", err.Error())
-				file.ErrorMessage = &errMsg
-			}
-
+			file := processFile(name, filePath)
 			detail.OtherFiles = append(detail.OtherFiles, file)
+		}
+	}
+
+	// Get files from meta/ directory
+	metaDir := filepath.Join(convDir, "meta")
+	if metaEntries, err := os.ReadDir(metaDir); err == nil {
+		for _, entry := range metaEntries {
+			name := entry.Name()
+			if !strings.HasPrefix(name, ".") && !entry.IsDir() {
+				filePath := filepath.Join(metaDir, name)
+				// Use meta/<filename> as the display name
+				displayName := filepath.Join("meta", name)
+				file := processFile(displayName, filePath)
+				detail.OtherFiles = append(detail.OtherFiles, file)
+			}
 		}
 	}
 
@@ -830,7 +851,13 @@ func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	pinPath := filepath.Join(convDir, "pinned.txt")
+	// Ensure meta directory exists
+	if err := os.MkdirAll(filepath.Join(convDir, "meta"), 0755); err != nil {
+		http.Error(w, "Failed to create meta directory", http.StatusInternalServerError)
+		return
+	}
+
+	pinPath := filepath.Join(convDir, "meta", "pinned.flag")
 
 	if _, err := os.Stat(pinPath); err == nil {
 		// Unpin
@@ -854,7 +881,9 @@ func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
 			rootID := strings.TrimSpace(string(data))
 			baseDir, _ := chat.GetConversationsDir()
 			rootDir := filepath.Join(baseDir, rootID)
-			rootPinPath := filepath.Join(rootDir, "pinned.txt")
+			// Ensure meta directory exists in root
+			os.MkdirAll(filepath.Join(rootDir, "meta"), 0755)
+			rootPinPath := filepath.Join(rootDir, "meta", "pinned.flag")
 
 			// Pin the root if it's not already pinned
 			if _, err := os.Stat(rootPinPath); err != nil {
