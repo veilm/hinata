@@ -34,9 +34,10 @@ func ParseRole(s string) (Role, error) {
 }
 
 type ChatMessage struct {
-	Path      string
-	Timestamp int64
-	Role      Role
+	Path         string
+	Timestamp    int64
+	Role         Role
+	ReasoningPath string // Optional path to associated reasoning file
 }
 
 func (m ChatMessage) Less(other ChatMessage) bool {

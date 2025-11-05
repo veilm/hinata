@@ -30,9 +30,10 @@ type ConversationInfo struct {
 }
 
 type MessageFile struct {
-	Filename string `json:"filename"`
-	Role     string `json:"role"`
-	Content  string `json:"content"`
+	Filename  string                 `json:"filename"`
+	Role      string                 `json:"role"`
+	Content   string                 `json:"content"`
+	Reasoning *MessageFile           `json:"reasoning,omitempty"`
 }
 
 type OtherFile struct {
@@ -521,11 +522,25 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		contentStr := string(content)
 		role := string(msg.Role)
 
-		detail.Messages = append(detail.Messages, MessageFile{
+		messageFile := MessageFile{
 			Filename: filename,
 			Role:     role,
 			Content:  strings.TrimSpace(contentStr),
-		})
+		}
+
+		// Load associated reasoning if present
+		if msg.ReasoningPath != "" {
+			reasoningContent, err := os.ReadFile(msg.ReasoningPath)
+			if err == nil {
+				messageFile.Reasoning = &MessageFile{
+					Filename: filepath.Base(msg.ReasoningPath),
+					Role:     "assistant-reasoning",
+					Content:  strings.TrimSpace(string(reasoningContent)),
+				}
+			}
+		}
+
+		detail.Messages = append(detail.Messages, messageFile)
 	}
 
 	// Get other files

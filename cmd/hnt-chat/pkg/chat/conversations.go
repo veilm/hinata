@@ -160,6 +160,35 @@ func ListMessages(convDir string) ([]ChatMessage, error) {
 		})
 	}
 
+	// Load reasoning files from reasoning/ subdirectory
+	reasoningMap := make(map[int64]string)
+	reasoningDir := filepath.Join(convDir, "reasoning")
+	if reasoningEntries, err := os.ReadDir(reasoningDir); err == nil {
+		for _, entry := range reasoningEntries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+
+			name := entry.Name()
+			stem := strings.TrimSuffix(name, ".md")
+			timestamp, err := strconv.ParseInt(stem, 10, 64)
+			if err != nil {
+				continue
+			}
+
+			reasoningMap[timestamp] = filepath.Join(reasoningDir, name)
+		}
+	}
+
+	// Associate reasoning files with assistant messages by timestamp
+	for i := range messages {
+		if messages[i].Role == RoleAssistant {
+			if reasoningPath, ok := reasoningMap[messages[i].Timestamp]; ok {
+				messages[i].ReasoningPath = reasoningPath
+			}
+		}
+	}
+
 	sort.Slice(messages, func(i, j int) bool {
 		return messages[i].Less(messages[j])
 	})
