@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Migration script to move metadata files to meta/ subdirectory
+# This script will move fork_source.txt, access.txt, model.txt, title.txt, and forks.txt
+# from the conversation directory root to a meta/ subdirectory
+
+set -e
+
+# Determine conversations directory
+if [ -n "$XDG_DATA_HOME" ]; then
+    CONVERSATIONS_DIR="$XDG_DATA_HOME/hinata/chat/conversations"
+else
+    CONVERSATIONS_DIR="$HOME/.local/share/hinata/chat/conversations"
+fi
+
+if [ ! -d "$CONVERSATIONS_DIR" ]; then
+    echo "Error: Conversations directory not found: $CONVERSATIONS_DIR"
+    exit 1
+fi
+
+echo "Migrating conversations in: $CONVERSATIONS_DIR"
+echo
+
+# Counter for migrations
+migrated=0
+skipped=0
+
+# Iterate through all conversation directories
+for conv_dir in "$CONVERSATIONS_DIR"/*; do
+    if [ ! -d "$conv_dir" ]; then
+        continue
+    fi
+
+    conv_id=$(basename "$conv_dir")
+    meta_dir="$conv_dir/meta"
+    files_to_migrate=()
+
+    # Check which files need to be migrated
+    for file in "fork_source.txt" "access.txt" "model.txt" "title.txt" "forks.txt"; do
+        if [ -f "$conv_dir/$file" ]; then
+            files_to_migrate+=("$file")
+        fi
+    done
+
+    if [ ${#files_to_migrate[@]} -eq 0 ]; then
+        skipped=$((skipped + 1))
+        continue
+    fi
+
+    echo "Migrating conversation: $conv_id"
+
+    # Create meta directory if it doesn't exist
+    mkdir -p "$meta_dir"
+
+    # Move files to meta directory
+    for file in "${files_to_migrate[@]}"; do
+        echo "  Moving $file -> meta/$file"
+        mv "$conv_dir/$file" "$meta_dir/$file"
+    done
+
+    migrated=$((migrated + 1))
+    echo
+done
+
+echo "Migration complete!"
+echo "Migrated: $migrated conversations"
+echo "Skipped: $skipped conversations (no files to migrate)"

@@ -231,7 +231,11 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 	shouldWrite := write || outputFilename
 
 	if model != "" && cmd.Flags().Changed("model") {
-		modelPath := filepath.Join(convDir, "model.txt")
+		// Ensure meta directory exists
+		if err := os.MkdirAll(filepath.Join(convDir, "meta"), 0755); err != nil {
+			return fmt.Errorf("failed to create meta directory: %w", err)
+		}
+		modelPath := filepath.Join(convDir, "meta", "model.txt")
 		if err := os.WriteFile(modelPath, []byte(model), 0644); err != nil {
 			return fmt.Errorf("failed to write model file: %w", err)
 		}
@@ -378,7 +382,7 @@ func handleListCommand(cmd *cobra.Command, args []string) error {
 		}
 
 		// Check for title file
-		titlePath := filepath.Join(convDir, "title.txt")
+		titlePath := filepath.Join(convDir, "meta", "title.txt")
 		if data, err := os.ReadFile(titlePath); err == nil {
 			conv.Title = strings.TrimSpace(string(data))
 		}
@@ -390,7 +394,7 @@ func handleListCommand(cmd *cobra.Command, args []string) error {
 		}
 
 		// Check for fork_source.txt
-		forkSourcePath := filepath.Join(convDir, "fork_source.txt")
+		forkSourcePath := filepath.Join(convDir, "meta", "fork_source.txt")
 		if data, err := os.ReadFile(forkSourcePath); err == nil {
 			conv.ForkSource = strings.TrimSpace(string(data))
 			// Add to fork map
@@ -529,12 +533,8 @@ func handleForkCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, entry := range entries {
+		// Skip directories - we'll handle meta/ separately
 		if entry.IsDir() {
-			continue
-		}
-
-		// Skip fork tracking files - we'll set our own
-		if entry.Name() == "fork_source.txt" || entry.Name() == "forks.txt" {
 			continue
 		}
 
@@ -549,13 +549,44 @@ func handleForkCommand(cmd *cobra.Command, args []string) error {
 		os.WriteFile(dstPath, srcData, 0644)
 	}
 
+	// Copy meta directory contents, skipping fork tracking files
+	metaSrcDir := filepath.Join(sourceDir, "meta")
+	if _, err := os.Stat(metaSrcDir); err == nil {
+		metaDstDir := filepath.Join(newConvDir, "meta")
+		os.MkdirAll(metaDstDir, 0755)
+
+		metaEntries, err := os.ReadDir(metaSrcDir)
+		if err == nil {
+			for _, entry := range metaEntries {
+				if entry.IsDir() {
+					continue
+				}
+
+				// Skip fork tracking files - we'll set our own
+				if entry.Name() == "fork_source.txt" || entry.Name() == "forks.txt" {
+					continue
+				}
+
+				srcPath := filepath.Join(metaSrcDir, entry.Name())
+				dstPath := filepath.Join(metaDstDir, entry.Name())
+
+				srcData, err := os.ReadFile(srcPath)
+				if err != nil {
+					continue
+				}
+
+				os.WriteFile(dstPath, srcData, 0644)
+			}
+		}
+	}
+
 	sourceID := filepath.Base(sourceDir)
 	newID := filepath.Base(newConvDir)
 
 	// Handle fork tracking
 	// 1. Check if source has a fork_source.txt (meaning it's already a fork)
 	var rootID string
-	forkSourcePath := filepath.Join(sourceDir, "fork_source.txt")
+	forkSourcePath := filepath.Join(sourceDir, "meta", "fork_source.txt")
 	if data, err := os.ReadFile(forkSourcePath); err == nil {
 		// Source is a fork, use its root
 		rootID = strings.TrimSpace(string(data))
@@ -565,14 +596,22 @@ func handleForkCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2. Write fork_source.txt to the new conversation
-	newForkSourcePath := filepath.Join(newConvDir, "fork_source.txt")
+	// Ensure meta directory exists
+	if err := os.MkdirAll(filepath.Join(newConvDir, "meta"), 0755); err != nil {
+		return fmt.Errorf("failed to create meta directory: %w", err)
+	}
+	newForkSourcePath := filepath.Join(newConvDir, "meta", "fork_source.txt")
 	if err := os.WriteFile(newForkSourcePath, []byte(rootID), 0644); err != nil {
 		return fmt.Errorf("failed to write fork_source.txt: %w", err)
 	}
 
 	// 3. Append new conversation ID to root's forks.txt
 	rootDir := filepath.Join(baseDir, rootID)
-	forksPath := filepath.Join(rootDir, "forks.txt")
+	// Ensure meta directory exists in root
+	if err := os.MkdirAll(filepath.Join(rootDir, "meta"), 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to create meta directory in root: %v\n", err)
+	}
+	forksPath := filepath.Join(rootDir, "meta", "forks.txt")
 
 	// Read existing forks
 	var forks []string
@@ -604,7 +643,11 @@ func handleTitleCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	title := args[0]
-	titlePath := filepath.Join(convDir, "title.txt")
+	// Ensure meta directory exists
+	if err := os.MkdirAll(filepath.Join(convDir, "meta"), 0755); err != nil {
+		return fmt.Errorf("failed to create meta directory: %w", err)
+	}
+	titlePath := filepath.Join(convDir, "meta", "title.txt")
 
 	if err := os.WriteFile(titlePath, []byte(title), 0644); err != nil {
 		return fmt.Errorf("failed to set title: %w", err)

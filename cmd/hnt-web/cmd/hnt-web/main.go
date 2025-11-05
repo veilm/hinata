@@ -303,7 +303,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check for title.txt file - skip conversations without it
-		titlePath := filepath.Join(convDir, "title.txt")
+		titlePath := filepath.Join(convDir, "meta", "title.txt")
 		titleData, err := os.ReadFile(titlePath)
 		if err != nil {
 			// No title.txt file, skip this conversation
@@ -322,13 +322,13 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check for fork_source.txt
-		forkSourcePath := filepath.Join(convDir, "fork_source.txt")
+		forkSourcePath := filepath.Join(convDir, "meta", "fork_source.txt")
 		if data, err := os.ReadFile(forkSourcePath); err == nil {
 			conv.ForkSource = strings.TrimSpace(string(data))
 		}
 
 		// Check for forks.txt
-		forksPath := filepath.Join(convDir, "forks.txt")
+		forksPath := filepath.Join(convDir, "meta", "forks.txt")
 		if data, err := os.ReadFile(forksPath); err == nil {
 			forksStr := strings.TrimSpace(string(data))
 			if forksStr != "" {
@@ -487,12 +487,12 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 	}
 
 	// Read title
-	if data, err := os.ReadFile(filepath.Join(convDir, "title.txt")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "title.txt")); err == nil {
 		detail.Title = strings.TrimSpace(string(data))
 	}
 
 	// Read model
-	if data, err := os.ReadFile(filepath.Join(convDir, "model.txt")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "model.txt")); err == nil {
 		detail.Model = strings.TrimSpace(string(data))
 	}
 
@@ -648,6 +648,12 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create meta directory
+	metaDir := filepath.Join(convDir, "meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		log.Printf("Warning: Failed to create meta directory: %v", err)
+	}
+
 	// Set access for the creator
 	if err := setAccess(convDir, []string{username}); err != nil {
 		log.Printf("Warning: Failed to set access for new conversation: %v", err)
@@ -655,14 +661,14 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Create title.txt with "hnt-web <timestamp>"
 	titleContent := fmt.Sprintf("hnt-web %d", time.Now().Unix())
-	titlePath := filepath.Join(convDir, "title.txt")
+	titlePath := filepath.Join(convDir, "meta", "title.txt")
 	if err := os.WriteFile(titlePath, []byte(titleContent), 0644); err != nil {
 		log.Printf("Warning: Failed to create title.txt: %v", err)
 	}
 
 	// Create model.txt with default model
 	modelContent := "openrouter/google/gemini-2.5-pro"
-	modelPath := filepath.Join(convDir, "model.txt")
+	modelPath := filepath.Join(convDir, "meta", "model.txt")
 	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
 		log.Printf("Warning: Failed to create model.txt: %v", err)
 	}
@@ -704,14 +710,8 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 	for _, entry := range entries {
+		// Skip directories - we'll handle meta/ separately
 		if entry.IsDir() {
-			continue
-		}
-
-		// Skip access.txt and fork tracking files - we'll set our own
-		if entry.Name() == "access.txt" ||
-			entry.Name() == "fork_source.txt" ||
-			entry.Name() == "forks.txt" {
 			continue
 		}
 
@@ -726,6 +726,39 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		os.WriteFile(dstPath, srcData, 0644)
 	}
 
+	// Copy meta directory contents, skipping access.txt, fork_source.txt, and forks.txt
+	metaSrcDir := filepath.Join(sourceDir, "meta")
+	if _, err := os.Stat(metaSrcDir); err == nil {
+		metaDstDir := filepath.Join(newConvDir, "meta")
+		os.MkdirAll(metaDstDir, 0755)
+
+		metaEntries, err := os.ReadDir(metaSrcDir)
+		if err == nil {
+			for _, entry := range metaEntries {
+				if entry.IsDir() {
+					continue
+				}
+
+				// Skip access.txt and fork tracking files - we'll set our own
+				if entry.Name() == "access.txt" ||
+					entry.Name() == "fork_source.txt" ||
+					entry.Name() == "forks.txt" {
+					continue
+				}
+
+				srcPath := filepath.Join(metaSrcDir, entry.Name())
+				dstPath := filepath.Join(metaDstDir, entry.Name())
+
+				srcData, err := os.ReadFile(srcPath)
+				if err != nil {
+					continue
+				}
+
+				os.WriteFile(dstPath, srcData, 0644)
+			}
+		}
+	}
+
 	// Set access for the user who forked
 	if err := setAccess(newConvDir, []string{username}); err != nil {
 		log.Printf("Warning: Failed to set access for forked conversation: %v", err)
@@ -736,7 +769,7 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 	// Handle fork tracking
 	// 1. Check if source has a fork_source.txt (meaning it's already a fork)
 	var rootID string
-	forkSourcePath := filepath.Join(sourceDir, "fork_source.txt")
+	forkSourcePath := filepath.Join(sourceDir, "meta", "fork_source.txt")
 	if data, err := os.ReadFile(forkSourcePath); err == nil {
 		// Source is a fork, use its root
 		rootID = strings.TrimSpace(string(data))
@@ -746,14 +779,22 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 	// 2. Write fork_source.txt to the new conversation
-	newForkSourcePath := filepath.Join(newConvDir, "fork_source.txt")
+	// Ensure meta directory exists
+	if err := os.MkdirAll(filepath.Join(newConvDir, "meta"), 0755); err != nil {
+		log.Printf("Warning: Failed to create meta directory: %v", err)
+	}
+	newForkSourcePath := filepath.Join(newConvDir, "meta", "fork_source.txt")
 	if err := os.WriteFile(newForkSourcePath, []byte(rootID), 0644); err != nil {
 		log.Printf("Warning: Failed to write fork_source.txt: %v", err)
 	}
 
 	// 3. Append new conversation ID to root's forks.txt
 	rootDir := filepath.Join(baseDir, rootID)
-	forksPath := filepath.Join(rootDir, "forks.txt")
+	// Ensure meta directory exists in root
+	if err := os.MkdirAll(filepath.Join(rootDir, "meta"), 0755); err != nil {
+		log.Printf("Warning: Failed to create meta directory in root: %v", err)
+	}
+	forksPath := filepath.Join(rootDir, "meta", "forks.txt")
 
 	// Read existing forks
 	var forks []string
@@ -808,7 +849,7 @@ func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
 		os.WriteFile(pinPath, []byte(""), 0644)
 
 		// Check if this is a fork and auto-pin the root if needed
-		forkSourcePath := filepath.Join(convDir, "fork_source.txt")
+		forkSourcePath := filepath.Join(convDir, "meta", "fork_source.txt")
 		if data, err := os.ReadFile(forkSourcePath); err == nil {
 			rootID := strings.TrimSpace(string(data))
 			baseDir, _ := chat.GetConversationsDir()
@@ -892,7 +933,7 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 
 	// Read model from .model file
 	model := "openrouter/deepseek/deepseek-chat-v3-0324:free"
-	if data, err := os.ReadFile(filepath.Join(convDir, "model.txt")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "model.txt")); err == nil {
 		model = strings.TrimSpace(string(data))
 	}
 
@@ -1008,7 +1049,7 @@ func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	titlePath := filepath.Join(convDir, "title.txt")
+	titlePath := filepath.Join(convDir, "meta", "title.txt")
 
 	if err := os.WriteFile(titlePath, []byte(req.Title), 0644); err != nil {
 		http.Error(w, "Failed to update title", http.StatusInternalServerError)
@@ -1034,7 +1075,7 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	modelPath := filepath.Join(convDir, "model.txt")
+	modelPath := filepath.Join(convDir, "meta", "model.txt")
 
 	if err := os.WriteFile(modelPath, []byte(req.Model), 0644); err != nil {
 		http.Error(w, "Failed to update model", http.StatusInternalServerError)
@@ -1164,7 +1205,7 @@ func isValidUTF8(s string) bool {
 }
 
 func getConversationTitle(convDir string) string {
-	titlePath := filepath.Join(convDir, "title.txt")
+	titlePath := filepath.Join(convDir, "meta", "title.txt")
 	if data, err := os.ReadFile(titlePath); err == nil {
 		return strings.TrimSpace(string(data))
 	}
@@ -1206,7 +1247,7 @@ func validateUser(username, password string) bool {
 }
 
 func hasAccess(convDir, username string) bool {
-	accessPath := filepath.Join(convDir, "access.txt")
+	accessPath := filepath.Join(convDir, "meta", "access.txt")
 	data, err := os.ReadFile(accessPath)
 	if err != nil {
 		// No access.txt means only default owner has access
@@ -1223,13 +1264,17 @@ func hasAccess(convDir, username string) bool {
 }
 
 func setAccess(convDir string, users []string) error {
-	accessPath := filepath.Join(convDir, "access.txt")
+	// Ensure meta directory exists
+	if err := os.MkdirAll(filepath.Join(convDir, "meta"), 0755); err != nil {
+		return fmt.Errorf("failed to create meta directory: %w", err)
+	}
+	accessPath := filepath.Join(convDir, "meta", "access.txt")
 	content := strings.Join(users, "\n")
 	return os.WriteFile(accessPath, []byte(content), 0644)
 }
 
 func getAccess(convDir string) []string {
-	accessPath := filepath.Join(convDir, "access.txt")
+	accessPath := filepath.Join(convDir, "meta", "access.txt")
 	data, err := os.ReadFile(accessPath)
 	if err != nil {
 		// Default to owner only
