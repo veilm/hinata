@@ -30,10 +30,10 @@ type ConversationInfo struct {
 }
 
 type MessageFile struct {
-	Filename  string                 `json:"filename"`
-	Role      string                 `json:"role"`
-	Content   string                 `json:"content"`
-	Reasoning *MessageFile           `json:"reasoning,omitempty"`
+	Filename  string       `json:"filename"`
+	Role      string       `json:"role"`
+	Content   string       `json:"content"`
+	Reasoning *MessageFile `json:"reasoning,omitempty"`
 }
 
 type OtherFile struct {
@@ -1072,13 +1072,19 @@ func updateTitle(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
+	metaDir := filepath.Join(convDir, "meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		http.Error(w, "Failed to prepare metadata directory", http.StatusInternalServerError)
+		return
+	}
+
 	var req TitleUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	titlePath := filepath.Join(convDir, "meta", "title.txt")
+	titlePath := filepath.Join(metaDir, "title.txt")
 
 	if err := os.WriteFile(titlePath, []byte(req.Title), 0644); err != nil {
 		http.Error(w, "Failed to update title", http.StatusInternalServerError)
@@ -1098,13 +1104,19 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
+	metaDir := filepath.Join(convDir, "meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		http.Error(w, "Failed to prepare metadata directory", http.StatusInternalServerError)
+		return
+	}
+
 	var req ModelUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	modelPath := filepath.Join(convDir, "meta", "model.txt")
+	modelPath := filepath.Join(metaDir, "model.txt")
 
 	if err := os.WriteFile(modelPath, []byte(req.Model), 0644); err != nil {
 		http.Error(w, "Failed to update model", http.StatusInternalServerError)
