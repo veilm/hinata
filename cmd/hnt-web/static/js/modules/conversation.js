@@ -425,12 +425,19 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				}
 			}
 
-			processedMessages.forEach((msg) => {
+			processedMessages.forEach((msg, index) => {
+				const previousMessage =
+					index > 0 ? processedMessages[index - 1] : null;
+				const parentMessageFilename = previousMessage
+					? previousMessage.filename
+					: null;
+
 				const messageDiv = document.createElement("div");
 				messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
 				messageDiv.dataset.filename = msg.filename;
 				messageDiv.dataset.role = msg.role; // Store role for actions
 				messageDiv.dataset.originalContent = msg.content; // Store original content for edit/fork
+				messageDiv.dataset.previousFilename = parentMessageFilename || "";
 
 				// If this message has associated reasoning, display it first
 				if (msg.reasoning) {
@@ -536,10 +543,18 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				);
 				editButton.title = "Edit"; // Tooltip for accessibility
 
-				const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () =>
-					handleForkFromMessage(conversationId, msg.filename, msg.role),
-				);
-				forkButton.title = "Fork from here"; // Tooltip for accessibility
+				if (parentMessageFilename) {
+					const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () =>
+						handleForkFromMessage(
+							conversationId,
+							msg.filename,
+							msg.role,
+							parentMessageFilename,
+						),
+					);
+					forkButton.title = "Fork from here"; // Tooltip for accessibility
+					actionsDiv.appendChild(forkButton);
+				}
 
 				const archiveButton = createActionButton(
 					ICON_ARCHIVE,
@@ -562,7 +577,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				actionsDiv.appendChild(infoButton);
 				actionsDiv.appendChild(copyButton);
 				actionsDiv.appendChild(editButton);
-				actionsDiv.appendChild(forkButton);
 				actionsDiv.appendChild(archiveButton);
 
 				footerDiv.appendChild(infoDiv);
@@ -1319,7 +1333,13 @@ async function handleForkFromMessage(
 	conversationId,
 	messageFilename,
 	messageRole,
+	parentMessageFilename = null,
 ) {
+	if (!parentMessageFilename) {
+		showToast("Forking requires a previous message", "error");
+		return;
+	}
+
 	// For user and system messages, enter fork-edit mode
 	// For assistant messages, fork immediately
 	if (messageRole === "user" || messageRole === "system") {
@@ -1331,6 +1351,9 @@ async function handleForkFromMessage(
 			showToast("Could not find message element", "error");
 			return;
 		}
+
+		messageElement.dataset.forkParentMessage =
+			parentMessageFilename || "";
 
 		// Find the content wrapper and actions div
 		const contentWrapperDiv = messageElement.querySelector(
@@ -1359,7 +1382,13 @@ async function handleForkFromMessage(
 		);
 	} else {
 		// For assistant messages, fork immediately as before
-		executeForkFromMessage(conversationId, messageFilename, messageRole);
+		executeForkFromMessage(
+			conversationId,
+			messageFilename,
+			messageRole,
+			null,
+			parentMessageFilename,
+		);
 	}
 }
 
@@ -1368,13 +1397,22 @@ async function executeForkFromMessage(
 	messageFilename,
 	messageRole,
 	editedContent = null,
+	parentMessageFilename = null,
 ) {
 	// Fork the conversation first
 	try {
+		const forkPayload = {
+			parent_message: parentMessageFilename || null,
+		};
+
 		const response = await authFetch(
 			`/api/conversation/${encodeURIComponent(conversationId)}/fork`,
 			{
 				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(forkPayload),
 			},
 		);
 

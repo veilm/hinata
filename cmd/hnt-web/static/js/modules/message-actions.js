@@ -77,16 +77,6 @@ function toggleEditState(
 		);
 		editButton.title = "Edit";
 
-		const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
-			const role = messageElement.dataset.role || "unknown";
-			if (handleForkFromMessageRef) {
-				handleForkFromMessageRef(conversationId, filename, role);
-			} else {
-				console.error("handleForkFromMessage not initialized");
-			}
-		});
-		forkButton.title = "Fork from here";
-
 		const archiveButton = createActionButton(ICON_ARCHIVE, "btn-archive", () =>
 			handleArchiveMessage(messageElement, conversationId, filename, reasoning),
 		);
@@ -100,7 +90,25 @@ function toggleEditState(
 		actionsDiv.appendChild(infoButton);
 		actionsDiv.appendChild(copyButton);
 		actionsDiv.appendChild(editButton);
-		actionsDiv.appendChild(forkButton);
+		const previousFilename =
+			(messageElement.dataset.previousFilename || "").trim();
+		if (previousFilename) {
+			const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
+				const role = messageElement.dataset.role || "unknown";
+				if (handleForkFromMessageRef) {
+					handleForkFromMessageRef(
+						conversationId,
+						filename,
+						role,
+						previousFilename,
+					);
+				} else {
+					console.error("handleForkFromMessage not initialized");
+				}
+			});
+			forkButton.title = "Fork from here";
+			actionsDiv.appendChild(forkButton);
+		}
 		actionsDiv.appendChild(archiveButton);
 
 		delete messageElement.dataset.editing;
@@ -215,15 +223,6 @@ function toggleForkEditState(
 		);
 		editButton.title = "Edit";
 
-		const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
-			if (handleForkFromMessageRef) {
-				handleForkFromMessageRef(conversationId, filename, messageRole);
-			} else {
-				console.error("handleForkFromMessage not initialized");
-			}
-		});
-		forkButton.title = "Fork from here";
-
 		const archiveButton = createActionButton(ICON_ARCHIVE, "btn-archive", () =>
 			handleArchiveMessage(messageElement, conversationId, filename),
 		);
@@ -237,11 +236,29 @@ function toggleForkEditState(
 		actionsDiv.appendChild(infoButton);
 		actionsDiv.appendChild(copyButton);
 		actionsDiv.appendChild(editButton);
-		actionsDiv.appendChild(forkButton);
+		const previousFilename =
+			(messageElement.dataset.previousFilename || "").trim();
+		if (previousFilename) {
+			const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
+				if (handleForkFromMessageRef) {
+					handleForkFromMessageRef(
+						conversationId,
+						filename,
+						messageRole,
+						previousFilename,
+					);
+				} else {
+					console.error("handleForkFromMessage not initialized");
+				}
+			});
+			forkButton.title = "Fork from here";
+			actionsDiv.appendChild(forkButton);
+		}
 		actionsDiv.appendChild(archiveButton);
 
 		delete messageElement.dataset.forkEditing;
 		delete messageElement.dataset.originalContentForFork;
+		delete messageElement.dataset.forkParentMessage;
 		updateGlobalActionButtonsState();
 	} else {
 		// Switching from View to Fork-Edit
@@ -317,6 +334,10 @@ async function handleForkSave(
 	messageRole,
 ) {
 	const editedContent = textareaElement.value;
+	const parentMessageFilename =
+		(messageElement.dataset.forkParentMessage || "").trim() ||
+		(messageElement.dataset.previousFilename || "").trim() ||
+		null;
 
 	// Clear previous errors
 	clearErrorMessages(actionsDiv);
@@ -333,6 +354,7 @@ async function handleForkSave(
 				filename,
 				messageRole,
 				editedContent,
+				parentMessageFilename,
 			);
 		} else {
 			throw new Error("executeForkFromMessage not initialized");

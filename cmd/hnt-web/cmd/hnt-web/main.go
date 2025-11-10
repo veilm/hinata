@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -69,6 +70,10 @@ type MessageAddRequest struct {
 
 type MessageContentUpdateRequest struct {
 	Content string `json:"content"`
+}
+
+type ForkConversationRequest struct {
+	ParentMessage string `json:"parent_message"`
 }
 
 type RegisterRequest struct {
@@ -710,6 +715,16 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
+	var forkReq ForkConversationRequest
+	if r.Body != nil {
+		defer r.Body.Close()
+		if err := json.NewDecoder(r.Body).Decode(&forkReq); err != nil && err != io.EOF {
+			http.Error(w, "Invalid fork request body", http.StatusBadRequest)
+			return
+		}
+	}
+	parentMessage := strings.TrimSpace(forkReq.ParentMessage)
+
 	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
 		http.Error(w, "Failed to get conversations directory", http.StatusInternalServerError)
@@ -763,7 +778,9 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 				// Skip access.txt and fork tracking files - we'll set our own
 				if entry.Name() == "access.txt" ||
 					entry.Name() == "fork_source.txt" ||
-					entry.Name() == "forks.txt" {
+					entry.Name() == "forks.txt" ||
+					entry.Name() == "parent_message.txt" ||
+					entry.Name() == "parent_conversation.txt" {
 					continue
 				}
 
@@ -807,6 +824,18 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 	newForkSourcePath := filepath.Join(newConvDir, "meta", "fork_source.txt")
 	if err := os.WriteFile(newForkSourcePath, []byte(rootID), 0644); err != nil {
 		log.Printf("Warning: Failed to write fork_source.txt: %v", err)
+	}
+
+	parentConvPath := filepath.Join(newConvDir, "meta", "parent_conversation.txt")
+	if err := os.WriteFile(parentConvPath, []byte(convID), 0644); err != nil {
+		log.Printf("Warning: Failed to write parent_conversation.txt: %v", err)
+	}
+
+	if parentMessage != "" {
+		parentMessagePath := filepath.Join(newConvDir, "meta", "parent_message.txt")
+		if err := os.WriteFile(parentMessagePath, []byte(parentMessage), 0644); err != nil {
+			log.Printf("Warning: Failed to write parent_message.txt: %v", err)
+		}
 	}
 
 	// 3. Append new conversation ID to root's forks.txt
