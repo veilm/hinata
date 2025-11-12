@@ -530,11 +530,9 @@ li {
 	justify-content: center;
 	line-height: 1; /* Prevents extra space if button just has icon */
 	background-color: transparent; /* Keep transparent background */
-	border-width: 1px;
-	border-style: solid;
+	border: none;
 	/* Default icon/border color (matches assistant, acts as fallback for unknown message types) */
 	color: #6ec8ff;
-	border-color: #6ec8ff;
 }
 .message-actions button:hover {
 	/* Default hover background (matches assistant, acts as fallback) */
@@ -545,7 +543,6 @@ li {
 .message-user .message-actions button {
 	/* Purple */
 	color: #9d81ae;
-	border-color: #9d81ae;
 }
 .message-user .message-actions button:hover {
 	background-color: rgba(177, 157, 255, 0.1); /* Purplish tint */
@@ -554,7 +551,6 @@ li {
 /* Assistant Message Icons (explicitly sets the default, good for clarity) */
 .message-assistant .message-actions button {
 	color: #6ec8ff; /* Icy-blue */
-	border-color: #6ec8ff;
 }
 .message-assistant .message-actions button:hover {
 	background-color: rgba(110, 200, 255, 0.1); /* Icy-blue tint */
@@ -563,7 +559,6 @@ li {
 /* System Message Icons */
 .message-system .message-actions button {
 	color: #e0e0e0; /* White-ish */
-	border-color: #e0e0e0;
 }
 .message-system .message-actions button:hover {
 	background-color: rgba(224, 224, 224, 0.1); /* White-ish tint */
@@ -572,7 +567,6 @@ li {
 /* Assistant Reasoning Message Icons */
 .message-assistant-reasoning .message-actions button {
 	color: #b19dff; /* Light purple */
-	border-color: #b19dff;
 }
 .message-assistant-reasoning .message-actions button:hover {
 	background-color: rgba(187, 57, 103, 0.1); /* Purple tint */
