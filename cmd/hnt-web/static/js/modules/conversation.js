@@ -36,6 +36,9 @@ import {
 } from "./message-input.js";
 import { showShareModal } from "./share.js";
 
+const getTitleInputValue = (title) =>
+	title && title !== "-" ? title : "";
+
 async function loadConversationsList() {
 	const container = document.getElementById("conversation-list-container");
 	try {
@@ -114,7 +117,7 @@ async function loadConversationsList() {
 				// Title link
 				const a = document.createElement("a");
 				a.href = `/c/${encodeURIComponent(conv.id)}`;
-				let displayTitle = escapeHtml(conv.title).trim();
+				let displayTitle = (conv.title || "").trim();
 				if (!displayTitle || displayTitle === "-") {
 					displayTitle = "Untitled";
 				}
@@ -257,7 +260,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		"modal-extra-sections-wrapper",
 	);
 
-	const safeConvId = escapeHtml(conversationId);
+	const fallbackConvId = conversationId;
 
 	if (otherFilesContainer) {
 		otherFilesContainer.innerHTML = "";
@@ -301,8 +304,8 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		const updateDisplayedTitle = (currentTitle, isPinned = false) => {
 			const displayPageTitle =
 				currentTitle && currentTitle !== "-"
-					? escapeHtml(currentTitle)
-					: `Conversation ${safeConvId}`;
+					? currentTitle
+					: `Conversation ${fallbackConvId}`;
 			document.title = displayPageTitle;
 
 			// Clear the h1 and rebuild with pin icon if needed
@@ -330,7 +333,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		updateDisplayedTitle(convTitle, data.is_pinned);
 
 		if (modalTitleInput) {
-			modalTitleInput.value = escapeHtml(convTitle === "-" ? "" : convTitle);
+			modalTitleInput.value = getTitleInputValue(convTitle);
 			modalTitleInput.dataset.originalTitle = convTitle;
 			modalTitleInput.disabled = false;
 
@@ -355,14 +358,10 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 							data.is_pinned,
 						); // Update H1 and document title
 					} catch (error) {
-						modalTitleInput.value = escapeHtml(
-							originalTitle === "-" ? "" : originalTitle,
-						);
+						modalTitleInput.value = getTitleInputValue(originalTitle);
 					}
 				} else {
-					modalTitleInput.value = escapeHtml(
-						originalTitle === "-" ? "" : originalTitle,
-					);
+					modalTitleInput.value = getTitleInputValue(originalTitle);
 				}
 			});
 			modalTitleInput.addEventListener("keypress", (event) => {
@@ -373,7 +372,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		// --- Model Handling ---
 		const convModel = data.model || DEFAULT_MODEL_NAME; // Backend ensures default if missing/empty
 		if (modalModelInput) {
-			modalModelInput.value = escapeHtml(convModel);
+			modalModelInput.value = convModel || "";
 			modalModelInput.dataset.originalModel = convModel;
 			modalModelInput.disabled = false;
 
@@ -390,11 +389,11 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 						);
 						// updateConversationModel handles updating dataset.originalModel and input value
 					} catch (error) {
-						modalModelInput.value = escapeHtml(originalModel);
+						modalModelInput.value = originalModel || "";
 					}
 				} else {
 					// Ensure field shows the clean originalModel if user just added/removed spaces
-					modalModelInput.value = escapeHtml(originalModel);
+					modalModelInput.value = originalModel || "";
 				}
 			});
 			modalModelInput.addEventListener("keypress", (event) => {
@@ -1001,7 +1000,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		}
 	} catch (error) {
 		handleError(
-			`Failed to load conversation: ${safeConvId}.`,
+			`Failed to load conversation: ${fallbackConvId}.`,
 			messagesContainer,
 		);
 		console.error(`Error loading conversation ${conversationId}:`, error);
@@ -1056,7 +1055,7 @@ async function updateConversationTitle(conversationId, newTitle, inputElement) {
 			inputElement.style.borderColor = "";
 		}, 1500);
 
-		inputElement.value = escapeHtml(savedTitle === "-" ? "" : savedTitle);
+		inputElement.value = getTitleInputValue(savedTitle);
 		inputElement.dataset.originalTitle = savedTitle;
 		console.log(`Title for ${conversationId} updated to "${savedTitle}"`);
 
@@ -1105,7 +1104,7 @@ async function updateConversationModel(conversationId, newModel, inputElement) {
 			inputElement.style.borderColor = "";
 		}, 1500);
 
-		inputElement.value = escapeHtml(savedModel); // Update input to what was actually saved
+		inputElement.value = savedModel || ""; // Update input to what was actually saved
 		inputElement.dataset.originalModel = savedModel;
 		console.log(`Model for ${conversationId} updated to "${savedModel}"`);
 
@@ -1171,7 +1170,7 @@ async function handlePinToggle(conversationId, buttonElement) {
 			const currentTitle = modalTitleInput.dataset.originalTitle || "-";
 			const displayPageTitle =
 				currentTitle && currentTitle !== "-"
-					? escapeHtml(currentTitle)
+					? currentTitle
 					: `Conversation ${conversationId}`;
 
 			// Clear the h1 and rebuild with pin icon if needed
