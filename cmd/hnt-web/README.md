@@ -29,9 +29,13 @@ installationl and then hnt-web serves from there
 it uses hnt-chat as the LLM backend, so all of your messages are plaintext and
 simple to manage externally
 
-## ss
-![ss 1](https://sucralose.moe/static/hnt-web-0.png)
+## screenshots, as of Nov 2025
+![ss 0](https://sucralose.moe/static/hnt-web-0.png)
 
-![ss 2](https://sucralose.moe/static/hnt-web-1.png)
+![ss 1](https://sucralose.moe/static/hnt-web-1.png)
 
-![ss 3](https://sucralose.moe/static/hnt-web-2.png)
+![ss 2](https://sucralose.moe/static/hnt-web-2.png)
+
+![ss 3](https://sucralose.moe/static/hnt-web-4.png)
+
+![ss 4](https://sucralose.moe/static/hnt-web-5.png)
