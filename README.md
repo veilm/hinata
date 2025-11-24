@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-agentic, extensible AI pair programming in your terminal
+Unix-style, composable LLM utilities for your terminal
 </p>
 
 ---
@@ -18,13 +18,14 @@ Requirements: Go, Linux/macOS
 
 ## What
 
-A collection of composable CLI tools that give LLMs agency in your terminal. Each tool does one thing well and can be piped together.
+hinata is a small ecosystem of CLI programs built like classic Unix tools. Instead of a monolithic "AI pair programmer," each binary is a focused building block you can mix, match, and script together.
 
 **Core tools:**
-- `hnt-agent` - LLM with persistent shell access
+- `hnt-llm` - Direct LLM API access for piping prompts/responses
+- `hnt-chat` - Plaintext conversation management and memory
 - `hnt-edit` - Targeted file editing with TARGET/REPLACE blocks
-- `hnt-chat` - Conversation management via plaintext files
-- `hnt-llm` - Direct LLM API access
+- `hnt-web` - Zero-dependency web UI that speaks to `hnt-chat` for storage/backends
+- `hnt-agent` - Lightweight shell automation for single tasks (think "run tests" or "summarize this diff") rather than full pair programming
 
 ## Usage
 
