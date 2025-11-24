@@ -247,9 +247,29 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 	const modalForkBtn = document.getElementById("modal-fork-btn");
 	const modalShareBtn = document.getElementById("modal-share-btn");
 	const messagesContainer = document.getElementById("messages-container");
-	const otherFilesContainer = document.getElementById("other-files-container");
+	const otherFilesContainer = document.getElementById(
+		"modal-other-files-container",
+	);
+	const deletedMessagesContainer = document.getElementById(
+		"modal-deleted-messages-container",
+	);
+	const extraSectionsWrapper = document.getElementById(
+		"modal-extra-sections-wrapper",
+	);
 
 	const safeConvId = escapeHtml(conversationId);
+
+	if (otherFilesContainer) {
+		otherFilesContainer.innerHTML = "";
+		otherFilesContainer.classList.add("hidden");
+	}
+	if (deletedMessagesContainer) {
+		deletedMessagesContainer.innerHTML = "";
+		deletedMessagesContainer.classList.add("hidden");
+	}
+	if (extraSectionsWrapper) {
+		extraSectionsWrapper.classList.add("hidden");
+	}
 
 	// Initial state for inputs and buttons
 	document.title = `Loading conversation...`;
@@ -594,17 +614,20 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				"<p>No messages found in this conversation.</p>";
 		}
 
-		// Render other files
-		otherFilesContainer.innerHTML = ""; // Clear
-		if (data.other_files && data.other_files.length > 0) {
-			const divider = document.createElement("hr");
-			divider.className = "other-files-divider";
+		let hasOtherFiles = false;
+		let hasArchivedMessages = false;
 
-			// Create collapsible container
+		// Render other files
+		if (
+			otherFilesContainer &&
+			data.other_files &&
+			data.other_files.length > 0
+		) {
+			hasOtherFiles = true;
+
 			const collapsibleContainer = document.createElement("div");
 			collapsibleContainer.className = "collapsible-section";
 
-			// Create header with toggle
 			const headerContainer = document.createElement("div");
 			headerContainer.className = "collapsible-header";
 			headerContainer.style.cursor = "pointer";
@@ -625,7 +648,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			headerContainer.appendChild(heading);
 			headerContainer.appendChild(toggleIcon);
 
-			// Create content container
 			const contentContainer = document.createElement("div");
 			contentContainer.className = "collapsible-content";
 			contentContainer.style.display = "none"; // Collapsed by default
@@ -649,7 +671,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 					li.appendChild(contentDisplayDiv);
 				} else {
 					const errorDisplayDiv = document.createElement("div");
-					// Use binary style for error messages related to file content
 					errorDisplayDiv.className =
 						"other-file-content other-file-content-binary";
 					errorDisplayDiv.textContent = escapeHtml(
@@ -662,7 +683,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 
 			contentContainer.appendChild(ul);
 
-			// Toggle handler
 			headerContainer.addEventListener("click", () => {
 				const isVisible = contentContainer.style.display !== "none";
 				contentContainer.style.display = isVisible ? "none" : "block";
@@ -672,20 +692,20 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			collapsibleContainer.appendChild(headerContainer);
 			collapsibleContainer.appendChild(contentContainer);
 
-			otherFilesContainer.appendChild(divider);
 			otherFilesContainer.appendChild(collapsibleContainer);
 		}
 
 		// Render archived messages
-		if (data.archived_messages && data.archived_messages.length > 0) {
-			const archiveDivider = document.createElement("hr");
-			archiveDivider.className = "archive-divider";
+		if (
+			deletedMessagesContainer &&
+			data.archived_messages &&
+			data.archived_messages.length > 0
+		) {
+			hasArchivedMessages = true;
 
-			// Create collapsible container for archived messages
 			const archiveContainer = document.createElement("div");
 			archiveContainer.className = "collapsible-section archive-section";
 
-			// Create header with toggle
 			const archiveHeader = document.createElement("div");
 			archiveHeader.className = "collapsible-header";
 			archiveHeader.style.cursor = "pointer";
@@ -707,16 +727,12 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			archiveHeader.appendChild(archiveHeading);
 			archiveHeader.appendChild(archiveToggleIcon);
 
-			// Create content container
 			const archiveContent = document.createElement("div");
 			archiveContent.className = "collapsible-content archive-content";
 			archiveContent.style.display = "none"; // Collapsed by default
 
-			// Group archived messages by conversation order
 			const groupedArchived = [];
-			let currentGroup = null;
 
-			// Sort archived messages by filename to ensure correct order
 			const sortedArchived = [...data.archived_messages].sort((a, b) =>
 				a.filename.localeCompare(b.filename),
 			);
@@ -725,10 +741,8 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				const msg = sortedArchived[i];
 
 				if (msg.role === "assistant-reasoning") {
-					// Find the next assistant message to attach this reasoning to
 					for (let j = i + 1; j < sortedArchived.length; j++) {
 						if (sortedArchived[j].role === "assistant") {
-							// Attach reasoning to the next assistant message
 							sortedArchived[j].reasoning = msg;
 							break;
 						}
@@ -738,20 +752,17 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				}
 			}
 
-			// Render archived messages
 			groupedArchived.forEach((msg) => {
 				const messageDiv = document.createElement("div");
 				messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())} archived-message`;
 				messageDiv.dataset.filename = msg.filename;
 				messageDiv.dataset.role = msg.role;
 
-				// If this message has associated reasoning, display it first
 				if (msg.reasoning) {
 					const reasoningContainer = document.createElement("div");
 					reasoningContainer.className = "message-reasoning-container";
 					reasoningContainer.style.margin = "0 0 10px 0";
 
-					// Create toggle header
 					const reasoningHeader = document.createElement("div");
 					reasoningHeader.className = "reasoning-header";
 					reasoningHeader.style.cursor = "pointer";
@@ -776,7 +787,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 					reasoningHeader.appendChild(reasoningLabel);
 					reasoningHeader.appendChild(toggleIcon);
 
-					// Create collapsible content
 					const reasoningContent = document.createElement("div");
 					reasoningContent.className = "message-reasoning";
 					reasoningContent.style.backgroundColor = "#050505";
@@ -787,7 +797,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 					reasoningContent.style.display = "none"; // Hidden by default
 					reasoningContent.style.whiteSpace = "pre-wrap";
 
-					// Extract content from <think> tags if present
 					let reasoningText = msg.reasoning.content;
 					const thinkMatch = msg.reasoning.content.match(
 						/^<think>([\s\S]*?)<\/think>$/,
@@ -798,7 +807,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 
 					reasoningContent.innerHTML = renderMarkdown(reasoningText);
 
-					// Toggle handler
 					reasoningHeader.addEventListener("click", () => {
 						const isVisible = reasoningContent.style.display !== "none";
 						reasoningContent.style.display = isVisible ? "none" : "block";
@@ -810,21 +818,16 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 					messageDiv.appendChild(reasoningContainer);
 				}
 
-				// Message content
 				const contentDiv = document.createElement("div");
 				contentDiv.className = "message-content";
 				contentDiv.textContent = msg.content;
 
-				// Footer with role and restore button
 				const footerDiv = document.createElement("div");
 				footerDiv.className = "message-footer";
 
 				const infoDiv = document.createElement("div");
 				infoDiv.className = "message-info";
 
-				// Role span removed - now shown in info modal instead
-
-				// Restore button
 				const actionsDiv = document.createElement("div");
 				actionsDiv.className = "message-actions";
 
@@ -848,7 +851,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				archiveContent.appendChild(messageDiv);
 			});
 
-			// Toggle handler
 			archiveHeader.addEventListener("click", () => {
 				const isVisible = archiveContent.style.display !== "none";
 				archiveContent.style.display = isVisible ? "none" : "block";
@@ -858,8 +860,23 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			archiveContainer.appendChild(archiveHeader);
 			archiveContainer.appendChild(archiveContent);
 
-			messagesContainer.appendChild(archiveDivider);
-			messagesContainer.appendChild(archiveContainer);
+			deletedMessagesContainer.appendChild(archiveContainer);
+		}
+
+		if (otherFilesContainer) {
+			otherFilesContainer.classList.toggle("hidden", !hasOtherFiles);
+		}
+		if (deletedMessagesContainer) {
+			deletedMessagesContainer.classList.toggle(
+				"hidden",
+				!hasArchivedMessages,
+			);
+		}
+		if (extraSectionsWrapper) {
+			extraSectionsWrapper.classList.toggle(
+				"hidden",
+				!(hasOtherFiles || hasArchivedMessages),
+			);
 		}
 
 		// After rendering messages and other files, set up the input area
@@ -987,7 +1004,17 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			messagesContainer,
 		);
 		console.error(`Error loading conversation ${conversationId}:`, error);
-		otherFilesContainer.innerHTML = ""; // Clear other files section on error too
+		if (otherFilesContainer) {
+			otherFilesContainer.innerHTML = ""; // Clear other files section on error too
+			otherFilesContainer.classList.add("hidden");
+		}
+		if (deletedMessagesContainer) {
+			deletedMessagesContainer.innerHTML = "";
+			deletedMessagesContainer.classList.add("hidden");
+		}
+		if (extraSectionsWrapper) {
+			extraSectionsWrapper.classList.add("hidden");
+		}
 		// Ensure input area is not set up or is cleared on error
 		const messageInputArea = document.getElementById("message-input-area");
 		if (messageInputArea) messageInputArea.innerHTML = "";

@@ -970,6 +970,19 @@ html {
 	margin: 10px 0;
 }
 
+.settings-extra-sections {
+	margin-top: 5px;
+	border-top: 1px solid #333333;
+	padding-top: 15px;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.settings-extra-section {
+	width: 100%;
+}
+
 .settings-actions {
 	display: flex;
 	flex-direction: column;
