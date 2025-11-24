@@ -62,6 +62,42 @@ const BRAIN_ICON =
 let selectedActionKey = null;
 let manualModeSelection = false;
 let lastRecommendedActionKey = null;
+const COMPOSER_PADDING_BUFFER = 40;
+let composerResizeObserver = null;
+let windowResizeListenerAttached = false;
+
+function updateBodyPaddingForComposer() {
+	const messageInputArea = document.getElementById("message-input-area");
+	if (!messageInputArea) {
+		document.body.style.paddingBottom = "";
+		return;
+	}
+	const composerHeight = messageInputArea.offsetHeight || 0;
+	const paddingValue = Math.max(0, composerHeight) + COMPOSER_PADDING_BUFFER;
+	document.body.style.paddingBottom = `${paddingValue}px`;
+}
+
+function observeComposerForPadding(target) {
+	if (typeof ResizeObserver !== "undefined") {
+		if (composerResizeObserver) {
+			composerResizeObserver.disconnect();
+		}
+		composerResizeObserver = new ResizeObserver(() => {
+			updateBodyPaddingForComposer();
+		});
+		composerResizeObserver.observe(target);
+	} else if (!windowResizeListenerAttached) {
+		window.addEventListener("resize", updateBodyPaddingForComposer);
+		windowResizeListenerAttached = true;
+	}
+}
+
+function disconnectComposerObserver() {
+	if (composerResizeObserver) {
+		composerResizeObserver.disconnect();
+		composerResizeObserver = null;
+	}
+}
 
 function setupMessageInputArea(conversationId) {
 	let messageInputArea = document.getElementById("message-input-area");
@@ -70,6 +106,7 @@ function setupMessageInputArea(conversationId) {
 	if (messageInputArea) {
 		messageInputArea.remove();
 	}
+	disconnectComposerObserver();
 
 	messageInputArea = document.createElement("div");
 	messageInputArea.id = "message-input-area";
@@ -146,6 +183,8 @@ function setupMessageInputArea(conversationId) {
 			ta.style.height = desiredBorderBoxHeight + "px";
 			ta.style.overflowY = "hidden"; // Hide scrollbar if content fits
 		}
+
+		updateBodyPaddingForComposer();
 	}
 
 	textarea.addEventListener("input", () => {
@@ -214,6 +253,7 @@ function setupMessageInputArea(conversationId) {
 	// Append the whole message input area directly to the body for fixed positioning
 	document.body.appendChild(messageInputArea);
 	adjustTextareaHeightOnInput(textarea); // Initial height adjustment
+	observeComposerForPadding(messageInputArea);
 }
 function updateSplitButtonState(conversationId) {
 	const primaryBtn = document.getElementById("primary-action-btn");

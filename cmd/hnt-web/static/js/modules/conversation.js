@@ -639,6 +639,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			const heading = document.createElement("h2");
 			heading.textContent = "Other Files";
 			heading.style.margin = "0";
+			heading.style.color = "#e0e0e0";
 
 			const toggleIcon = document.createElement("span");
 			toggleIcon.style.fontSize = "14px";
