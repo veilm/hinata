@@ -204,6 +204,16 @@ function setupMessageInputArea(conversationId) {
 
 	const composer = document.createElement("div");
 	composer.className = "message-composer";
+	composer.addEventListener("click", (event) => {
+		if (
+			event.target.closest(
+				"button, textarea, input, select, #action-dropdown-menu",
+			)
+		) {
+			return;
+		}
+		textarea.focus();
+	});
 
 	const buttonsDiv = document.createElement("div");
 	buttonsDiv.id = "message-buttons";
