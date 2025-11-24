@@ -259,6 +259,7 @@ function toggleForkEditState(
 		delete messageElement.dataset.forkEditing;
 		delete messageElement.dataset.originalContentForFork;
 		delete messageElement.dataset.forkParentMessage;
+		delete messageElement.dataset.forkTrimAnchor;
 		updateGlobalActionButtonsState();
 	} else {
 		// Switching from View to Fork-Edit
@@ -299,7 +300,6 @@ function toggleForkEditState(
 				textarea,
 				conversationId,
 				filename,
-				messageRole,
 			),
 		);
 		saveButton.title = "Save and Fork";
@@ -331,13 +331,14 @@ async function handleForkSave(
 	textareaElement,
 	conversationId,
 	filename,
-	messageRole,
 ) {
 	const editedContent = textareaElement.value;
 	const parentMessageFilename =
 		(messageElement.dataset.forkParentMessage || "").trim() ||
 		(messageElement.dataset.previousFilename || "").trim() ||
 		null;
+	const trimAnchorFilename =
+		(messageElement.dataset.forkTrimAnchor || "").trim() || filename;
 
 	// Clear previous errors
 	clearErrorMessages(actionsDiv);
@@ -352,7 +353,7 @@ async function handleForkSave(
 			await executeForkFromMessageRef(
 				conversationId,
 				filename,
-				messageRole,
+				trimAnchorFilename,
 				editedContent,
 				parentMessageFilename,
 			);

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -74,7 +75,10 @@ type MessageContentUpdateRequest struct {
 
 type ForkConversationRequest struct {
 	ParentMessage string `json:"parent_message"`
+	Message       string `json:"message"`
 }
+
+var errForkMessageNotFound = errors.New("fork message not found")
 
 type RegisterRequest struct {
 	Username string `json:"username"`
@@ -724,6 +728,7 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		}
 	}
 	parentMessage := strings.TrimSpace(forkReq.ParentMessage)
+	targetMessage := strings.TrimSpace(forkReq.Message)
 
 	baseDir, err := chat.GetConversationsDir()
 	if err != nil {
@@ -794,6 +799,19 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 
 				os.WriteFile(dstPath, srcData, 0644)
 			}
+		}
+	}
+
+	// Trim messages past the requested fork point
+	if targetMessage != "" {
+		if err := trimConversationAfterMessage(newConvDir, targetMessage); err != nil {
+			os.RemoveAll(newConvDir)
+			status := http.StatusInternalServerError
+			if errors.Is(err, errForkMessageNotFound) {
+				status = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), status)
+			return
 		}
 	}
 
@@ -872,6 +890,39 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"conversation_id": newID})
+}
+
+func trimConversationAfterMessage(convDir, messageFilename string) error {
+	messages, err := chat.ListMessages(convDir)
+	if err != nil {
+		return fmt.Errorf("failed to list messages for trimming: %w", err)
+	}
+
+	baseName := filepath.Base(messageFilename)
+	targetIndex := -1
+	for i, msg := range messages {
+		if filepath.Base(msg.Path) == baseName {
+			targetIndex = i
+			break
+		}
+	}
+
+	if targetIndex == -1 {
+		return errForkMessageNotFound
+	}
+
+	for i := targetIndex + 1; i < len(messages); i++ {
+		if err := os.Remove(messages[i].Path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove message %s: %w", messages[i].Path, err)
+		}
+		if messages[i].ReasoningPath != "" {
+			if err := os.Remove(messages[i].ReasoningPath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove reasoning %s: %w", messages[i].ReasoningPath, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func togglePin(w http.ResponseWriter, r *http.Request, convID string) {

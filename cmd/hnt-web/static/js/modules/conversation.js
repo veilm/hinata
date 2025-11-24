@@ -543,8 +543,9 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				);
 				editButton.title = "Edit"; // Tooltip for accessibility
 
+				let forkButton = null;
 				if (parentMessageFilename) {
-					const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () =>
+					forkButton = createActionButton(ICON_SPLIT, "btn-fork", () =>
 						handleForkFromMessage(
 							conversationId,
 							msg.filename,
@@ -553,7 +554,6 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 						),
 					);
 					forkButton.title = "Fork from here"; // Tooltip for accessibility
-					actionsDiv.appendChild(forkButton);
 				}
 
 				const archiveButton = createActionButton(
@@ -577,6 +577,9 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				actionsDiv.appendChild(infoButton);
 				actionsDiv.appendChild(copyButton);
 				actionsDiv.appendChild(editButton);
+				if (forkButton) {
+					actionsDiv.appendChild(forkButton);
+				}
 				actionsDiv.appendChild(archiveButton);
 
 				footerDiv.appendChild(infoDiv);
@@ -1183,8 +1186,10 @@ async function processForkActions(conversationId, forkInfo) {
 	// Process fork actions: edit message if needed, delete messages, and trigger generation
 	try {
 		// Get all messages from the page
-		const messages = document.querySelectorAll(
-			"#messages-container .message:not(.archived-message)",
+		const messages = Array.from(
+			document.querySelectorAll(
+				"#messages-container .message:not(.archived-message)",
+			),
 		);
 
 		// Find the index of the target message
@@ -1196,51 +1201,53 @@ async function processForkActions(conversationId, forkInfo) {
 				break;
 			}
 		}
-
-		if (targetIndex === -1) {
-			console.error("Could not find target message for fork action");
-			return;
-		}
+		const targetMessageElement =
+			targetIndex >= 0 ? messages[targetIndex] : null;
 
 		// Edit the message if editedContent is provided
 		if (forkInfo.editedContent) {
-			showToast("Applying edit to forked message...", "info");
-			try {
-				const response = await authFetch(
-					`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(forkInfo.fromMessage)}/edit`,
-					{
-						method: "PUT",
-						headers: { "Content-Type": "application/json" },
-						body: JSON.stringify({ content: forkInfo.editedContent }),
-					},
-				);
+			if (!targetMessageElement) {
+				console.error("Could not find target message for fork edit");
+			} else {
+				showToast("Applying edit to forked message...", "info");
+				try {
+					const response = await authFetch(
+						`/api/conversation/${encodeURIComponent(conversationId)}/message/${encodeURIComponent(forkInfo.fromMessage)}/edit`,
+						{
+							method: "PUT",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ content: forkInfo.editedContent }),
+						},
+					);
 
-				if (!response.ok) {
-					const errorData = await response
-						.json()
-						.catch(() => ({ detail: "Failed to edit message." }));
-					throw new Error(errorData.detail || `HTTP error ${response.status}`);
+					if (!response.ok) {
+						const errorData = await response
+							.json()
+							.catch(() => ({ detail: "Failed to edit message." }));
+						throw new Error(
+							errorData.detail || `HTTP error ${response.status}`,
+						);
+					}
+				} catch (error) {
+					console.error("Error editing message:", error);
+					showToast(`Failed to edit message: ${error.message}`, "error");
+					// Continue with the rest of the fork actions even if edit fails
 				}
-			} catch (error) {
-				console.error("Error editing message:", error);
-				showToast(`Failed to edit message: ${error.message}`, "error");
-				// Continue with the rest of the fork actions even if edit fails
 			}
 		}
 
 		// Determine which messages to delete
 		let messagesToDelete = [];
-		if (forkInfo.deleteAfter && forkInfo.messageRole === "assistant") {
-			// Delete from and including the assistant message
-			for (let i = targetIndex; i < messages.length; i++) {
-				const msgFilename = messages[i].dataset.filename;
-				if (msgFilename) {
-					messagesToDelete.push(msgFilename);
-				}
+		if (!forkInfo.cleanupHandled) {
+			if (!targetMessageElement) {
+				console.error("Could not find target message for fork cleanup");
+				return;
 			}
-		} else {
-			// Delete all messages after the target (for system/user messages)
-			for (let i = targetIndex + 1; i < messages.length; i++) {
+			const targetRole =
+				(targetMessageElement.dataset.role || "").toLowerCase();
+			const startIndex =
+				targetRole === "assistant" ? targetIndex : targetIndex + 1;
+			for (let i = startIndex; i < messages.length; i++) {
 				const msgFilename = messages[i].dataset.filename;
 				if (msgFilename) {
 					messagesToDelete.push(msgFilename);
@@ -1354,6 +1361,7 @@ async function handleForkFromMessage(
 
 		messageElement.dataset.forkParentMessage =
 			parentMessageFilename || "";
+		messageElement.dataset.forkTrimAnchor = messageFilename;
 
 		// Find the content wrapper and actions div
 		const contentWrapperDiv = messageElement.querySelector(
@@ -1382,10 +1390,12 @@ async function handleForkFromMessage(
 		);
 	} else {
 		// For assistant messages, fork immediately as before
+		const trimAnchor =
+			parentMessageFilename || messageFilename;
 		executeForkFromMessage(
 			conversationId,
 			messageFilename,
-			messageRole,
+			trimAnchor,
 			null,
 			parentMessageFilename,
 		);
@@ -1395,13 +1405,14 @@ async function handleForkFromMessage(
 async function executeForkFromMessage(
 	conversationId,
 	messageFilename,
-	messageRole,
+	trimAnchorFilename,
 	editedContent = null,
 	parentMessageFilename = null,
 ) {
 	// Fork the conversation first
 	try {
 		const forkPayload = {
+			message: trimAnchorFilename || messageFilename,
 			parent_message: parentMessageFilename || null,
 		};
 
@@ -1436,10 +1447,9 @@ async function executeForkFromMessage(
 			// Store the fork info in localStorage for the new page to process
 			const forkInfo = {
 				fromMessage: messageFilename,
-				messageRole: messageRole,
-				deleteAfter: messageRole === "assistant", // Delete including assistant message
 				triggerGenerate: true,
 				editedContent: editedContent, // Include edited content if provided
+				cleanupHandled: true,
 			};
 			localStorage.setItem(
 				`fork-action-${newConversationId}`,
