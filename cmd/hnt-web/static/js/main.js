@@ -41,6 +41,26 @@ document.addEventListener("DOMContentLoaded", () => {
 		const createBtn = document.getElementById("create-conversation-btn");
 		if (createBtn) {
 			createBtn.addEventListener("click", handleCreateConversation);
+
+			const searchParams = new URLSearchParams(window.location.search);
+			const autoNewParam = searchParams.get("autonew");
+			const shouldAutoCreate =
+				autoNewParam === "" ||
+				["1", "true", "yes"].includes(
+					(autoNewParam || "").toLowerCase(),
+				);
+
+			if (searchParams.has("autonew") && shouldAutoCreate) {
+				// Trigger create immediately so bookmarks with ?autonew run directly.
+				handleCreateConversation();
+				if (window.history.replaceState) {
+					window.history.replaceState(
+						{},
+						document.title,
+						`${window.location.pathname}${window.location.hash}`,
+					);
+				}
+			}
 		}
 	} else if (path.startsWith("/c/")) {
 		// Conversation detail page

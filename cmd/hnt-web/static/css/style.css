@@ -265,6 +265,7 @@ li {
 /* Style for the conversation title H1 on the conversation page */
 #conversation-id-display {
 	word-break: break-all; /* In case of very long title without spaces */
+	margin-right: 20px;
 }
 
 .title-section {
@@ -865,7 +866,8 @@ html {
 
 .settings-toggle-btn {
 	background: transparent;
-	border: 1px solid #333333;
+	/* border: 1px solid #333333; */
+	border: 0;
 	color: #6ec8ff;
 	padding: 8px;
 	cursor: pointer;
