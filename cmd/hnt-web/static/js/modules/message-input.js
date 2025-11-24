@@ -58,6 +58,8 @@ const PLUS_ICON =
 	'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-icon lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
 const BRAIN_ICON =
 	'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-brain-circuit-icon lucide-brain-circuit"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M9 13a4.5 4.5 0 0 0 3-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M12 13h4"/><path d="M12 18h6a2 2 0 0 1 2 2v1"/><path d="M12 8h8"/><path d="M16 8V5a2 2 0 0 1 2-2"/><circle cx="16" cy="13" r=".5"/><circle cx="18" cy="3" r=".5"/><circle cx="20" cy="21" r=".5"/><circle cx="20" cy="8" r=".5"/></svg>';
+const LOADING_SPINNER_ICON =
+	'<span class="button-spinner" aria-hidden="true"></span>';
 
 let selectedActionKey = null;
 let manualModeSelection = false;
@@ -404,6 +406,13 @@ async function handleGenAssistant(conversationId, allButtons) {
 		clearErrorMessages(messageInputArea);
 	}
 
+	const primaryBtn = document.getElementById("primary-action-btn");
+	if (primaryBtn) {
+		primaryBtn.classList.add("is-loading");
+		primaryBtn.setAttribute("aria-label", "Generating response");
+		primaryBtn.innerHTML = LOADING_SPINNER_ICON;
+	}
+
 	// Remove any existing placeholder
 	const existingPlaceholder = document.getElementById(
 		"assistant-streaming-placeholder",
@@ -418,13 +427,6 @@ async function handleGenAssistant(conversationId, allButtons) {
 	placeholderDiv.id = "assistant-streaming-placeholder";
 	placeholderDiv.className = "message message-assistant";
 
-	const headerDiv = document.createElement("div");
-	headerDiv.className = "message-header";
-	const filenameSpan = document.createElement("span");
-	filenameSpan.className = "message-filename";
-	filenameSpan.textContent = "Generating..."; // Placeholder text
-	headerDiv.appendChild(filenameSpan);
-
 	const contentWrapperDiv = document.createElement("div");
 	contentWrapperDiv.className = "message-content-wrapper";
 	contentWrapperDiv.style.whiteSpace = "pre-wrap"; // Ensure pre-wrap for streaming
@@ -435,7 +437,6 @@ async function handleGenAssistant(conversationId, allButtons) {
 	let reasoningHeader = null;
 	let toggleIcon = null;
 
-	placeholderDiv.appendChild(headerDiv);
 	// Reasoning container will be inserted here when needed
 	placeholderDiv.appendChild(contentWrapperDiv);
 
@@ -678,8 +679,8 @@ async function handleGenAssistant(conversationId, allButtons) {
 			);
 		}
 		// Update placeholder to show error if stream itself failed or setup failed.
-		filenameSpan.textContent = "Error";
-		contentWrapperDiv.textContent = `Error during generation: ${escapeHtml(error.message)}`;
+		contentWrapperDiv.textContent =
+			"Error during generation: " + escapeHtml(error.message);
 		// Do not re-enable buttons here, `finally` block below calls loadConversationDetails
 		// which will fully reconstruct the input area.
 		// If loadConversationDetails is skipped on error, then buttons should be re-enabled.
