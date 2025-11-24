@@ -315,153 +315,107 @@ li {
 	bottom: 0;
 	left: 0;
 	right: 0;
-	/* width: auto; implicitly, controlled by left/right offsets */
-
 	box-sizing: border-box;
-	background-color: #000000; /* Match .container background or a suitable bar color */
-	padding: 10px 20px; /* Vertical 10px, horizontal 20px for content inside the bar. Desktop will adjust left/right. */
-	z-index: 1000; /* Ensure it's above other content */
-	border-top: 1px solid #222222; /* Consistent border color for separation */
+	background-color: #000000;
+	padding: 18px 20px 28px;
+	z-index: 1000;
+	border-top: 1px solid #222222;
+	box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.65);
 }
 
 /* Adjust #message-input-area positioning on desktop to align with body padding */
 @media (min-width: 768px) {
 	#message-input-area {
-		left: 22%; /* Align with body's own padding */
-		right: 22%; /* Align with body's own padding */
+		left: 22%;
+		right: 22%;
 	}
+}
+
+.message-composer {
+	position: relative;
+	background-color: #0f0f0f;
+	border: 1px solid #222222;
+	border-radius: 18px;
+	padding: 18px;
+	box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
 }
 
 #new-message-content {
 	width: 100%;
-	box-sizing: border-box; /* Include padding and border in the element's total width and height */
-	padding: 10px;
-	margin-bottom: 10px;
-	background-color: #181818;
+	box-sizing: border-box;
+	padding: 0;
+	padding-bottom: 75px;
+	background-color: transparent;
 	color: #e0e0e0;
-	border: 1px solid #333333;
-	border-radius: 0;
+	border: none;
 	font-family: inherit;
 	font-size: 1em;
-	min-height: 80px; /* Ensure a decent starting height */
+	line-height: 1.5;
+	min-height: 130px;
+	resize: none;
+}
+
+#new-message-content::placeholder {
+	color: #6b6b6b;
 }
 
 #new-message-content:focus {
 	outline: none;
-	border-color: #9d81ae;
-	background-color: #151515;
 }
 
-#message-buttons {
+.message-input-controls {
+	position: absolute;
+	right: 18px;
+	bottom: 18px;
 	display: flex;
-	/* gap: 10px; */ /* Space between buttons */
-	flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+	align-items: center;
+	gap: 10px;
+}
+
+#message-buttons button {
+	font-family: inherit;
+	font-size: 0.9em;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.mode-selector {
 	position: relative;
 }
 
-/* Base style for action buttons at the bottom of the page */
-#message-buttons button {
-	padding: 10px 15px;
-	border: none;
-	border-radius: 0;
-	font-family: inherit;
-	font-size: 1em;
-	cursor: pointer;
-	transition: background-color 0.2s ease;
-}
-
-/* Default: "Gen Assistant" uses the theme color */
-
-.btn-gen-assistant {
-	background-color: #6ec8ff;
-	color: #000000;
-}
-.btn-gen-assistant:hover {
-	background-color: #4da3e0;
-}
-
-/* "Add System" and "Add Assistant" buttons: background like textarea (#2c2c2c) */
-
-.btn-add-system {
-	background-color: #101010; /* Match textarea background */
-	color: #e0e0e0; /* Light text */
-}
-.btn-add-system:hover {
-	background-color: #191919; /* Slightly lighter version of #2c2c2c for hover */
-}
-/* "Add Assistant" button: when primary, use blue theme like Gen Assistant */
-#primary-action-btn.btn-add-assistant {
-	background-color: #6ec8ff;
-	color: #000000;
-}
-#primary-action-btn.btn-add-assistant:hover {
-	background-color: #4da3e0;
-}
-
-/* "Add User" button: purple */
-
-.btn-add-user {
-	background-color: #9d81ae; /* Purple from .message-user border */
-	color: #000000; /* Dark text for contrast */
-}
-.btn-add-user:hover {
-	background-color: #89709c; /* Darker purple on hover */
-}
-
-#primary-action-btn {
-	border-radius: 4px 0 0 4px;
-	flex-grow: 1; /* Take up remaining space */
-}
-
 #dropdown-toggle-btn {
-	border-radius: 0 4px 4px 0;
-	padding-left: 8px;
-	padding-right: 8px;
-	/* color must be set for the arrow to be visible after removing background */
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 14px;
+	border-radius: 999px;
+	border: 1px solid #2c2c2c;
+	background-color: #141414;
 	color: #e0e0e0;
+	font-size: 0.85em;
 }
 
-#primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn {
-	background-color: #4da3e0; /* Darker blue, matches main button hover */
-	color: #000000; /* Match main button text color */
-}
-#primary-action-btn.btn-gen-assistant + #dropdown-toggle-btn:hover {
-	background-color: #3b8ac0; /* Even darker blue */
+#dropdown-toggle-btn .mode-toggle-caret svg {
+	width: 16px;
+	height: 16px;
 }
 
-#primary-action-btn.btn-add-user + #dropdown-toggle-btn {
-	background-color: #89709c; /* Darker purple, matches main button hover */
-	color: #000000; /* Match main button text color */
-}
-#primary-action-btn.btn-add-user + #dropdown-toggle-btn:hover {
-	background-color: #755f88; /* Even darker purple */
-}
-#primary-action-btn.btn-add-assistant + #dropdown-toggle-btn {
-	background-color: #4da3e0; /* Darker blue, matches Gen Assistant style */
-	color: #000000; /* Match Gen Assistant text color */
-}
-#primary-action-btn.btn-add-assistant + #dropdown-toggle-btn:hover {
-	background-color: #3b8ac0; /* Even darker blue */
-}
-
-/* When the primary action button is disabled (e.g., during generation), style the an-ddjacent dropdown toggle to match. */
-#primary-action-btn:disabled + #dropdown-toggle-btn {
-	background-color: #222222;
-	color: #e0e0e0;
+#dropdown-toggle-btn:focus-visible {
+	outline: 2px solid #6ec8ff;
+	outline-offset: 2px;
 }
 
 #action-dropdown-menu {
 	position: absolute;
-	bottom: 100%;
+	bottom: calc(100% + 8px);
 	right: 0;
 	z-index: 1001;
-	background-color: #101010;
-	border: 1px solid #333333;
-	box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.2);
-	border-radius: 4px;
-	margin-bottom: 5px;
-	min-width: 180px;
-	overflow: hidden; /* To apply border-radius to children */
+	background-color: #090909;
+	border: 1px solid #2c2c2c;
+	box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
+	border-radius: 12px;
+	min-width: 190px;
+	padding: 6px;
 }
 
 #action-dropdown-menu button {
@@ -470,17 +424,80 @@ li {
 	text-align: left;
 	background-color: transparent;
 	color: #e0e0e0;
+	border: none;
+	padding: 10px 12px;
+	border-radius: 8px;
 }
 
 #action-dropdown-menu button:hover {
+	background-color: #1d1d1d;
+}
+
+#action-dropdown-menu button.selected {
+	background-color: #262626;
+	color: #ffffff;
+}
+
+#primary-action-btn {
+	width: 52px;
+	height: 52px;
+	border-radius: 14px;
+	border: 1px solid transparent;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+}
+
+#primary-action-btn svg {
+	width: 24px;
+	height: 24px;
+	pointer-events: none;
+}
+
+#primary-action-btn:hover:not(:disabled) {
+	transform: translateY(-2px);
+}
+
+#primary-action-btn.btn-gen-assistant {
+	background-color: #6ec8ff;
+	border-color: #4da3e0;
+	color: #000000;
+}
+#primary-action-btn.btn-gen-assistant:hover:not(:disabled) {
+	background-color: #4da3e0;
+}
+
+#primary-action-btn.btn-add-assistant {
+	background-color: #6ec8ff;
+	border-color: #4da3e0;
+	color: #000000;
+}
+#primary-action-btn.btn-add-assistant:hover:not(:disabled) {
+	background-color: #4da3e0;
+}
+
+#primary-action-btn.btn-add-user {
+	background-color: #9d81ae;
+	border-color: #7f6a90;
+	color: #000000;
+}
+#primary-action-btn.btn-add-user:hover:not(:disabled) {
+	background-color: #89709c;
+}
+
+#primary-action-btn.btn-add-system {
+	background-color: #101010;
+	border-color: #2c2c2c;
+	color: #e0e0e0;
+}
+#primary-action-btn.btn-add-system:hover:not(:disabled) {
 	background-color: #191919;
 }
-/* Disabled state for all buttons in this group */
+
 #message-buttons button:disabled {
-	background-color: #222222;
-	color: #e0e0e0;
+	opacity: 0.35;
 	cursor: not-allowed;
-	border: none;
 }
 
 /* Styles for Edit/Archive buttons within messages */

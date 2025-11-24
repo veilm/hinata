@@ -16,6 +16,53 @@ export function setLoadConversationDetails(fn) {
 	loadConversationDetails = fn;
 }
 
+const ACTIONS = {
+	addUser: {
+		key: "addUser",
+		text: "Add User",
+		role: "user",
+		styleClass: "btn-add-user",
+		gen: false,
+	},
+	addSystem: {
+		key: "addSystem",
+		text: "Add System",
+		role: "system",
+		styleClass: "btn-add-system",
+		gen: false,
+	},
+	addAssistant: {
+		key: "addAssistant",
+		text: "Add Assistant",
+		role: "assistant",
+		styleClass: "btn-add-assistant",
+		gen: false,
+	},
+	genAssistant: {
+		key: "genAssistant",
+		text: "Gen Assistant",
+		role: null,
+		styleClass: "btn-gen-assistant",
+		gen: true,
+	},
+};
+
+const ACTION_ORDER = [
+	ACTIONS.addUser.key,
+	ACTIONS.addAssistant.key,
+	ACTIONS.addSystem.key,
+	ACTIONS.genAssistant.key,
+];
+
+const PLUS_ICON =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-icon lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
+const BRAIN_ICON =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-brain-circuit-icon lucide-brain-circuit"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M9 13a4.5 4.5 0 0 0 3-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M12 13h4"/><path d="M12 18h6a2 2 0 0 1 2 2v1"/><path d="M12 8h8"/><path d="M16 8V5a2 2 0 0 1 2-2"/><circle cx="16" cy="13" r=".5"/><circle cx="18" cy="3" r=".5"/><circle cx="20" cy="21" r=".5"/><circle cx="20" cy="8" r=".5"/></svg>';
+
+let selectedActionKey = null;
+let manualModeSelection = false;
+let lastRecommendedActionKey = null;
+
 function setupMessageInputArea(conversationId) {
 	let messageInputArea = document.getElementById("message-input-area");
 
@@ -26,6 +73,9 @@ function setupMessageInputArea(conversationId) {
 
 	messageInputArea = document.createElement("div");
 	messageInputArea.id = "message-input-area";
+	manualModeSelection = false;
+	selectedActionKey = null;
+	lastRecommendedActionKey = null;
 
 	const textarea = document.createElement("textarea");
 	textarea.id = "new-message-content";
@@ -111,33 +161,55 @@ function setupMessageInputArea(conversationId) {
 	});
 	// Initial call to set height will be done after textarea is appended to DOM.
 
+	const composer = document.createElement("div");
+	composer.className = "message-composer";
+
 	const buttonsDiv = document.createElement("div");
 	buttonsDiv.id = "message-buttons";
+	buttonsDiv.classList.add("message-input-controls");
 
-	// Create split button structure
-	const primaryBtn = document.createElement("button");
-	primaryBtn.id = "primary-action-btn";
+	const modeSelector = document.createElement("div");
+	modeSelector.className = "mode-selector";
 
 	const dropdownToggleBtn = document.createElement("button");
 	dropdownToggleBtn.id = "dropdown-toggle-btn";
-	dropdownToggleBtn.textContent = "▼";
-	dropdownToggleBtn.addEventListener("click", () => {
-		const dropdownMenu = document.getElementById("action-dropdown-menu");
-		if (dropdownMenu) {
-			dropdownMenu.classList.toggle("hidden");
-		}
-	});
+	dropdownToggleBtn.type = "button";
+	dropdownToggleBtn.classList.add("mode-toggle-btn");
+
+	const modeLabel = document.createElement("span");
+	modeLabel.className = "mode-toggle-label";
+	modeLabel.textContent = "Select action";
+	dropdownToggleBtn.appendChild(modeLabel);
+
+	const caretSpan = document.createElement("span");
+	caretSpan.className = "mode-toggle-caret";
+	caretSpan.innerHTML =
+		'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up-down-icon lucide-chevron-up-down"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
+	dropdownToggleBtn.appendChild(caretSpan);
 
 	const dropdownMenu = document.createElement("div");
 	dropdownMenu.id = "action-dropdown-menu";
 	dropdownMenu.classList.add("hidden");
 
-	buttonsDiv.appendChild(primaryBtn);
-	buttonsDiv.appendChild(dropdownToggleBtn);
-	buttonsDiv.appendChild(dropdownMenu);
+	dropdownToggleBtn.addEventListener("click", () => {
+		dropdownMenu.classList.toggle("hidden");
+	});
 
-	messageInputArea.appendChild(textarea);
-	messageInputArea.appendChild(buttonsDiv);
+	modeSelector.appendChild(dropdownToggleBtn);
+	modeSelector.appendChild(dropdownMenu);
+
+	const primaryBtn = document.createElement("button");
+	primaryBtn.id = "primary-action-btn";
+	primaryBtn.type = "button";
+	primaryBtn.classList.add("message-submit-btn");
+
+	buttonsDiv.appendChild(modeSelector);
+	buttonsDiv.appendChild(primaryBtn);
+
+	composer.appendChild(textarea);
+	composer.appendChild(buttonsDiv);
+
+	messageInputArea.appendChild(composer);
 
 	// Append the whole message input area directly to the body for fixed positioning
 	document.body.appendChild(messageInputArea);
@@ -150,7 +222,7 @@ function updateSplitButtonState(conversationId) {
 	const textarea = document.getElementById("new-message-content");
 	if (!primaryBtn || !dropdownToggleBtn || !dropdownMenu || !textarea) return;
 
-	const allButtons = [primaryBtn, dropdownToggleBtn]; // Dropdown buttons will be added.
+	const allButtons = [primaryBtn, dropdownToggleBtn];
 
 	const messages = document.querySelectorAll(
 		"#messages-container .message:not(.archived-message)",
@@ -160,90 +232,77 @@ function updateSplitButtonState(conversationId) {
 	const lastMessageIsUser =
 		lastMessage && lastMessage.classList.contains("message-user");
 
-	const createActionHandler = (action) => {
-		if (action.gen) {
-			return () => handleGenAssistant(conversationId, allButtons);
-		}
-		return () =>
-			handleAddMessage(conversationId, action.role, textarea, allButtons);
-	};
-
-	const actions = {
-		addUser: {
-			text: "Add User",
-			role: "user",
-			styleClass: "btn-add-user",
-			gen: false,
-		},
-		addSystem: {
-			text: "Add System",
-			role: "system",
-			styleClass: "btn-add-system",
-			gen: false,
-		},
-		addAssistant: {
-			text: "Add Assistant",
-			role: "assistant",
-			styleClass: "btn-add-assistant",
-			gen: false,
-		},
-		genAssistant: {
-			text: "Gen Assistant",
-			role: null,
-			styleClass: "btn-gen-assistant",
-			gen: true,
-		},
-	};
-
-	let primaryAction, dropdownActions;
 	const hasTextareaContent = textarea.value.trim().length > 0;
 
+	let recommendedActionKey;
+
 	if (lastMessageIsUser) {
-		// Last message is from user
-		if (hasTextareaContent) {
-			// If there's content in textarea, prefer Add Assistant
-			primaryAction = actions.addAssistant;
-			dropdownActions = [
-				actions.genAssistant,
-				actions.addUser,
-				actions.addSystem,
-			];
-		} else {
-			// Empty textarea, show Gen Assistant
-			primaryAction = actions.genAssistant;
-			dropdownActions = [
-				actions.addUser,
-				actions.addSystem,
-				actions.addAssistant,
-			];
-		}
+		recommendedActionKey = hasTextareaContent
+			? ACTIONS.addAssistant.key
+			: ACTIONS.genAssistant.key;
 	} else {
-		// No messages, or last message was from system/assistant
-		primaryAction = actions.addUser;
-		dropdownActions = [
-			actions.genAssistant,
-			actions.addSystem,
-			actions.addAssistant,
-		];
+		recommendedActionKey = ACTIONS.addUser.key;
 	}
 
-	// Configure Primary Button
-	primaryBtn.textContent = primaryAction.text;
-	primaryBtn.className = primaryAction.styleClass; // Set class for styling
+	lastRecommendedActionKey = recommendedActionKey;
+
+	if (
+		!manualModeSelection ||
+		!selectedActionKey ||
+		!ACTIONS[selectedActionKey]
+	) {
+		selectedActionKey = recommendedActionKey;
+	}
+
+	const selectedAction = ACTIONS[selectedActionKey] || ACTIONS.addUser;
+
+	primaryBtn.className = `message-submit-btn ${selectedAction.styleClass}`;
+	primaryBtn.innerHTML = selectedAction.gen ? BRAIN_ICON : PLUS_ICON;
+	primaryBtn.setAttribute("aria-label", selectedAction.text);
+	primaryBtn.setAttribute("title", selectedAction.text);
+
+	const modeLabel =
+		dropdownToggleBtn.querySelector(".mode-toggle-label") ||
+		dropdownToggleBtn;
+	modeLabel.textContent = selectedAction.text;
+	dropdownToggleBtn.setAttribute("aria-label", `Mode: ${selectedAction.text}`);
 
 	if (primaryBtn.clickHandler) {
 		primaryBtn.removeEventListener("click", primaryBtn.clickHandler);
 	}
-	primaryBtn.clickHandler = createActionHandler(primaryAction);
-	primaryBtn.addEventListener("click", primaryBtn.clickHandler);
+	const submitHandler = () => {
+		if (selectedAction.gen) {
+			handleGenAssistant(conversationId, allButtons);
+		} else {
+			handleAddMessage(
+				conversationId,
+				selectedAction.role,
+				textarea,
+				allButtons,
+			);
+		}
+	};
+	primaryBtn.clickHandler = submitHandler;
+	primaryBtn.addEventListener("click", submitHandler);
 
-	// Populate Dropdown Menu
 	dropdownMenu.innerHTML = "";
-	dropdownActions.forEach((action) => {
+	ACTION_ORDER.forEach((actionKey) => {
+		const action = ACTIONS[actionKey];
+		if (!action) {
+			return;
+		}
 		const button = document.createElement("button");
+		button.type = "button";
 		button.textContent = action.text;
-		// Note: dropdown items don't get special color classes, styled as menu items
-		button.addEventListener("click", createActionHandler(action));
+		if (action.key === selectedAction.key) {
+			button.classList.add("selected");
+		}
+		button.addEventListener("click", () => {
+			selectedActionKey = action.key;
+			manualModeSelection = action.key !== lastRecommendedActionKey;
+			dropdownMenu.classList.add("hidden");
+			updateSplitButtonState(conversationId);
+		});
 		dropdownMenu.appendChild(button);
 		allButtons.push(button);
 	});
