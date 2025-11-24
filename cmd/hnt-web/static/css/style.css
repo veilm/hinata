@@ -317,7 +317,7 @@ li {
 	right: 0;
 	box-sizing: border-box;
 	background-color: #000000;
-	padding: 18px 20px 28px;
+	padding: 15px 20px;
 	z-index: 1000;
 	border-top: 1px solid #222222;
 	box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.65);
@@ -336,7 +336,7 @@ li {
 	background-color: #0f0f0f;
 	border: 1px solid #222222;
 	border-radius: 18px;
-	padding: 18px;
+	padding: 14px 16px 78px;
 	box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
 }
 
@@ -344,14 +344,13 @@ li {
 	width: 100%;
 	box-sizing: border-box;
 	padding: 0;
-	padding-bottom: 75px;
 	background-color: transparent;
 	color: #e0e0e0;
 	border: none;
 	font-family: inherit;
 	font-size: 1em;
-	line-height: 1.5;
-	min-height: 130px;
+	line-height: 1.4;
+	min-height: 1.4em;
 	resize: none;
 }
 
@@ -387,7 +386,8 @@ li {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 10px 14px;
+	padding: 0 14px;
+	height: 42px;
 	border-radius: 999px;
 	border: 1px solid #2c2c2c;
 	background-color: #141414;
@@ -439,8 +439,8 @@ li {
 }
 
 #primary-action-btn {
-	width: 52px;
-	height: 52px;
+	width: 42px;
+	height: 42px;
 	border-radius: 14px;
 	border: 1px solid transparent;
 	display: flex;

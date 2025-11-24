@@ -80,7 +80,7 @@ function setupMessageInputArea(conversationId) {
 	const textarea = document.createElement("textarea");
 	textarea.id = "new-message-content";
 	textarea.placeholder = "Enter message content...";
-	// textarea.rows = 4; // Replaced by dynamic height adjustment and CSS min-height
+	textarea.rows = 1; // Start with a single line; JS will grow it dynamically
 	textarea.style.overflowY = "hidden"; // Start with hidden scrollbar, JS will manage
 	textarea.style.resize = "none"; // Prevent manual resize conflicting with auto-resize
 
