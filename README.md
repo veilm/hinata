@@ -21,11 +21,11 @@ Requirements: Go, Linux/macOS
 hinata is a small ecosystem of CLI programs built like classic Unix tools. Instead of a monolithic "AI pair programmer," each binary is a focused building block you can mix, match, and script together.
 
 **Core tools:**
-- `hnt-llm` - Direct LLM API access for piping prompts/responses
-- `hnt-chat` - Plaintext conversation management and memory
-- `hnt-edit` - Targeted file editing with TARGET/REPLACE blocks
-- `hnt-web` - Zero-dependency web UI that speaks to `hnt-chat` for storage/backends
-- `hnt-agent` - Lightweight shell automation for single tasks (think "run tests" or "summarize this diff") rather than full pair programming
+- [`hnt-llm`](cmd/hnt-llm/README.md) - Direct LLM API access for piping prompts/responses
+- [`hnt-chat`](cmd/hnt-chat/README.md) - Plaintext conversation management and memory
+- [`hnt-edit`](cmd/hnt-edit/README.md) - Targeted file editing with TARGET/REPLACE blocks
+- [`hnt-web`](cmd/hnt-web/README.md) - Zero-dependency web UI that speaks to `hnt-chat` for storage/backends
+- [`hnt-agent`](cmd/hnt-agent/README.md) - Lightweight shell automation for single tasks (think "run tests" or "summarize this diff") rather than full Codex-style pair programming
 
 ## Usage
 
