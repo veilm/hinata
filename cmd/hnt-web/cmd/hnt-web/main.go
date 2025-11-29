@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -94,6 +95,10 @@ type ShareRequest struct {
 	Users []string `json:"users"`
 }
 
+const defaultModelFallback = "openrouter/google/gemini-3-pro-preview"
+
+var defaultConversationModel = defaultModelFallback
+
 func getWebDir() string {
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
 		return filepath.Join(xdgData, "hinata", "web")
@@ -149,6 +154,13 @@ func getDefaultOwner() string {
 	return os.Getenv("USER")
 }
 
+func getDefaultConversationModel() string {
+	if strings.TrimSpace(defaultConversationModel) == "" {
+		return defaultModelFallback
+	}
+	return defaultConversationModel
+}
+
 func isTerminal() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
@@ -164,6 +176,13 @@ func promptPassword(prompt string) (string, error) {
 }
 
 func main() {
+	flag.StringVar(&defaultConversationModel, "default-model", defaultModelFallback, "Default model used for new conversations and when no model is set")
+	flag.Parse()
+	defaultConversationModel = strings.TrimSpace(defaultConversationModel)
+	if defaultConversationModel == "" {
+		defaultConversationModel = defaultModelFallback
+	}
+
 	// Initialize default admin user if needed
 	usersDir := getUsersDir()
 	if _, err := os.Stat(usersDir); os.IsNotExist(err) {
@@ -489,7 +508,7 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 	detail := ConversationDetail{
 		ID:         convID,
 		Title:      convID,
-		Model:      "openrouter/deepseek/deepseek-chat-v3-0324:free",
+		Model:      getDefaultConversationModel(),
 		Messages:   []MessageFile{},
 		OtherFiles: []OtherFile{},
 		ConvDir:    convDir, // Include full path to conversation directory
@@ -697,7 +716,7 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create model.txt with default model
-	modelContent := "openrouter/google/gemini-2.5-pro"
+	modelContent := getDefaultConversationModel()
 	modelPath := filepath.Join(convDir, "meta", "model.txt")
 	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
 		log.Printf("Warning: Failed to create model.txt: %v", err)
@@ -1041,7 +1060,7 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 	}
 
 	// Read model from .model file
-	model := "openrouter/deepseek/deepseek-chat-v3-0324:free"
+	model := getDefaultConversationModel()
 	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "model.txt")); err == nil {
 		model = strings.TrimSpace(string(data))
 	}
