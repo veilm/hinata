@@ -236,7 +236,7 @@ export function jumpToLatestMessage() {
 // Update global action buttons state
 export function updateGlobalActionButtonsState() {
 	const isAnyMessageEditing = !!document.querySelector(
-		".message[data-editing='true']",
+		".message[data-editing='true'], .message[data-fork-editing='true']",
 	);
 
 	const messageButtons = document.querySelectorAll("#message-buttons button");
