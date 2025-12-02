@@ -95,7 +95,11 @@ type ShareRequest struct {
 	Users []string `json:"users"`
 }
 
-const defaultModelFallback = "openrouter/google/gemini-3-pro-preview"
+const (
+	defaultModelFallback       = "openrouter/google/gemini-3-pro-preview"
+	forkRootFilename           = "fork_root.txt"
+	parentMessageRootIndicator = "root"
+)
 
 var defaultConversationModel = defaultModelFallback
 
@@ -159,6 +163,28 @@ func getDefaultConversationModel() string {
 		return defaultModelFallback
 	}
 	return defaultConversationModel
+}
+
+func forkRootPath(convDir string) string {
+	return filepath.Join(convDir, "meta", forkRootFilename)
+}
+
+func readForkRootID(convDir string) string {
+	if data, err := os.ReadFile(forkRootPath(convDir)); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	return ""
+}
+
+func writeForkRootID(convDir, rootID string) error {
+	metaDir := filepath.Join(convDir, "meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(forkRootPath(convDir), []byte(rootID), 0644); err != nil {
+		return err
+	}
+	return nil
 }
 
 func isTerminal() bool {
@@ -349,10 +375,9 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 			conv.IsPinned = true
 		}
 
-		// Check for fork_source.txt
-		forkSourcePath := filepath.Join(convDir, "meta", "fork_source.txt")
-		if data, err := os.ReadFile(forkSourcePath); err == nil {
-			conv.ForkSource = strings.TrimSpace(string(data))
+		// Check for fork_root.txt (with legacy fallback)
+		if forkRoot := readForkRootID(convDir); forkRoot != "" {
+			conv.ForkSource = forkRoot
 		}
 
 		// Check for forks.txt
@@ -747,6 +772,9 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		}
 	}
 	parentMessage := strings.TrimSpace(forkReq.ParentMessage)
+	if parentMessage != "" && strings.EqualFold(parentMessage, parentMessageRootIndicator) {
+		parentMessage = parentMessageRootIndicator
+	}
 	targetMessage := strings.TrimSpace(forkReq.Message)
 
 	baseDir, err := chat.GetConversationsDir()
@@ -786,7 +814,7 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		os.WriteFile(dstPath, srcData, 0644)
 	}
 
-	// Copy meta directory contents, skipping access.txt, fork_source.txt, and forks.txt
+	// Copy meta directory contents, skipping access.txt, fork tracking files, etc.
 	metaSrcDir := filepath.Join(sourceDir, "meta")
 	if _, err := os.Stat(metaSrcDir); err == nil {
 		metaDstDir := filepath.Join(newConvDir, "meta")
@@ -801,7 +829,7 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 
 				// Skip access.txt and fork tracking files - we'll set our own
 				if entry.Name() == "access.txt" ||
-					entry.Name() == "fork_source.txt" ||
+					entry.Name() == forkRootFilename ||
 					entry.Name() == "forks.txt" ||
 					entry.Name() == "parent_message.txt" ||
 					entry.Name() == "parent_conversation.txt" {
@@ -842,25 +870,20 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 	newID := filepath.Base(newConvDir)
 
 	// Handle fork tracking
-	// 1. Check if source has a fork_source.txt (meaning it's already a fork)
-	var rootID string
-	forkSourcePath := filepath.Join(sourceDir, "meta", "fork_source.txt")
-	if data, err := os.ReadFile(forkSourcePath); err == nil {
-		// Source is a fork, use its root
-		rootID = strings.TrimSpace(string(data))
-	} else {
+	// 1. Check if source has a fork_root.txt (meaning it's already a fork)
+	rootID := readForkRootID(sourceDir)
+	if rootID == "" {
 		// Source is a root, use it as the root
 		rootID = convID
 	}
 
-	// 2. Write fork_source.txt to the new conversation
+	// 2. Write fork_root.txt to the new conversation
 	// Ensure meta directory exists
 	if err := os.MkdirAll(filepath.Join(newConvDir, "meta"), 0755); err != nil {
 		log.Printf("Warning: Failed to create meta directory: %v", err)
 	}
-	newForkSourcePath := filepath.Join(newConvDir, "meta", "fork_source.txt")
-	if err := os.WriteFile(newForkSourcePath, []byte(rootID), 0644); err != nil {
-		log.Printf("Warning: Failed to write fork_source.txt: %v", err)
+	if err := writeForkRootID(newConvDir, rootID); err != nil {
+		log.Printf("Warning: Failed to write fork root file: %v", err)
 	}
 
 	parentConvPath := filepath.Join(newConvDir, "meta", "parent_conversation.txt")
@@ -975,9 +998,7 @@ func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
 		os.WriteFile(pinPath, []byte(""), 0644)
 
 		// Check if this is a fork and auto-pin the root if needed
-		forkSourcePath := filepath.Join(convDir, "meta", "fork_source.txt")
-		if data, err := os.ReadFile(forkSourcePath); err == nil {
-			rootID := strings.TrimSpace(string(data))
+		if rootID := readForkRootID(convDir); rootID != "" {
 			baseDir, _ := chat.GetConversationsDir()
 			rootDir := filepath.Join(baseDir, rootID)
 			// Ensure meta directory exists in root

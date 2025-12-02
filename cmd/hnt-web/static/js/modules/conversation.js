@@ -19,6 +19,7 @@ import {
 	ICON_SPLIT,
 	ICON_ARCHIVE,
 	ICON_COPY,
+	FORK_PARENT_ROOT,
 } from "./constants.js";
 import {
 	toggleEditState,
@@ -450,6 +451,14 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				const parentMessageFilename = previousMessage
 					? previousMessage.filename
 					: null;
+				const isFirstMessage = index === 0;
+				const rootForkAllowed =
+					!parentMessageFilename && isFirstMessage && msg.role === "user";
+				const effectiveParentMessage = parentMessageFilename
+					? parentMessageFilename
+					: rootForkAllowed
+						? FORK_PARENT_ROOT
+						: "";
 
 				const messageDiv = document.createElement("div");
 				messageDiv.className = `message message-${escapeHtml(msg.role.toLowerCase())}`;
@@ -457,6 +466,9 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				messageDiv.dataset.role = msg.role; // Store role for actions
 				messageDiv.dataset.originalContent = msg.content; // Store original content for edit/fork
 				messageDiv.dataset.previousFilename = parentMessageFilename || "";
+				if (rootForkAllowed) {
+					messageDiv.dataset.rootForkAllowed = "true";
+				}
 
 				// If this message has associated reasoning, display it first
 				if (msg.reasoning) {
@@ -563,13 +575,13 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 				editButton.title = "Edit"; // Tooltip for accessibility
 
 				let forkButton = null;
-				if (parentMessageFilename) {
+				if (effectiveParentMessage) {
 					forkButton = createActionButton(ICON_SPLIT, "btn-fork", () =>
 						handleForkFromMessage(
 							conversationId,
 							msg.filename,
 							msg.role,
-							parentMessageFilename,
+							effectiveParentMessage,
 						),
 					);
 					forkButton.title = "Fork from here"; // Tooltip for accessibility
@@ -1369,7 +1381,21 @@ async function handleForkFromMessage(
 	messageRole,
 	parentMessageFilename = null,
 ) {
-	if (!parentMessageFilename) {
+	let rawParentMessage = (parentMessageFilename || "").trim();
+	let effectiveParentMessage = rawParentMessage;
+
+	const needsElementLookup = messageRole === "user" || messageRole === "system";
+	const messageElement = needsElementLookup
+		? document.querySelector(`[data-filename="${messageFilename}"]`)
+		: null;
+
+	if (!effectiveParentMessage && messageElement) {
+		if (messageElement.dataset.rootForkAllowed === "true") {
+			effectiveParentMessage = FORK_PARENT_ROOT;
+		}
+	}
+
+	if (!effectiveParentMessage) {
 		showToast("Forking requires a previous message", "error");
 		return;
 	}
@@ -1377,17 +1403,12 @@ async function handleForkFromMessage(
 	// For user and system messages, enter fork-edit mode
 	// For assistant messages, fork immediately
 	if (messageRole === "user" || messageRole === "system") {
-		// Find the message element
-		const messageElement = document.querySelector(
-			`[data-filename="${messageFilename}"]`,
-		);
 		if (!messageElement) {
 			showToast("Could not find message element", "error");
 			return;
 		}
 
-		messageElement.dataset.forkParentMessage =
-			parentMessageFilename || "";
+		messageElement.dataset.forkParentMessage = effectiveParentMessage;
 		messageElement.dataset.forkTrimAnchor = messageFilename;
 
 		// Find the content wrapper and actions div
@@ -1418,13 +1439,15 @@ async function handleForkFromMessage(
 	} else {
 		// For assistant messages, fork immediately as before
 		const trimAnchor =
-			parentMessageFilename || messageFilename;
+			rawParentMessage && rawParentMessage !== FORK_PARENT_ROOT
+				? rawParentMessage
+				: messageFilename;
 		executeForkFromMessage(
 			conversationId,
 			messageFilename,
 			trimAnchor,
 			null,
-			parentMessageFilename,
+			effectiveParentMessage,
 		);
 	}
 }

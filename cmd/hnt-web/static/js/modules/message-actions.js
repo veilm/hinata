@@ -20,6 +20,7 @@ import {
 	ICON_COPY,
 	ICON_SAVE,
 	ICON_X,
+	FORK_PARENT_ROOT,
 } from "./constants.js";
 import { updateSplitButtonState } from "./message-input.js";
 
@@ -92,7 +93,11 @@ function toggleEditState(
 		actionsDiv.appendChild(editButton);
 		const previousFilename =
 			(messageElement.dataset.previousFilename || "").trim();
-		if (previousFilename) {
+		const rootForkAllowed =
+			messageElement.dataset.rootForkAllowed === "true";
+		const forkParentReference =
+			previousFilename || (rootForkAllowed ? FORK_PARENT_ROOT : "");
+		if (forkParentReference) {
 			const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
 				const role = messageElement.dataset.role || "unknown";
 				if (handleForkFromMessageRef) {
@@ -100,7 +105,7 @@ function toggleEditState(
 						conversationId,
 						filename,
 						role,
-						previousFilename,
+						forkParentReference,
 					);
 				} else {
 					console.error("handleForkFromMessage not initialized");
@@ -238,14 +243,18 @@ function toggleForkEditState(
 		actionsDiv.appendChild(editButton);
 		const previousFilename =
 			(messageElement.dataset.previousFilename || "").trim();
-		if (previousFilename) {
+		const rootForkAllowed =
+			messageElement.dataset.rootForkAllowed === "true";
+		const forkParentReference =
+			previousFilename || (rootForkAllowed ? FORK_PARENT_ROOT : "");
+		if (forkParentReference) {
 			const forkButton = createActionButton(ICON_SPLIT, "btn-fork", () => {
 				if (handleForkFromMessageRef) {
 					handleForkFromMessageRef(
 						conversationId,
 						filename,
 						messageRole,
-						previousFilename,
+						forkParentReference,
 					);
 				} else {
 					console.error("handleForkFromMessage not initialized");
@@ -333,10 +342,21 @@ async function handleForkSave(
 	filename,
 ) {
 	const editedContent = textareaElement.value;
-	const parentMessageFilename =
-		(messageElement.dataset.forkParentMessage || "").trim() ||
-		(messageElement.dataset.previousFilename || "").trim() ||
-		null;
+	let parentMessageFilename =
+		(messageElement.dataset.forkParentMessage || "").trim();
+	if (!parentMessageFilename) {
+		parentMessageFilename =
+			(messageElement.dataset.previousFilename || "").trim();
+	}
+	if (
+		!parentMessageFilename &&
+		messageElement.dataset.rootForkAllowed === "true"
+	) {
+		parentMessageFilename = FORK_PARENT_ROOT;
+	}
+	if (!parentMessageFilename) {
+		parentMessageFilename = null;
+	}
 	const trimAnchorFilename =
 		(messageElement.dataset.forkTrimAnchor || "").trim() || filename;
 
