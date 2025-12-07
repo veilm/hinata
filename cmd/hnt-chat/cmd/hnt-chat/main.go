@@ -26,6 +26,7 @@ var (
 	separateReasoning bool
 	model             string
 	debugUnsafe       bool
+	requestParams     string
 )
 
 func main() {
@@ -78,6 +79,7 @@ func main() {
 	genCmd.Flags().BoolVar(&merge, "merge", false, "Merge consecutive messages from same author")
 	genCmd.Flags().StringVar(&model, "model", "", "Model to use for LLM")
 	genCmd.Flags().BoolVar(&debugUnsafe, "debug-unsafe", false, "Enable unsafe debugging options")
+	genCmd.Flags().StringVar(&requestParams, "request-params", "", "JSON object or @/path/to/file for request override payload")
 
 	var listCmd = &cobra.Command{
 		Use:          "list",
@@ -246,10 +248,16 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to pack conversation: %w", err)
 	}
 
+	overrideMap, err := llm.ParseRequestParams(requestParams)
+	if err != nil {
+		return fmt.Errorf("invalid request params: %w", err)
+	}
+
 	config := llm.Config{
 		Model:            model,
 		SystemPrompt:     "",
 		IncludeReasoning: debugUnsafe || includeReasoning,
+		RequestOverrides: overrideMap,
 	}
 
 	ctx := context.Background()

@@ -35,7 +35,19 @@ echo "Write a haiku" | ./bin/hnt-llm --system "You are a poet"
 
 # Include reasoning
 echo "What's 18% of 420?" | ./bin/hnt-llm --include-reasoning
+
+# Override request payload
+echo "Solve this riddle" | ./bin/hnt-llm --request-params '{"temperature":0.2,"reasoning":{"enabled":false}}'
 ```
+
+### Custom request parameters
+
+`hnt-llm` always sends reasoning-friendly defaults (`"include_reasoning": true` and `"reasoning":{"enabled": true}`) but you can override or extend the JSON payload that goes to the provider:
+
+- Inline JSON: `--request-params '{"temperature":0.2,"reasoning":{"enabled":false}}'`
+- From file: `--request-params @params.json`
+
+Nested objects merge recursively, so specifying `{"reasoning":{"enabled":false}}` replaces the default reasoning block, while new keys (e.g. `"foo":"bar"`) are passed through verbatim.
 
 ## Key Management
 

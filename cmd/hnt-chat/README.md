@@ -29,7 +29,7 @@ hnt-chat gen -c "$conv" --write
 hnt-chat pack -c "$conv"
 ```
 
-The `gen` command inherits the model from `--model`, `HINATA_CHAT_MODEL`, or `HINATA_MODEL` (default: `openrouter/google/gemini-2.5-pro`) and streams output like `hnt-llm`. Add `--include-reasoning` to capture `<think>` traces both on stdout and inside `reasoning/<timestamp>.md`.
+The `gen` command inherits the model from `--model`, `HINATA_CHAT_MODEL`, or `HINATA_MODEL` (default: `openrouter/google/gemini-2.5-pro`) and streams output like `hnt-llm`. Add `--include-reasoning` to capture `<think>` traces both on stdout and inside `reasoning/<timestamp>.md`. You can also shape the raw JSON payload with `--request-params '{"temperature":0.2,"foo":"bar"}'` (or `--request-params @params.json`) which merges into the defaults that always include reasoning support.
 
 ## Commands
 
@@ -38,7 +38,7 @@ The `gen` command inherits the model from `--model`, `HINATA_CHAT_MODEL`, or `HI
 | `hnt-chat new` | Create a fresh conversation directory. Prints the absolute path. |
 | `hnt-chat add <role>` | Append a `system`, `user`, or `assistant` message from stdin. Use `--separate-reasoning` to split `<think>` blocks into `reasoning/`. |
 | `hnt-chat pack` | Emit merged `<hnt-role>...</hnt-role>` blocks for piping into `hnt-llm` or `hnt-edit`. Add `--merge` to concatenate consecutive messages from the same role. |
-| `hnt-chat gen` | Run an LLM call against the packed conversation. `--write` saves the assistant reply, `--output-filename` prints the saved path, and `--include-reasoning` captures thinking traces. |
+| `hnt-chat gen` | Run an LLM call against the packed conversation. `--write` saves the assistant reply, `--output-filename` prints the saved path, `--include-reasoning` captures thinking traces, and `--request-params` merges arbitrary JSON into the LLM payload. |
 | `hnt-chat list` | Show every conversation with pin/fork status. |
 | `hnt-chat pin` / `hnt-chat unpin` | Toggle `meta/pinned.flag` so `list` surfaces important threads. |
 | `hnt-chat fork` | Duplicate a conversation, tracking ancestry in `meta/fork_source.txt` and `meta/forks.txt`. |

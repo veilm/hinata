@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/keymanagement"
@@ -46,7 +44,7 @@ func doGenerate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	overrideMap, err := parseRequestParams(requestParams)
+	overrideMap, err := llm.ParseRequestParams(requestParams)
 	if err != nil {
 		return err
 	}
@@ -176,29 +174,4 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func parseRequestParams(value string) (map[string]interface{}, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
-	}
-
-	var raw []byte
-	if strings.HasPrefix(value, "@") {
-		path := strings.TrimPrefix(value, "@")
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read request params file: %w", err)
-		}
-		raw = content
-	} else {
-		raw = []byte(value)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil, fmt.Errorf("invalid JSON for request params: %w", err)
-	}
-	return payload, nil
 }
