@@ -202,6 +202,21 @@ function setupMessageInputArea(conversationId) {
 	});
 	// Initial call to set height will be done after textarea is appended to DOM.
 
+	textarea.addEventListener("keydown", (event) => {
+		if (event.key !== "Enter") {
+			return;
+		}
+		const isCtrlOrMeta = event.ctrlKey || event.metaKey;
+		if (!isCtrlOrMeta) {
+			return;
+		}
+		event.preventDefault();
+		const primaryBtn = document.getElementById("primary-action-btn");
+		if (primaryBtn && !primaryBtn.disabled) {
+			primaryBtn.click();
+		}
+	});
+
 	const composer = document.createElement("div");
 	composer.className = "message-composer";
 	composer.addEventListener("click", (event) => {
