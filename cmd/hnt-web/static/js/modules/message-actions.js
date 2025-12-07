@@ -38,6 +38,24 @@ function setLoadConversationDetailsRef(fn) {
 	loadConversationDetailsRef = fn;
 }
 
+function bindCtrlEnterToButton(textarea, button) {
+	if (!textarea || !button) {
+		return;
+	}
+	textarea.addEventListener("keydown", (event) => {
+		if (event.key !== "Enter") {
+			return;
+		}
+		if (!event.ctrlKey && !event.metaKey) {
+			return;
+		}
+		event.preventDefault();
+		if (!button.disabled) {
+			button.click();
+		}
+	});
+}
+
 function toggleEditState(
 	messageElement,
 	contentWrapperDiv,
@@ -167,6 +185,7 @@ function toggleEditState(
 			),
 		);
 		saveButton.title = "Save";
+		bindCtrlEnterToButton(textarea, saveButton);
 
 		const cancelButton = createActionButton(ICON_X, "btn-cancel", () =>
 			// Revert to view mode with the stored original content
@@ -312,6 +331,7 @@ function toggleForkEditState(
 			),
 		);
 		saveButton.title = "Save and Fork";
+		bindCtrlEnterToButton(textarea, saveButton);
 
 		// Create Cancel button
 		const cancelButton = createActionButton(ICON_X, "btn-cancel", () =>
