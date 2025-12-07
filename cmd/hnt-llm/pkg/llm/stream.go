@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,12 +118,39 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 			errChan <- err
 			return
 		}
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(jsonPayload)), nil
+		}
+		req.ContentLength = int64(len(jsonPayload))
 
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 
 		for k, v := range provider.ExtraHeaders {
 			req.Header.Set(k, v)
+		}
+
+		if debugLogger != nil {
+			originalAuth := req.Header.Get("Authorization")
+			if originalAuth != "" {
+				req.Header.Set("Authorization", "[REDACTED]")
+			}
+
+			if dump, err := httputil.DumpRequestOut(req, true); err != nil {
+				debugLogger.Printf("Failed to dump request: %v", err)
+			} else {
+				debugLogger.Printf("=== HTTP Request ===\n%s", dump)
+			}
+
+			if originalAuth != "" {
+				req.Header.Set("Authorization", originalAuth)
+			}
+
+			body, err := req.GetBody()
+			if err != nil {
+				body = io.NopCloser(bytes.NewReader(jsonPayload))
+			}
+			req.Body = body
 		}
 
 		client := &http.Client{}
