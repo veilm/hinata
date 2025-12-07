@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/veilm/hinata/cmd/hnt-llm/pkg/keymanagement"
@@ -25,6 +27,7 @@ var (
 	model            string
 	includeReasoning bool
 	debugUnsafe      bool
+	requestParams    string
 )
 
 func doGenerate(cmd *cobra.Command, args []string) error {
@@ -43,10 +46,16 @@ func doGenerate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	overrideMap, err := parseRequestParams(requestParams)
+	if err != nil {
+		return err
+	}
+
 	config := llm.Config{
 		Model:            model,
 		SystemPrompt:     systemPrompt,
 		IncludeReasoning: includeReasoning,
+		RequestOverrides: overrideMap,
 	}
 
 	ctx := context.Background()
@@ -118,6 +127,7 @@ func main() {
 
 	rootCmd.PersistentFlags().StringVarP(&model, "model", "m", "", "The model to use for the LLM")
 	rootCmd.PersistentFlags().BoolVar(&debugUnsafe, "debug-unsafe", false, "Enable unsafe debugging options")
+	rootCmd.PersistentFlags().StringVar(&requestParams, "request-params", "", "JSON object or @/path/to/file for request override payload")
 
 	rootCmd.Flags().StringVarP(&systemPrompt, "system", "s", "", "The system prompt to use")
 	rootCmd.Flags().BoolVar(&includeReasoning, "include-reasoning", false, "Include reasoning in the output")
@@ -166,4 +176,29 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func parseRequestParams(value string) (map[string]interface{}, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	var raw []byte
+	if strings.HasPrefix(value, "@") {
+		path := strings.TrimPrefix(value, "@")
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read request params file: %w", err)
+		}
+		raw = content
+	} else {
+		raw = []byte(value)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("invalid JSON for request params: %w", err)
+	}
+	return payload, nil
 }

@@ -102,12 +102,26 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 		}
 
 		payload := ApiRequest{
-			Model:    actualModel,
-			Messages: messages,
-			Stream:   true,
+			Model:            actualModel,
+			Messages:         messages,
+			Stream:           true,
+			IncludeReasoning: true,
+			Reasoning: &ReasoningParams{
+				Enabled: true,
+			},
 		}
 
-		jsonPayload, err := json.Marshal(payload)
+		payloadMap, err := structToMap(payload)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if len(config.RequestOverrides) > 0 {
+			payloadMap = mergePayloadMaps(payloadMap, config.RequestOverrides)
+		}
+
+		jsonPayload, err := json.Marshal(payloadMap)
 		if err != nil {
 			errChan <- err
 			return
@@ -309,4 +323,37 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 	}()
 
 	return eventChan, errChan
+}
+
+func structToMap(v interface{}) (map[string]interface{}, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func mergePayloadMaps(base map[string]interface{}, overrides map[string]interface{}) map[string]interface{} {
+	if base == nil {
+		base = make(map[string]interface{})
+	}
+	for key, overrideVal := range overrides {
+		overrideMap, overrideIsMap := overrideVal.(map[string]interface{})
+		if baseVal, ok := base[key]; ok && overrideIsMap {
+			if baseMap, ok := baseVal.(map[string]interface{}); ok {
+				base[key] = mergePayloadMaps(baseMap, overrideMap)
+				continue
+			}
+		}
+		if overrideIsMap {
+			base[key] = mergePayloadMaps(make(map[string]interface{}), overrideMap)
+		} else {
+			base[key] = overrideVal
+		}
+	}
+	return base
 }

@@ -6,6 +6,7 @@ type Config struct {
 	Model            string
 	SystemPrompt     string
 	IncludeReasoning bool
+	RequestOverrides map[string]interface{}
 }
 
 type StreamEvent struct {
@@ -19,9 +20,16 @@ type Message struct {
 }
 
 type ApiRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
+	Model            string                 `json:"model"`
+	Messages         []Message              `json:"messages"`
+	Stream           bool                   `json:"stream"`
+	IncludeReasoning bool                   `json:"include_reasoning"`
+	Reasoning        *ReasoningParams       `json:"reasoning,omitempty"`
+	ExtraBody        map[string]interface{} `json:"extra_body,omitempty"`
+}
+
+type ReasoningParams struct {
+	Enabled bool `json:"enabled"`
 }
 
 type ApiResponseChunk struct {
