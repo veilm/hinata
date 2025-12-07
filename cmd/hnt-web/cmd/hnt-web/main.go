@@ -187,6 +187,63 @@ func writeForkRootID(convDir, rootID string) error {
 	return nil
 }
 
+func resolveForkRoot(convDir string) (string, string) {
+	rootID := filepath.Base(convDir)
+	baseDir := filepath.Dir(convDir)
+
+	if forkRoot := readForkRootID(convDir); forkRoot != "" {
+		return forkRoot, filepath.Join(baseDir, forkRoot)
+	}
+
+	return rootID, convDir
+}
+
+func isConversationPinned(convDir string) bool {
+	pinPath := filepath.Join(convDir, "meta", "pinned.flag")
+	if _, err := os.Stat(pinPath); err == nil {
+		return true
+	}
+	return false
+}
+
+func setConversationPinned(convDir string, pinned bool) error {
+	metaDir := filepath.Join(convDir, "meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		return err
+	}
+
+	pinPath := filepath.Join(metaDir, "pinned.flag")
+	if pinned {
+		return os.WriteFile(pinPath, []byte(""), 0644)
+	}
+
+	if err := os.Remove(pinPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
+}
+
+func clearForkPinnedFlags(rootDir string) {
+	forksPath := filepath.Join(rootDir, "meta", "forks.txt")
+	data, err := os.ReadFile(forksPath)
+	if err != nil {
+		return
+	}
+
+	baseDir := filepath.Dir(rootDir)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for _, line := range lines {
+		forkID := strings.TrimSpace(line)
+		if forkID == "" {
+			continue
+		}
+
+		pinPath := filepath.Join(baseDir, forkID, "meta", "pinned.flag")
+		os.Remove(pinPath)
+	}
+}
+
 func isTerminal() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
@@ -344,6 +401,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var conversations []ConversationInfo
+	pinnedByRoot := make(map[string]bool)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -369,15 +427,18 @@ func handleConversations(w http.ResponseWriter, r *http.Request) {
 			Title: strings.TrimSpace(string(titleData)),
 		}
 
-		// Check for pinned flag
-		pinPath := filepath.Join(convDir, "meta", "pinned.flag")
-		if _, err := os.Stat(pinPath); err == nil {
-			conv.IsPinned = true
+		rootID, rootDir := resolveForkRoot(convDir)
+		if pinned, ok := pinnedByRoot[rootID]; ok {
+			conv.IsPinned = pinned
+		} else {
+			isPinned := isConversationPinned(rootDir)
+			pinnedByRoot[rootID] = isPinned
+			conv.IsPinned = isPinned
 		}
 
-		// Check for fork_root.txt (with legacy fallback)
-		if forkRoot := readForkRootID(convDir); forkRoot != "" {
-			conv.ForkSource = forkRoot
+		// Check for fork root
+		if rootID != conv.ID {
+			conv.ForkSource = rootID
 		}
 
 		// Check for forks.txt
@@ -549,10 +610,9 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		detail.Model = strings.TrimSpace(string(data))
 	}
 
-	// Check pin status
-	if _, err := os.Stat(filepath.Join(convDir, "meta", "pinned.flag")); err == nil {
-		detail.IsPinned = true
-	}
+	// Check pin status via root conversation
+	_, rootDir := resolveForkRoot(convDir)
+	detail.IsPinned = isConversationPinned(rootDir)
 
 	// Use chat.ListMessages to get messages
 	messages, err := chat.ListMessages(convDir)
@@ -973,58 +1033,58 @@ func togglePin(w http.ResponseWriter, r *http.Request, convID string) {
 		return
 	}
 
-	// Ensure meta directory exists
-	if err := os.MkdirAll(filepath.Join(convDir, "meta"), 0755); err != nil {
+	rootID, rootDir := resolveForkRoot(convDir)
+
+	// Ensure root meta directory exists
+	if err := os.MkdirAll(filepath.Join(rootDir, "meta"), 0755); err != nil {
 		http.Error(w, "Failed to create meta directory", http.StatusInternalServerError)
 		return
 	}
 
-	pinPath := filepath.Join(convDir, "meta", "pinned.flag")
+	currentlyPinned := isConversationPinned(rootDir)
+	rootTitle := getConversationTitle(rootDir)
+	if rootTitle == "" {
+		rootTitle = rootID
+	}
 
-	if _, err := os.Stat(pinPath); err == nil {
-		// Unpin
-		os.Remove(pinPath)
-
-		// Log the unpin operation
-		title := getConversationTitle(convDir)
-		if title == "" {
-			title = convID
+	triggerTitle := ""
+	if rootDir != convDir {
+		triggerTitle = getConversationTitle(convDir)
+		if triggerTitle == "" {
+			triggerTitle = convID
 		}
-		log.Printf("Conversation unpinned (%s)\n", title)
+	}
+
+	if currentlyPinned {
+		if err := setConversationPinned(rootDir, false); err != nil {
+			http.Error(w, "Failed to update pin status", http.StatusInternalServerError)
+			return
+		}
+		clearForkPinnedFlags(rootDir)
+
+		if triggerTitle != "" {
+			log.Printf("Conversation tree unpinned (root: %s) via fork %s\n", rootTitle, triggerTitle)
+		} else {
+			log.Printf("Conversation unpinned (%s)\n", rootTitle)
+		}
 
 		json.NewEncoder(w).Encode(map[string]interface{}{"status": "unpinned", "is_pinned": false})
-	} else {
-		// Pin
-		os.WriteFile(pinPath, []byte(""), 0644)
-
-		// Check if this is a fork and auto-pin the root if needed
-		if rootID := readForkRootID(convDir); rootID != "" {
-			baseDir, _ := chat.GetConversationsDir()
-			rootDir := filepath.Join(baseDir, rootID)
-			// Ensure meta directory exists in root
-			os.MkdirAll(filepath.Join(rootDir, "meta"), 0755)
-			rootPinPath := filepath.Join(rootDir, "meta", "pinned.flag")
-
-			// Pin the root if it's not already pinned
-			if _, err := os.Stat(rootPinPath); err != nil {
-				os.WriteFile(rootPinPath, []byte(""), 0644)
-				rootTitle := getConversationTitle(rootDir)
-				if rootTitle == "" {
-					rootTitle = rootID
-				}
-				log.Printf("Auto-pinned root conversation (%s) when pinning fork\n", rootTitle)
-			}
-		}
-
-		// Log the pin operation
-		title := getConversationTitle(convDir)
-		if title == "" {
-			title = convID
-		}
-		log.Printf("Conversation pinned (%s)\n", title)
-
-		json.NewEncoder(w).Encode(map[string]interface{}{"status": "pinned", "is_pinned": true})
+		return
 	}
+
+	if err := setConversationPinned(rootDir, true); err != nil {
+		http.Error(w, "Failed to update pin status", http.StatusInternalServerError)
+		return
+	}
+	clearForkPinnedFlags(rootDir)
+
+	if triggerTitle != "" {
+		log.Printf("Conversation tree pinned (root: %s) via fork %s\n", rootTitle, triggerTitle)
+	} else {
+		log.Printf("Conversation pinned (%s)\n", rootTitle)
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "pinned", "is_pinned": true})
 }
 
 func addMessage(w http.ResponseWriter, r *http.Request, convID string) {

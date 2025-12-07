@@ -125,8 +125,8 @@ async function loadConversationsList() {
 				a.textContent = displayTitle;
 				li.appendChild(a);
 
-				// Pin icon (if pinned)
-				if (conv.is_pinned) {
+				// Pin icon (only show on root entries)
+				if (conv.is_pinned && isRoot) {
 					const pinSpan = document.createElement("span");
 					pinSpan.className = "pin-emoji";
 					pinSpan.innerHTML = ICON_PIN;
