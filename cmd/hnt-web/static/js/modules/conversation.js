@@ -246,6 +246,9 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 	const settingsCloseBtn = document.getElementById("settings-modal-close");
 	const modalTitleInput = document.getElementById("modal-title-input");
 	const modalModelInput = document.getElementById("modal-model-input");
+	const modalRequestParamsInput = document.getElementById(
+		"modal-request-params-input",
+	);
 	const modalPinToggleBtn = document.getElementById("modal-pin-toggle-btn");
 	const modalPinText = document.getElementById("modal-pin-text");
 	const modalForkBtn = document.getElementById("modal-fork-btn");
@@ -285,6 +288,18 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 	if (modalModelInput) {
 		modalModelInput.value = "";
 		modalModelInput.disabled = true;
+	}
+	if (modalRequestParamsInput) {
+		modalRequestParamsInput.value = "";
+		modalRequestParamsInput.disabled = true;
+		modalRequestParamsInput.dataset.originalRequestParams = "";
+		if (modalRequestParamsInput._requestParamsBlurHandler) {
+			modalRequestParamsInput.removeEventListener(
+				"blur",
+				modalRequestParamsInput._requestParamsBlurHandler,
+			);
+			delete modalRequestParamsInput._requestParamsBlurHandler;
+		}
 	}
 	if (modalPinToggleBtn) {
 		modalPinToggleBtn.disabled = true;
@@ -400,6 +415,46 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			modalModelInput.addEventListener("keypress", (event) => {
 				if (event.key === "Enter") modalModelInput.blur();
 			});
+		}
+
+		// --- Request Params Handling ---
+		const convRequestParams = data.request_params || "";
+		if (modalRequestParamsInput) {
+			modalRequestParamsInput.value = convRequestParams;
+			modalRequestParamsInput.dataset.originalRequestParams =
+				convRequestParams;
+			modalRequestParamsInput.disabled = false;
+
+			if (modalRequestParamsInput._requestParamsBlurHandler) {
+				modalRequestParamsInput.removeEventListener(
+					"blur",
+					modalRequestParamsInput._requestParamsBlurHandler,
+				);
+			}
+
+			const blurHandler = async () => {
+				const currentValue = modalRequestParamsInput.value.trim();
+				const originalValue =
+					modalRequestParamsInput.dataset.originalRequestParams || "";
+
+				if (currentValue !== originalValue) {
+					try {
+						await updateConversationRequestParams(
+							conversationId,
+							currentValue,
+							modalRequestParamsInput,
+						);
+					} catch (error) {
+						// Keep the current text so the user can continue editing
+						return;
+					}
+				} else {
+					modalRequestParamsInput.value = originalValue;
+				}
+			};
+
+			modalRequestParamsInput._requestParamsBlurHandler = blurHandler;
+			modalRequestParamsInput.addEventListener("blur", blurHandler);
 		}
 
 		// --- Pin/Unpin Button Setup in Modal ---
@@ -1131,6 +1186,55 @@ async function updateConversationModel(conversationId, newModel, inputElement) {
 		throw error; // Re-throw to allow caller to handle UI revert
 	}
 }
+
+async function updateConversationRequestParams(
+	conversationId,
+	newParams,
+	inputElement,
+) {
+	clearErrorMessages(inputElement.parentElement);
+
+	try {
+		const response = await authFetch(
+			`/api/conversation/${encodeURIComponent(conversationId)}/request-params`,
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ request_params: newParams }),
+			},
+		);
+
+		if (!response.ok) {
+			const errorData = await response
+				.json()
+				.catch(() => ({ detail: "Unknown error updating request params." }));
+			throw new Error(
+				errorData.detail || `HTTP error! status: ${response.status}`,
+			);
+		}
+
+		const responseData = await response.json();
+		const savedValue = responseData.request_params || "";
+
+		inputElement.style.borderColor = "#6ec8ff";
+		setTimeout(() => {
+			inputElement.style.borderColor = "";
+		}, 1500);
+
+		inputElement.value = savedValue;
+		inputElement.dataset.originalRequestParams = savedValue;
+
+		showToast("Request params updated", "success");
+	} catch (error) {
+		console.error("Failed to update request params:", error);
+		handleError(
+			`Error updating request params: ${error.message}`,
+			inputElement.parentElement,
+		);
+		throw error;
+	}
+}
+
 async function handlePinToggle(conversationId, buttonElement) {
 	if (buttonElement) buttonElement.disabled = true;
 	const titleSection = document.querySelector(".title-section");

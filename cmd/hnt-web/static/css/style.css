@@ -989,6 +989,20 @@ html {
 	background-color: #151515;
 }
 
+.settings-textarea {
+	min-height: 140px;
+	resize: vertical;
+	font-family: "Roboto Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+	line-height: 1.4;
+	white-space: pre-wrap;
+}
+
+.settings-help-text {
+	font-size: 0.85em;
+	color: #8f8f8f;
+	line-height: 1.4;
+}
+
 .settings-divider {
 	border-top: 1px solid #333333;
 	margin: 10px 0;

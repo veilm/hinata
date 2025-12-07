@@ -74,6 +74,20 @@
 							<input type="text" id="modal-model-input" class="settings-input">
 						</div>
 
+						<div class="settings-input-group">
+							<label for="modal-request-params-input">Request Params (JSON)</label>
+							<textarea
+								id="modal-request-params-input"
+								class="settings-input settings-textarea"
+								rows="6"
+								placeholder='{"temperature":0.2}'
+							></textarea>
+							<div class="settings-help-text">
+								Optional JSON object merged into the API request payload.
+								Leave blank to clear overrides.
+							</div>
+						</div>
+
 						<div class="settings-divider"></div>
 
 						<div class="settings-actions">

@@ -50,6 +50,7 @@ type ConversationDetail struct {
 	ID               string        `json:"conversation_id"`
 	Title            string        `json:"title"`
 	Model            string        `json:"model"`
+	RequestParams    string        `json:"request_params"`
 	Messages         []MessageFile `json:"messages"`
 	OtherFiles       []OtherFile   `json:"other_files"`
 	ArchivedMessages []MessageFile `json:"archived_messages"`
@@ -63,6 +64,10 @@ type TitleUpdateRequest struct {
 
 type ModelUpdateRequest struct {
 	Model string `json:"model"`
+}
+
+type RequestParamsUpdateRequest struct {
+	RequestParams string `json:"request_params"`
 }
 
 type MessageAddRequest struct {
@@ -163,6 +168,12 @@ func getDefaultConversationModel() string {
 		return defaultModelFallback
 	}
 	return defaultConversationModel
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"detail": message})
 }
 
 func forkRootPath(convDir string) string {
@@ -531,6 +542,13 @@ func handleConversation(w http.ResponseWriter, r *http.Request) {
 		}
 		updateModel(w, r, convID)
 
+	case "request-params":
+		if r.Method != "PUT" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		updateRequestParams(w, r, convID)
+
 	case "message":
 		if len(parts) < 4 {
 			http.Error(w, "Invalid path", http.StatusBadRequest)
@@ -608,6 +626,10 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 	// Read model
 	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "model.txt")); err == nil {
 		detail.Model = strings.TrimSpace(string(data))
+	}
+	// Read request params
+	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "request_params.json")); err == nil {
+		detail.RequestParams = strings.TrimSpace(string(bytes.TrimSpace(data)))
 	}
 
 	// Check pin status via root conversation
@@ -1095,7 +1117,7 @@ func addMessage(w http.ResponseWriter, r *http.Request, convID string) {
 
 	var req MessageAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -1146,6 +1168,17 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 		model = strings.TrimSpace(string(data))
 	}
 
+	var requestOverrides map[string]interface{}
+	if data, err := os.ReadFile(filepath.Join(convDir, "meta", "request_params.json")); err == nil {
+		trimmed := bytes.TrimSpace(data)
+		if len(trimmed) > 0 {
+			if err := json.Unmarshal(trimmed, &requestOverrides); err != nil {
+				http.Error(w, "request_params.json contains invalid JSON", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
 	// Pack conversation
 	var buf bytes.Buffer
 	if err := chat.PackConversation(convDir, &buf, true); err != nil {
@@ -1157,6 +1190,7 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 		Model:            model,
 		SystemPrompt:     "",
 		IncludeReasoning: true,
+		RequestOverrides: requestOverrides,
 	}
 
 	ctx := context.Background()
@@ -1312,6 +1346,65 @@ func updateModel(w http.ResponseWriter, r *http.Request, convID string) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+func updateRequestParams(w http.ResponseWriter, r *http.Request, convID string) {
+	_, convDir, ok := checkConversationAccess(w, r, convID)
+	if !ok {
+		return
+	}
+
+	metaDir := filepath.Join(convDir, "meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		http.Error(w, "Failed to prepare metadata directory", http.StatusInternalServerError)
+		return
+	}
+
+	var req RequestParamsUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	requestPath := filepath.Join(metaDir, "request_params.json")
+	trimmed := strings.TrimSpace(req.RequestParams)
+
+	var savedValue string
+	if trimmed == "" {
+		if err := os.Remove(requestPath); err != nil && !os.IsNotExist(err) {
+			http.Error(w, "Failed to clear request params", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil || parsed == nil {
+			writeJSONError(w, http.StatusBadRequest, "request_params must be a valid JSON object")
+			return
+		}
+		pretty, err := json.MarshalIndent(parsed, "", "  ")
+		if err != nil {
+			http.Error(w, "Failed to format request params", http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(requestPath, pretty, 0644); err != nil {
+			http.Error(w, "Failed to update request params", http.StatusInternalServerError)
+			return
+		}
+		savedValue = string(pretty)
+	}
+
+	title := getConversationTitle(convDir)
+	if title == "" {
+		title = convID
+	}
+	log.Printf("Conversation request params updated (%s)\n", title)
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]string{
+		"status":         "success",
+		"request_params": savedValue,
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 func editMessage(w http.ResponseWriter, r *http.Request, convID string, filename string) {
