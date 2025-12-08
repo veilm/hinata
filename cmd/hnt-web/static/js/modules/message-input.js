@@ -67,11 +67,17 @@ let lastRecommendedActionKey = null;
 const COMPOSER_PADDING_BUFFER = 40;
 let composerResizeObserver = null;
 let windowResizeListenerAttached = false;
+let skipNextComposerAutoFocus = false;
 
-function focusComposerTextarea(textarea) {
+function focusComposerTextarea(textarea, { skipIfRequested = false } = {}) {
 	if (!textarea) {
 		return;
 	}
+	if (skipIfRequested && skipNextComposerAutoFocus) {
+		skipNextComposerAutoFocus = false;
+		return;
+	}
+	skipNextComposerAutoFocus = false;
 	const doFocus = () => {
 		textarea.focus();
 		const endPosition = textarea.value.length;
@@ -301,7 +307,7 @@ function setupMessageInputArea(conversationId) {
 	document.body.appendChild(messageInputArea);
 	adjustTextareaHeightOnInput(textarea); // Initial height adjustment
 	observeComposerForPadding(messageInputArea);
-	focusComposerTextarea(textarea); // Auto-focus when composer is created
+	focusComposerTextarea(textarea, { skipIfRequested: true }); // Auto-focus unless explicitly skipped
 }
 function updateSplitButtonState(conversationId) {
 	const primaryBtn = document.getElementById("primary-action-btn");
@@ -447,6 +453,10 @@ async function handleAddMessage(
 	// If loadConversationDetails failed or an error occurred before it, buttons are re-enabled in catch.
 }
 async function handleGenAssistant(conversationId, allButtons) {
+	const textarea = document.getElementById("new-message-content");
+	if (textarea) {
+		textarea.blur();
+	}
 	setButtonsDisabledState(allButtons, true);
 	const messageInputArea = document.getElementById("message-input-area");
 	if (messageInputArea) {
@@ -733,6 +743,7 @@ async function handleGenAssistant(conversationId, allButtons) {
 		// If loadConversationDetails is skipped on error, then buttons should be re-enabled.
 		// However, the design is to always try to load details.
 	} finally {
+		skipNextComposerAutoFocus = true;
 		// Regardless of success or failure of the stream, reload the conversation details
 		// to get the final state from the server (new messages, files, etc.)
 		// This will also remove the placeholder and re-enable buttons correctly.
