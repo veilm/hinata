@@ -68,6 +68,26 @@ const COMPOSER_PADDING_BUFFER = 40;
 let composerResizeObserver = null;
 let windowResizeListenerAttached = false;
 
+function focusComposerTextarea(textarea) {
+	if (!textarea) {
+		return;
+	}
+	const doFocus = () => {
+		textarea.focus();
+		const endPosition = textarea.value.length;
+		try {
+			textarea.setSelectionRange(endPosition, endPosition);
+		} catch (error) {
+			// Some browsers may throw if selection isn't supported; ignore.
+		}
+	};
+	if (typeof requestAnimationFrame === "function") {
+		requestAnimationFrame(doFocus);
+	} else {
+		setTimeout(doFocus, 0);
+	}
+}
+
 function updateBodyPaddingForComposer() {
 	const messageInputArea = document.getElementById("message-input-area");
 	if (!messageInputArea) {
@@ -281,6 +301,7 @@ function setupMessageInputArea(conversationId) {
 	document.body.appendChild(messageInputArea);
 	adjustTextareaHeightOnInput(textarea); // Initial height adjustment
 	observeComposerForPadding(messageInputArea);
+	focusComposerTextarea(textarea); // Auto-focus when composer is created
 }
 function updateSplitButtonState(conversationId) {
 	const primaryBtn = document.getElementById("primary-action-btn");
@@ -347,6 +368,7 @@ function updateSplitButtonState(conversationId) {
 				textarea,
 				allButtons,
 			);
+			focusComposerTextarea(textarea);
 		}
 	};
 	primaryBtn.clickHandler = submitHandler;
