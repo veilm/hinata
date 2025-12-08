@@ -51,6 +51,9 @@ type ConversationDetail struct {
 	Title            string        `json:"title"`
 	Model            string        `json:"model"`
 	RequestParams    string        `json:"request_params"`
+	ForkRoot         string        `json:"fork_root"`
+	ForkSource       string        `json:"fork_source,omitempty"`
+	Forks            []string      `json:"forks"`
 	Messages         []MessageFile `json:"messages"`
 	OtherFiles       []OtherFile   `json:"other_files"`
 	ArchivedMessages []MessageFile `json:"archived_messages"`
@@ -615,6 +618,7 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		Model:      getDefaultConversationModel(),
 		Messages:   []MessageFile{},
 		OtherFiles: []OtherFile{},
+		Forks:      []string{},
 		ConvDir:    convDir, // Include full path to conversation directory
 	}
 
@@ -632,9 +636,25 @@ func getConversationDetail(w http.ResponseWriter, r *http.Request, convID string
 		detail.RequestParams = strings.TrimSpace(string(bytes.TrimSpace(data)))
 	}
 
-	// Check pin status via root conversation
-	_, rootDir := resolveForkRoot(convDir)
+	// Check fork metadata and pin status via root conversation
+	rootID, rootDir := resolveForkRoot(convDir)
+	detail.ForkRoot = rootID
+	if rootID != convID {
+		detail.ForkSource = rootID
+	}
 	detail.IsPinned = isConversationPinned(rootDir)
+
+	// Load fork list from root's forks.txt if available
+	forksPath := filepath.Join(rootDir, "meta", "forks.txt")
+	if data, err := os.ReadFile(forksPath); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				detail.Forks = append(detail.Forks, line)
+			}
+		}
+	}
 
 	// Use chat.ListMessages to get messages
 	messages, err := chat.ListMessages(convDir)

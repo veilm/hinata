@@ -314,6 +314,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			throw new Error(`HTTP error! status: ${response.status}`);
 		}
 		const data = await response.json(); // Expects { ..., title, model, is_pinned, messages, ... }
+		globalThis.__HINATA_ACTIVE_CONVERSATION = data;
 
 		// --- Title Handling ---
 		const convTitle = data.title || "-";
