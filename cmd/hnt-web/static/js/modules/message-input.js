@@ -462,6 +462,10 @@ async function handleGenAssistant(conversationId, allButtons) {
 	if (messageInputArea) {
 		clearErrorMessages(messageInputArea);
 	}
+	const returnLink = document.getElementById("return-to-top-link");
+	if (returnLink) {
+		returnLink.remove();
+	}
 
 	const primaryBtn = document.getElementById("primary-action-btn");
 	if (primaryBtn) {
