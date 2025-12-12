@@ -40,6 +40,52 @@ import { showShareModal } from "./share.js";
 const getTitleInputValue = (title) =>
 	title && title !== "-" ? title : "";
 
+function updateReturnToTopLink(messageCount) {
+	const container = document.getElementById("messages-container");
+	if (!container) {
+		return;
+	}
+
+	const existingLink = document.getElementById("return-to-top-link");
+	if (existingLink) {
+		existingLink.remove();
+	}
+
+	if (!messageCount || messageCount < 1) {
+		return;
+	}
+
+	const measureAndRender = () => {
+		const scrollingElement =
+			document.scrollingElement || document.documentElement;
+		if (!scrollingElement) {
+			return;
+		}
+		const hasScroll =
+			scrollingElement.scrollHeight - scrollingElement.clientHeight > 4;
+		if (!hasScroll) {
+			return;
+		}
+
+		const linkButton = document.createElement("button");
+		linkButton.type = "button";
+		linkButton.id = "return-to-top-link";
+		linkButton.className = "return-to-top-link";
+		linkButton.textContent = "Return to top";
+		linkButton.addEventListener("click", () => {
+			window.scrollTo(0, 0);
+		});
+
+		container.appendChild(linkButton);
+	};
+
+	if (typeof requestAnimationFrame === "function") {
+		requestAnimationFrame(measureAndRender);
+	} else {
+		setTimeout(measureAndRender, 0);
+	}
+}
+
 async function loadConversationsList() {
 	const container = document.getElementById("conversation-list-container");
 	try {
@@ -314,6 +360,9 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			throw new Error(`HTTP error! status: ${response.status}`);
 		}
 		const data = await response.json(); // Expects { ..., title, model, is_pinned, messages, ... }
+		const totalMessages = Array.isArray(data.messages)
+			? data.messages.length
+			: 0;
 		globalThis.__HINATA_ACTIVE_CONVERSATION = data;
 
 		// --- Title Handling ---
@@ -950,6 +999,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		// After rendering messages and other files, set up the input area
 		setupMessageInputArea(conversationId);
 		updateSplitButtonState(conversationId); // Set initial button state
+		updateReturnToTopLink(totalMessages);
 
 		// Check if this is a forked conversation with actions to perform
 		const forkActionKey = `fork-action-${conversationId}`;
