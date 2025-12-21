@@ -250,13 +250,12 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	var overrideMap map[string]interface{}
-	var err error
 	if cmd.Flags().Changed("request-params") {
 		overrideMap, err = llm.ParseRequestParams(requestParams)
 		if err != nil {
 			return fmt.Errorf("invalid request params: %w", err)
 		}
-		if err := persistRequestParams(convDir, overrideMap); err != nil {
+		if err = persistRequestParams(convDir, overrideMap); err != nil {
 			return err
 		}
 	} else {

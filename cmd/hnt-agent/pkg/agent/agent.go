@@ -40,7 +40,7 @@ type Agent struct {
 	UseEditor       bool
 	AutoExit        bool
 	PromptHeight    int
-	UseV2Streaming  bool  // Use the new OutputCoordinator-based streaming
+	UseV2Streaming  bool // Use the new OutputCoordinator-based streaming
 
 	shellExecutor    *shell.Executor
 	turnCounter      int
@@ -67,7 +67,7 @@ type Config struct {
 	Theme           string
 	PromptHeight    int
 	ShellStartup    string
-	UseV2Streaming  bool  // Use the new OutputCoordinator-based streaming
+	UseV2Streaming  bool // Use the new OutputCoordinator-based streaming
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -229,10 +229,17 @@ func (a *Agent) Run(userMessage string) error {
 		}
 		hinataMdPath := filepath.Join(configDir, "hinata/agent/HINATA.md")
 		if content, err := os.ReadFile(hinataMdPath); err == nil && len(content) > 0 {
-			message := fmt.Sprintf("<info>\n%s\n</info>", string(content))
-			if err := a.writeMessage("user", message); err != nil {
-				return err
+			trimmedInfo := strings.TrimRight(string(content), "\r\n")
+			if trimmedInfo != "" {
+				message := fmt.Sprintf("<info>\n%s\n</info>", trimmedInfo)
+				if err := a.writeMessage("user", message); err != nil {
+					return err
+				}
 			}
+		}
+
+		if err := a.seedInitialConversation(); err != nil {
+			return err
 		}
 	} else {
 		a.resumeSession()
@@ -518,6 +525,37 @@ func (a *Agent) saveState() error {
 	return shell.SaveState(state, stateFile)
 }
 
+func (a *Agent) seedInitialConversation() error {
+	currentDir := a.shellExecutor.WorkingDir
+	if currentDir == "" {
+		if pwd, err := os.Getwd(); err == nil {
+			currentDir = pwd
+		}
+	}
+	if currentDir == "" {
+		currentDir = "."
+	}
+
+	if err := a.writeMessage("user", "<user_request>\nPlease run a pwd\n</user_request>"); err != nil {
+		return err
+	}
+
+	if err := a.writeMessage("assistant", "<shell>\npwd\n</shell>"); err != nil {
+		return err
+	}
+
+	fakeResult := &shell.ExecutionResult{
+		Stdout:   currentDir + "\n",
+		ExitCode: 0,
+	}
+	if err := a.writeMessage("user", formatShellResults(fakeResult)); err != nil {
+		return err
+	}
+
+	ackMessage := fmt.Sprintf("Okay, I see the current working directory is `%s`. What's next?", currentDir)
+	return a.writeMessage("assistant", ackMessage)
+}
+
 func (a *Agent) printTurnHeader(role string, turn int) {
 	width := getTerminalWidth()
 
@@ -759,15 +797,15 @@ func formatShellResults(result *shell.ExecutionResult) string {
 	var parts []string
 	parts = append(parts, "<shell-results>")
 
-	if result.Stdout != "" {
+	if stdout := trimTrailingLineEndings(result.Stdout); stdout != "" {
 		parts = append(parts, "<stdout>")
-		parts = append(parts, result.Stdout)
+		parts = append(parts, stdout)
 		parts = append(parts, "</stdout>")
 	}
 
-	if result.Stderr != "" {
+	if stderr := trimTrailingLineEndings(result.Stderr); stderr != "" {
 		parts = append(parts, "<stderr>")
-		parts = append(parts, result.Stderr)
+		parts = append(parts, stderr)
 		parts = append(parts, "</stderr>")
 	}
 
@@ -775,6 +813,10 @@ func formatShellResults(result *shell.ExecutionResult) string {
 	parts = append(parts, "</shell-results>")
 
 	return strings.Join(parts, "\n")
+}
+
+func trimTrailingLineEndings(s string) string {
+	return strings.TrimRight(s, "\r\n")
 }
 
 func marginStr() string {

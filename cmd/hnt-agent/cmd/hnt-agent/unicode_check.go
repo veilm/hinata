@@ -12,7 +12,8 @@ import (
 )
 
 func runUnicodeCheck(cmd *cobra.Command, args []string) {
-	fmt.Println("=== UNICODE DETECTION SYSTEM TEST ===\n")
+	fmt.Println("=== UNICODE DETECTION SYSTEM TEST ===")
+	fmt.Println()
 
 	// 1. Environment Variables
 	fmt.Println("1. ENVIRONMENT VARIABLES:")
@@ -28,7 +29,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 
 	// 2. SSH Session Detection
-	fmt.Println("\n2. SSH SESSION DETECTION:")
+	fmt.Println()
+	fmt.Println("2. SSH SESSION DETECTION:")
 	fmt.Println("-------------------------")
 	sshClient := os.Getenv("SSH_CLIENT")
 	sshTTY := os.Getenv("SSH_TTY")
@@ -43,7 +45,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 
 	// 3. Locale Detection
-	fmt.Println("\n3. LOCALE DETECTION:")
+	fmt.Println()
+	fmt.Println("3. LOCALE DETECTION:")
 	fmt.Println("--------------------")
 	localeVars := []string{"LC_ALL", "LC_CTYPE", "LANG"}
 	utf8Found := false
@@ -60,7 +63,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	fmt.Printf("UTF-8 locale detected: %v\n", utf8Found)
 
 	// 4. Terminal Detection
-	fmt.Println("\n4. TERMINAL DETECTION:")
+	fmt.Println()
+	fmt.Println("4. TERMINAL DETECTION:")
 	fmt.Println("----------------------")
 	term := strings.ToLower(os.Getenv("TERM"))
 	fmt.Printf("TERM value: %s\n", os.Getenv("TERM"))
@@ -86,7 +90,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 
 	// 5. Font Detection
-	fmt.Println("\n5. FONT DETECTION (fc-list):")
+	fmt.Println()
+	fmt.Println("5. FONT DETECTION (fc-list):")
 	fmt.Println("----------------------------")
 
 	// Check if fc-list exists
@@ -96,7 +101,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		fmt.Println("fc-list: Available")
 
 		// Phase 1: Check for U+1FB90
-		fmt.Println("\nPhase 1 - Querying fonts with U+1FB90:")
+		fmt.Println()
+		fmt.Println("Phase 1 - Querying fonts with U+1FB90:")
 		cmd := exec.Command("fc-list", ":charset=1fb90")
 		output, err := cmd.Output()
 		if err != nil {
@@ -120,7 +126,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 				}
 
 				// Check for known good fonts
-				fmt.Println("\nChecking for known good fonts:")
+				fmt.Println()
+				fmt.Println("Checking for known good fonts:")
 				goodFonts := []string{
 					"cascadia code", "cascadia mono", "gnu unifont", "unifont",
 					"fairfax hd", "fairfax", "legacy_computing", "unscii", "adwaita mono",
@@ -143,7 +150,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 		}
 
 		// Phase 2: Multiple character testing
-		fmt.Println("\nPhase 2 - Testing multiple Legacy Computing characters:")
+		fmt.Println()
+		fmt.Println("Phase 2 - Testing multiple Legacy Computing characters:")
 		testChars := []string{"1fb90", "1fb95", "1fba0", "1fbb0"}
 		supportCount := 0
 
@@ -176,7 +184,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 
 	// 6. Detection Flow
-	fmt.Println("\n6. DETECTION FLOW:")
+	fmt.Println()
+	fmt.Println("6. DETECTION FLOW:")
 	fmt.Println("------------------")
 
 	// Show step-by-step what happened
@@ -208,14 +217,16 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 
 	// 7. Final Detection Result
-	fmt.Println("\n7. FINAL DETECTION RESULT:")
+	fmt.Println()
+	fmt.Println("7. FINAL DETECTION RESULT:")
 	fmt.Println("--------------------------")
 	support := spinner.GetUnicodeSupport()
 	fmt.Printf("Detected Unicode Support Level: %s\n", spinner.GetUnicodeSupportString())
 	fmt.Printf("Raw value: %d (0=None, 1=Basic, 2=Full)\n", support)
 
 	// 8. Spinner Filtering
-	fmt.Println("\n8. SPINNER FILTERING:")
+	fmt.Println()
+	fmt.Println("8. SPINNER FILTERING:")
 	fmt.Println("--------------------")
 	fmt.Printf("Total spinners available: %d\n", len(spinner.SPINNERS))
 
@@ -248,7 +259,8 @@ func runUnicodeCheck(cmd *cobra.Command, args []string) {
 	}
 
 	// 9. Test Scenarios
-	fmt.Println("\n9. TEST OTHER SCENARIOS:")
+	fmt.Println()
+	fmt.Println("9. TEST OTHER SCENARIOS:")
 	fmt.Println("------------------------")
 	fmt.Println("To test different scenarios, run with environment variables:")
 	fmt.Println("  NO_UNICODE=1 hnt-agent unicode-check    # Force ASCII")
