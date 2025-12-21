@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -248,9 +249,21 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to pack conversation: %w", err)
 	}
 
-	overrideMap, err := llm.ParseRequestParams(requestParams)
-	if err != nil {
-		return fmt.Errorf("invalid request params: %w", err)
+	var overrideMap map[string]interface{}
+	var err error
+	if cmd.Flags().Changed("request-params") {
+		overrideMap, err = llm.ParseRequestParams(requestParams)
+		if err != nil {
+			return fmt.Errorf("invalid request params: %w", err)
+		}
+		if err := persistRequestParams(convDir, overrideMap); err != nil {
+			return err
+		}
+	} else {
+		overrideMap, err = loadRequestParams(convDir)
+		if err != nil {
+			return err
+		}
 	}
 
 	config := llm.Config{
@@ -351,6 +364,46 @@ done:
 
 func isatty() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+func persistRequestParams(convDir string, overrideMap map[string]interface{}) error {
+	metaDir := filepath.Join(convDir, "meta")
+	if overrideMap == nil {
+		path := filepath.Join(metaDir, "request_params.json")
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove request params file: %w", err)
+		}
+		return nil
+	}
+
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		return fmt.Errorf("failed to create meta directory: %w", err)
+	}
+	path := filepath.Join(metaDir, "request_params.json")
+	data, err := json.MarshalIndent(overrideMap, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal request params: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write request params file: %w", err)
+	}
+	return nil
+}
+
+func loadRequestParams(convDir string) (map[string]interface{}, error) {
+	path := filepath.Join(convDir, "meta", "request_params.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read request params file: %w", err)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, fmt.Errorf("failed to parse request params file: %w", err)
+	}
+	return payload, nil
 }
 
 func handleListCommand(cmd *cobra.Command, args []string) error {
