@@ -109,7 +109,24 @@ const (
 	parentMessageRootIndicator = "root"
 )
 
-var defaultConversationModel = defaultModelFallback
+var (
+	defaultConversationModel = defaultModelFallback
+	defaultRequestParamsJSON = []byte(`{
+  "extra_body": {
+    "google": {
+      "thinking_config": {
+        "include_thoughts": true,
+        "thinking_level": "high"
+      }
+    }
+  },
+  "include_reasoning": true,
+  "reasoning": {
+    "effort": "high",
+    "enabled": true
+  }
+}`)
+)
 
 func getWebDir() string {
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
@@ -847,6 +864,11 @@ func handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 	modelPath := filepath.Join(convDir, "meta", "model.txt")
 	if err := os.WriteFile(modelPath, []byte(modelContent), 0644); err != nil {
 		log.Printf("Warning: Failed to create model.txt: %v", err)
+	}
+
+	requestParamsPath := filepath.Join(convDir, "meta", "request_params.json")
+	if err := os.WriteFile(requestParamsPath, defaultRequestParamsJSON, 0644); err != nil {
+		log.Printf("Warning: Failed to create request_params.json: %v", err)
 	}
 
 	// Extract just the ID from the full path
