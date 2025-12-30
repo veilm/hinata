@@ -3,8 +3,10 @@ import argparse
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 
 
 LLM_MODEL_STRING = "openrouter/google/gemini-3-flash-preview"
@@ -40,15 +42,16 @@ def ensure_clean(repo):
         raise RuntimeError("working tree is dirty; commit or stash changes first")
 
 
-def load_prompt_template():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    template_path = os.path.join(script_dir, PROMPT_TEMPLATE_NAME)
+def load_prompt_template(template_path=None):
+    if template_path is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(script_dir, PROMPT_TEMPLATE_NAME)
     with open(template_path, "r", encoding="utf-8") as handle:
         return handle.read()
 
 
-def render_prompt(diff_text):
-    template = load_prompt_template()
+def render_prompt(diff_text, template_path):
+    template = load_prompt_template(template_path)
     if "__COMMIT_DIFF__" not in template:
         raise RuntimeError("prompt template missing __COMMIT_DIFF__ placeholder")
     return template.replace("__COMMIT_DIFF__", diff_text)
@@ -125,8 +128,8 @@ def parse_commit_message(response_text):
     return message
 
 
-def generate_message_from_diff(diff_text, max_len, timeout_seconds):
-    prompt_text = render_prompt(diff_text)
+def generate_message_from_diff(diff_text, max_len, timeout_seconds, template_path):
+    prompt_text = render_prompt(diff_text, template_path)
     response_text = run_hnt_chat(prompt_text, timeout_seconds)
     message = parse_commit_message(response_text)
     if max_len and len(message) > max_len:
@@ -153,7 +156,7 @@ def abort_rebase(repo):
     )
 
 
-def rewrite_one(repo, regex, max_len, timeout_seconds):
+def rewrite_one(repo, regex, max_len, timeout_seconds, template_path):
     msg_res = run_git(["log", "-1", "--format=%B"], repo)
     message = msg_res.stdout.strip()
     if not re.search(regex, message):
@@ -161,7 +164,7 @@ def rewrite_one(repo, regex, max_len, timeout_seconds):
 
     diff_res = run_git(["show", "--format=", "--no-color", "HEAD"], repo)
     new_message = generate_message_from_diff(
-        diff_res.stdout, max_len, timeout_seconds
+        diff_res.stdout, max_len, timeout_seconds, template_path
     )
 
     author_date_res = run_git(["show", "-s", "--format=%aI", "HEAD"], repo)
@@ -186,8 +189,32 @@ def rewrite_one(repo, regex, max_len, timeout_seconds):
     return 0
 
 
+def prepare_runner_assets(prompt_template_path):
+    temp_dir = tempfile.mkdtemp(prefix="hnt-rewrite-")
+    script_src = os.path.abspath(__file__)
+    script_dst = os.path.join(temp_dir, os.path.basename(script_src))
+    shutil.copy2(script_src, script_dst)
+
+    if prompt_template_path is None:
+        prompt_src = os.path.join(
+            os.path.dirname(script_src), PROMPT_TEMPLATE_NAME
+        )
+    else:
+        prompt_src = os.path.abspath(prompt_template_path)
+    prompt_dst = os.path.join(temp_dir, os.path.basename(prompt_src))
+    shutil.copy2(prompt_src, prompt_dst)
+    return temp_dir, script_dst, prompt_dst
+
+
 def rebase_rewrite(
-    repo, regex, max_len, limit, allow_dirty, include_merges, timeout_seconds
+    repo,
+    regex,
+    max_len,
+    limit,
+    allow_dirty,
+    include_merges,
+    timeout_seconds,
+    prompt_template_path,
 ):
     repo_root = get_repo_root(repo)
     if not allow_dirty:
@@ -196,37 +223,48 @@ def rebase_rewrite(
     count_res = run_git(["rev-list", "--count", "HEAD"], repo_root)
     total = int(count_res.stdout.strip() or "0")
 
-    script_path = os.path.abspath(__file__)
-    x_cmd = [
-        "python3",
-        script_path,
-        "--rewrite-one",
-        "--repo",
-        repo_root,
-        "--regex",
-        regex,
-        "--max-len",
-        str(max_len),
-        "--llm-timeout",
-        str(timeout_seconds),
-    ]
-    x_cmd_str = " ".join(shlex.quote(part) for part in x_cmd)
-
-    rebase_args = ["rebase", "--committer-date-is-author-date", "-x", x_cmd_str]
-    if include_merges:
-        rebase_args.insert(1, "--rebase-merges")
-
-    if total <= limit:
-        rebase_args.append("--root")
-    else:
-        rebase_args.append("HEAD~{}".format(limit))
-
+    temp_dir, runner_script, runner_prompt = prepare_runner_assets(
+        prompt_template_path
+    )
     try:
+        x_cmd = [
+            "python3",
+            runner_script,
+            "--rewrite-one",
+            "--repo",
+            repo_root,
+            "--regex",
+            regex,
+            "--max-len",
+            str(max_len),
+            "--llm-timeout",
+            str(timeout_seconds),
+            "--prompt-template",
+            runner_prompt,
+        ]
+        x_cmd_str = " ".join(shlex.quote(part) for part in x_cmd)
+
+        rebase_args = [
+            "rebase",
+            "--committer-date-is-author-date",
+            "-x",
+            x_cmd_str,
+        ]
+        if include_merges:
+            rebase_args.insert(1, "--rebase-merges")
+
+        if total <= limit:
+            rebase_args.append("--root")
+        else:
+            rebase_args.append("HEAD~{}".format(limit))
+
         run_git(rebase_args, repo_root, capture=False, check=True)
     except Exception:
         if is_rebase_in_progress(repo_root):
             abort_rebase(repo_root)
         raise
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def parse_args():
@@ -262,6 +300,11 @@ def parse_args():
         help="Timeout in seconds for the LLM generation step.",
     )
     parser.add_argument(
+        "--prompt-template",
+        default=None,
+        help="Path to the prompt template markdown file.",
+    )
+    parser.add_argument(
         "--allow-dirty",
         action="store_true",
         help="Allow running with a dirty working tree.",
@@ -289,7 +332,11 @@ def main():
     if args.rewrite_one:
         try:
             return rewrite_one(
-                repo_root, args.regex, args.max_len, args.llm_timeout
+                repo_root,
+                args.regex,
+                args.max_len,
+                args.llm_timeout,
+                args.prompt_template,
             )
         except Exception:
             if is_rebase_in_progress(repo_root):
@@ -304,6 +351,7 @@ def main():
         args.allow_dirty,
         include_merges=not args.no_merges,
         timeout_seconds=args.llm_timeout,
+        prompt_template_path=args.prompt_template,
     )
     return 0
 
