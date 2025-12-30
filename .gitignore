@@ -1,4 +1,5 @@
 .aider*
+.claude
 __pycache__
 *.out
 archive
