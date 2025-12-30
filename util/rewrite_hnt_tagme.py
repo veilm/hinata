@@ -14,13 +14,14 @@ PROMPT_TEMPLATE_NAME = "commit_message_prompt.md"
 DEFAULT_LLM_TIMEOUT = 60
 
 
-def run_git(args, cwd, capture=True, check=True):
+def run_git(args, cwd, capture=True, check=True, env=None):
     result = subprocess.run(
         ["git"] + args,
         cwd=cwd,
         capture_output=capture,
         text=True,
         check=False,
+        env=env,
     )
     if check and result.returncode != 0:
         raise RuntimeError(
@@ -206,6 +207,85 @@ def prepare_runner_assets(prompt_template_path):
     return temp_dir, script_dst, prompt_dst
 
 
+def resolve_base(repo_root, limit):
+    args = ["rev-list", "--reverse", "--max-count", str(limit), "HEAD"]
+    res = run_git(args, repo_root)
+    commits = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+    if not commits:
+        return None, []
+    root_parent = "{}^".format(commits[0])
+    parent_check = run_git([ "rev-parse", root_parent ], repo_root, check=False)
+    if parent_check.returncode != 0:
+        return "--root", commits
+    return root_parent, commits
+
+
+def find_matching_commits(repo_root, base, regex, limit):
+    if base == "--root":
+        args = [
+            "log",
+            "--format=%H%x00%B%x1f",
+            "--reverse",
+            "--max-count",
+            str(limit),
+            "HEAD",
+        ]
+    else:
+        args = [
+            "log",
+            "--format=%H%x00%B%x1f",
+            "--reverse",
+            "{}..HEAD".format(base),
+        ]
+    res = run_git(args, repo_root)
+    entries = [e for e in res.stdout.split("\x1f") if e.strip()]
+    matches = []
+    for entry in entries:
+        entry = entry.strip("\n")
+        if not entry or "\x00" not in entry:
+            continue
+        sha, msg = entry.split("\x00", 1)
+        if re.search(regex, msg.strip()):
+            matches.append(sha.strip())
+    return matches
+
+
+def write_sequence_editor(matches, x_cmd_str):
+    temp_dir = tempfile.mkdtemp(prefix="hnt-rewrite-todo-")
+    script_path = os.path.join(temp_dir, "sequence_editor.py")
+    with open(script_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            """#!/usr/bin/env python3
+import os
+import sys
+
+full_matches = [m for m in os.environ.get("HNT_REWRITE_MATCHES", "").split() if m]
+exec_line = os.environ.get("HNT_REWRITE_EXEC", "").strip()
+
+todo_path = sys.argv[1]
+with open(todo_path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+
+new_lines = []
+for line in lines:
+    new_lines.append(line)
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    parts = stripped.split()
+    if parts and parts[0] in ("pick", "reword", "edit", "squash", "fixup"):
+        sha = parts[1] if len(parts) > 1 else ""
+        if any(full.startswith(sha) for full in full_matches):
+            new_lines.append("exec " + exec_line + "\\n")
+
+with open(todo_path, "w", encoding="utf-8") as f:
+    f.writelines(new_lines)
+"""
+        )
+    os.chmod(script_path, 0o755)
+    return temp_dir, script_path
+
+
 def rebase_rewrite(
     repo,
     regex,
@@ -220,12 +300,18 @@ def rebase_rewrite(
     if not allow_dirty:
         ensure_clean(repo_root)
 
-    count_res = run_git(["rev-list", "--count", "HEAD"], repo_root)
-    total = int(count_res.stdout.strip() or "0")
+    base, commits = resolve_base(repo_root, limit)
+    if base is None:
+        return
+
+    matches = find_matching_commits(repo_root, base, regex, limit)
+    if not matches:
+        return
 
     temp_dir, runner_script, runner_prompt = prepare_runner_assets(
         prompt_template_path
     )
+    seq_dir = None
     try:
         x_cmd = [
             "python3",
@@ -244,27 +330,29 @@ def rebase_rewrite(
         ]
         x_cmd_str = " ".join(shlex.quote(part) for part in x_cmd)
 
-        rebase_args = [
-            "rebase",
-            "--committer-date-is-author-date",
-            "-x",
-            x_cmd_str,
-        ]
+        seq_dir, seq_editor = write_sequence_editor(matches, x_cmd_str)
+
+        if base == "--root":
+            rebase_args = ["rebase", "-i", "--committer-date-is-author-date", "--root"]
+        else:
+            rebase_args = ["rebase", "-i", "--committer-date-is-author-date", base]
         if include_merges:
             rebase_args.insert(1, "--rebase-merges")
 
-        if total <= limit:
-            rebase_args.append("--root")
-        else:
-            rebase_args.append("HEAD~{}".format(limit))
+        env = os.environ.copy()
+        env["GIT_SEQUENCE_EDITOR"] = seq_editor
+        env["HNT_REWRITE_MATCHES"] = " ".join(matches)
+        env["HNT_REWRITE_EXEC"] = x_cmd_str
 
-        run_git(rebase_args, repo_root, capture=False, check=True)
+        run_git(rebase_args, repo_root, capture=False, check=True, env=env)
     except Exception:
         if is_rebase_in_progress(repo_root):
             abort_rebase(repo_root)
         raise
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+        if seq_dir is not None:
+            shutil.rmtree(seq_dir, ignore_errors=True)
 
 
 def parse_args():
