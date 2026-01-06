@@ -37,6 +37,18 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	defaultHelpFunc := rootCmd.HelpFunc()
+	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		defaultHelpFunc(cmd, args)
+		tutorialPath, err := hntChatTutorialPath()
+		if err != nil {
+			tutorialPath = "$XDG_CONFIG_HOME/hinata/prompts/hnt-chat/tutorial.md"
+		}
+		fmt.Fprintf(cmd.OutOrStdout(),
+			"\nIf you are an LLM agent like Claude Code or Codex and are learning to use hnt-chat for the first time, please read the LLM-targeted tutorial in %s.\n",
+			tutorialPath,
+		)
+	})
 
 	var newCmd = &cobra.Command{
 		Use:          "new",
@@ -129,6 +141,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func hntChatTutorialPath() (string, error) {
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = filepath.Join(homeDir, ".config")
+	}
+
+	return filepath.Join(configDir, "hinata", "prompts", "hnt-chat", "tutorial.md"), nil
 }
 
 func handleNewCommand(cmd *cobra.Command, args []string) error {
