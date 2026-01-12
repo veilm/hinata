@@ -63,7 +63,7 @@ li {
 }
 
 .message {
-	background-color: #080808; /* Background for each message block */
+	background-color: #000000; /* Match page background */
 	margin-bottom: 15px;
 	padding: 12px;
 	border-radius: 0; /* Minimal */
