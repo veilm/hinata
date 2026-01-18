@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import math
 import os
 import re
 import shlex
@@ -56,6 +57,26 @@ def render_prompt(diff_text, template_path):
     if "__COMMIT_DIFF__" not in template:
         raise RuntimeError("prompt template missing __COMMIT_DIFF__ placeholder")
     return template.replace("__COMMIT_DIFF__", diff_text)
+
+
+def truncate_diff_for_llm(diff_text):
+    token_count = math.ceil(len(diff_text) / 5) if diff_text else 0
+    if token_count < 100000:
+        return diff_text
+
+    keep_tokens = 25000
+    keep_chars = keep_tokens * 5
+    if len(diff_text) <= keep_chars * 2:
+        return diff_text
+
+    middle = diff_text[keep_chars:-keep_chars]
+    lines_in_middle = middle.count("\n")
+    notice = (
+        "\n[... TRUNCATED middle of diff; {} more lines here ...]\n".format(
+            lines_in_middle
+        )
+    )
+    return diff_text[:keep_chars] + notice + diff_text[-keep_chars:]
 
 
 def run_hnt_chat(prompt_text, timeout_seconds):
@@ -130,7 +151,7 @@ def parse_commit_message(response_text):
 
 
 def generate_message_from_diff(diff_text, max_len, timeout_seconds, template_path):
-    prompt_text = render_prompt(diff_text, template_path)
+    prompt_text = render_prompt(truncate_diff_for_llm(diff_text), template_path)
     response_text = run_hnt_chat(prompt_text, timeout_seconds)
     message = parse_commit_message(response_text)
     if max_len and len(message) > max_len:
