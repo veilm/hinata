@@ -704,6 +704,30 @@ li {
 	margin: 0.5em 0;
 }
 
+.message-content-wrapper table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 0.75em 0;
+	white-space: normal;
+}
+
+.message-content-wrapper th,
+.message-content-wrapper td {
+	border: 1px solid #2a2a2a;
+	padding: 6px 8px;
+	text-align: left;
+	vertical-align: top;
+	white-space: normal;
+}
+
+.message-content-wrapper thead {
+	background-color: #0f0f0f;
+}
+
+.message-content-wrapper tbody tr:nth-child(even) {
+	background-color: #0a0a0a;
+}
+
 /* Code styles */
 .message-content-wrapper code {
 	background-color: #1a1a1a;
@@ -1304,6 +1328,30 @@ html {
 
 .message-reasoning p {
 	margin: 0.5em 0;
+}
+
+.message-reasoning table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 0.75em 0;
+	white-space: normal;
+}
+
+.message-reasoning th,
+.message-reasoning td {
+	border: 1px solid #2a4a5a;
+	padding: 6px 8px;
+	text-align: left;
+	vertical-align: top;
+	white-space: normal;
+}
+
+.message-reasoning thead {
+	background-color: #071018;
+}
+
+.message-reasoning tbody tr:nth-child(even) {
+	background-color: #060c12;
 }
 
 .message-reasoning code {

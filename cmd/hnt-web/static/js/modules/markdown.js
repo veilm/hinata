@@ -149,6 +149,106 @@ function parseMarkdownSimple(text) {
 	return result.join("");
 }
 
+function parseMarkdownTables(text, inlineCode) {
+	const tables = [];
+	const lines = text.split("\n");
+	const output = [];
+
+	function isTableSeparator(line) {
+		return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+	}
+
+	function isTableHeader(line) {
+		return line.includes("|") && line.trim() && !isTableSeparator(line);
+	}
+
+	function splitRow(line) {
+		let row = line.trim();
+		if (row.startsWith("|")) row = row.slice(1);
+		if (row.endsWith("|")) row = row.slice(0, -1);
+		return row.split("|").map((cell) => cell.trim());
+	}
+
+	function normalizeRow(row, colCount) {
+		const normalized = row.slice(0, colCount);
+		while (normalized.length < colCount) normalized.push("");
+		return normalized;
+	}
+
+	function restoreInlineCode(textValue) {
+		if (!inlineCode || inlineCode.length === 0) return textValue;
+		let restored = textValue;
+		inlineCode.forEach((code, i) => {
+			restored = restored.replace(`\x00INLINE_CODE_${i}\x00`, code);
+		});
+		return restored;
+	}
+
+	function renderTable(headerCells, bodyRows) {
+		const colCount = Math.max(
+			headerCells.length,
+			...bodyRows.map((row) => row.length),
+			1,
+		);
+		const normalizedHeader = normalizeRow(headerCells, colCount);
+		const normalizedRows = bodyRows.map((row) => normalizeRow(row, colCount));
+
+		const thead =
+			"<thead><tr>" +
+			normalizedHeader
+				.map((cell) => `<th>${parseMarkdownSimple(cell)}</th>`)
+				.join("") +
+			"</tr></thead>";
+		const tbodyRows = normalizedRows
+			.map(
+				(row) =>
+					"<tr>" +
+					row.map((cell) => `<td>${parseMarkdownSimple(cell)}</td>`).join("") +
+					"</tr>",
+			)
+			.join("");
+		let tableHtml = `<table>${thead}`;
+		if (tbodyRows) tableHtml += `<tbody>${tbodyRows}</tbody>`;
+		tableHtml += "</table>";
+
+		return restoreInlineCode(tableHtml);
+	}
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const nextLine = i + 1 < lines.length ? lines[i + 1] : null;
+
+		if (nextLine && isTableHeader(line) && isTableSeparator(nextLine)) {
+			const headerCells = splitRow(line);
+			const bodyRows = [];
+			i += 2;
+
+			while (i < lines.length && lines[i].includes("|") && !isTableSeparator(lines[i])) {
+				bodyRows.push(splitRow(lines[i]));
+				i++;
+			}
+
+			const placeholder = `\x00TABLE_${tables.length}\x00`;
+			const needsLeadingBlank =
+				output.length > 0 && output[output.length - 1].trim() !== "";
+			if (needsLeadingBlank) output.push("");
+			output.push(placeholder);
+
+			if (i < lines.length && lines[i].trim() !== "") {
+				output.push("");
+			}
+
+			tables.push(renderTable(headerCells, bodyRows));
+			i -= 1;
+			continue;
+		}
+
+		output.push(line);
+	}
+
+	return { text: output.join("\n"), tables };
+}
+
 // Improved markdown renderer
 function renderMarkdown(text) {
 	// First escape HTML to prevent XSS
@@ -181,6 +281,9 @@ function renderMarkdown(text) {
 		return placeholder;
 	});
 
+	const tableBlocks = parseMarkdownTables(html, inlineCode);
+	html = tableBlocks.text;
+
 	// Parse bold and italic
 	html = parseMarkdownSimple(html);
 
@@ -201,6 +304,13 @@ function renderMarkdown(text) {
 		.filter((p) => p.trim()) // Remove empty paragraphs
 		.map((p) => `<p>${p}</p>`)
 		.join("");
+
+	tableBlocks.tables.forEach((table, i) => {
+		const placeholder = `\x00TABLE_${i}\x00`;
+		const wrapped = new RegExp(`<p>\\s*${placeholder}\\s*<\\/p>`, "g");
+		html = html.replace(wrapped, placeholder);
+		html = html.replace(placeholder, table);
+	});
 
 	return html;
 }
