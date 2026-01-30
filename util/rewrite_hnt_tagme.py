@@ -12,7 +12,7 @@ import tempfile
 
 LLM_MODEL_STRING = "openrouter/google/gemini-3-flash-preview"
 PROMPT_TEMPLATE_NAME = "commit_message_prompt.md"
-DEFAULT_LLM_TIMEOUT = 60
+DEFAULT_LLM_TIMEOUT = 120
 
 
 def run_git(args, cwd, capture=True, check=True, env=None):
@@ -25,9 +25,11 @@ def run_git(args, cwd, capture=True, check=True, env=None):
         env=env,
     )
     if check and result.returncode != 0:
+        stdout = result.stdout if result.stdout is not None else ""
+        stderr = result.stderr if result.stderr is not None else ""
         raise RuntimeError(
             "git command failed: git {}\n{}\n{}".format(
-                " ".join(args), result.stdout.strip(), result.stderr.strip()
+                " ".join(args), stdout.strip(), stderr.strip()
             )
         )
     return result
@@ -61,10 +63,10 @@ def render_prompt(diff_text, template_path):
 
 def truncate_diff_for_llm(diff_text):
     token_count = math.ceil(len(diff_text) / 5) if diff_text else 0
-    if token_count < 100000:
+    if token_count < 50000:
         return diff_text
 
-    keep_tokens = 25000
+    keep_tokens = 20000
     keep_chars = keep_tokens * 5
     if len(diff_text) <= keep_chars * 2:
         return diff_text
@@ -105,21 +107,28 @@ def run_hnt_chat(prompt_text, timeout_seconds):
             )
         )
 
-    gen_res = subprocess.run(
-        [
-            "hnt-chat",
-            "gen",
-            "--output-filename",
-            "--include-reasoning",
-            "--model",
-            LLM_MODEL_STRING,
-            "-c",
-            chat_id,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-    )
+    try:
+        gen_res = subprocess.run(
+            [
+                "hnt-chat",
+                "gen",
+                "--output-filename",
+                "--include-reasoning",
+                "--model",
+                LLM_MODEL_STRING,
+                "-c",
+                chat_id,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "hnt-chat gen timed out after {}s (model {}). Conversation: {}".format(
+                timeout_seconds, LLM_MODEL_STRING, chat_id
+            )
+        ) from exc
     if gen_res.returncode != 0:
         raise RuntimeError(
             "hnt-chat gen failed:\n{}\n{}".format(
@@ -368,12 +377,18 @@ def rebase_rewrite(
         run_git(rebase_args, repo_root, capture=False, check=True, env=env)
     except Exception:
         if is_rebase_in_progress(repo_root):
-            abort_rebase(repo_root)
+            print(
+                "warning: rebase paused; temp assets preserved in {}".format(
+                    temp_dir
+                ),
+                file=sys.stderr,
+            )
         raise
     finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        if seq_dir is not None:
-            shutil.rmtree(seq_dir, ignore_errors=True)
+        if not is_rebase_in_progress(repo_root):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            if seq_dir is not None:
+                shutil.rmtree(seq_dir, ignore_errors=True)
 
 
 def parse_args():
@@ -448,8 +463,6 @@ def main():
                 args.prompt_template,
             )
         except Exception:
-            if is_rebase_in_progress(repo_root):
-                abort_rebase(repo_root)
             raise
 
     rebase_rewrite(
