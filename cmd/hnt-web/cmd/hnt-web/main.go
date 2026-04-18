@@ -986,6 +986,12 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		}
 	}
 
+	if err := chat.CopyReasoningForExistingMessages(sourceDir, newConvDir); err != nil {
+		os.RemoveAll(newConvDir)
+		http.Error(w, "Failed to copy reasoning files", http.StatusInternalServerError)
+		return
+	}
+
 	// Set access for the user who forked
 	if err := setAccess(newConvDir, []string{username}); err != nil {
 		log.Printf("Warning: Failed to set access for forked conversation: %v", err)

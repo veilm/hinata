@@ -670,6 +670,10 @@ func handleForkCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if err := chat.CopyReasoningForExistingMessages(sourceDir, newConvDir); err != nil {
+		return fmt.Errorf("failed to copy reasoning files: %w", err)
+	}
+
 	sourceID := filepath.Base(sourceDir)
 	newID := filepath.Base(newConvDir)
 

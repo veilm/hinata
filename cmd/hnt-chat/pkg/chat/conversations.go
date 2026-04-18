@@ -124,6 +124,70 @@ func WriteReasoningFile(convDir string, content string, timestampNs int64) error
 	return nil
 }
 
+// CopyReasoningForExistingMessages copies reasoning files whose timestamps match
+// assistant messages that already exist in dstDir.
+func CopyReasoningForExistingMessages(srcDir, dstDir string) error {
+	messages, err := ListMessages(dstDir)
+	if err != nil {
+		return fmt.Errorf("failed to list destination messages: %w", err)
+	}
+
+	retainedAssistantTimestamps := make(map[int64]struct{})
+	for _, msg := range messages {
+		if msg.Role == RoleAssistant {
+			retainedAssistantTimestamps[msg.Timestamp] = struct{}{}
+		}
+	}
+	if len(retainedAssistantTimestamps) == 0 {
+		return nil
+	}
+
+	srcReasoningDir := filepath.Join(srcDir, "reasoning")
+	entries, err := os.ReadDir(srcReasoningDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read source reasoning directory: %w", err)
+	}
+
+	dstReasoningDir := filepath.Join(dstDir, "reasoning")
+	dstReasoningCreated := false
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+
+		stem := strings.TrimSuffix(entry.Name(), ".md")
+		timestamp, err := strconv.ParseInt(stem, 10, 64)
+		if err != nil {
+			continue
+		}
+		if _, ok := retainedAssistantTimestamps[timestamp]; !ok {
+			continue
+		}
+
+		if !dstReasoningCreated {
+			if err := os.MkdirAll(dstReasoningDir, 0755); err != nil {
+				return fmt.Errorf("failed to create destination reasoning directory: %w", err)
+			}
+			dstReasoningCreated = true
+		}
+
+		srcPath := filepath.Join(srcReasoningDir, entry.Name())
+		dstPath := filepath.Join(dstReasoningDir, entry.Name())
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return fmt.Errorf("failed to read reasoning file %s: %w", srcPath, err)
+		}
+		if err := os.WriteFile(dstPath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write reasoning file %s: %w", dstPath, err)
+		}
+	}
+
+	return nil
+}
+
 func ListMessages(convDir string) ([]ChatMessage, error) {
 	entries, err := os.ReadDir(convDir)
 	if err != nil {

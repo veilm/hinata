@@ -18,6 +18,7 @@ mkdir -p $conv
 
 # Add a static message to the conversation using `hnt-chat add <system|user|assistant>`
 # System messages can be used for instructions at the start of a conversation. Most LLMs only support one system message per conversation, which has to be the very first message
+# In practice, 90% of the time, modern LLMs work better if you simply specify your instructions as a user message, than have some kind of role-based "You are an expert code reviewer" system prompt
 f1=$(echo "Always respond with rhymes, often incorporating the topic of water." | hnt-chat add system -c $conv)
 f2=$(echo "Hello!" | hnt-chat add user -c $conv)
 
@@ -35,8 +36,8 @@ ls $conv
 # Use hnt-chat gen, to generate an LLM response
 
 # Different models have different capabilities and quirks
-# Gemini 2.5 Pro on openrouter is fairly recent and intelligent and usually a safe pick
-model=openrouter/google/gemini-2.5-pro
+# Gemini 3.1 Pro on openrouter is recent, intelligent, and otherwise usually a safe pick
+model=openrouter/google/gemini-3.1-pro-preview
 
 # --include-reasoning will save the CoT (chain of thought; internal reasoning)
 # summary returned by the API for the generation. it's helpful for debugging the
