@@ -22,7 +22,7 @@ hnt-web
 
 the architecture is vanilla Go (http std lib) + Vanilla JS. the entire server is
 one executable (hnt-web). the frontend is copied to `$XDG_DATA_HOME` during the
-installationl and then hnt-web serves from there
+installation and then hnt-web serves from there
 
 => you don't need any docker or npm, just Go
 

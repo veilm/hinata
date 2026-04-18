@@ -991,6 +991,11 @@ func forkConversation(w http.ResponseWriter, r *http.Request, convID string) {
 		http.Error(w, "Failed to copy reasoning files", http.StatusInternalServerError)
 		return
 	}
+	if err := chat.CopyMessageMetadataForExistingMessages(sourceDir, newConvDir); err != nil {
+		os.RemoveAll(newConvDir)
+		http.Error(w, "Failed to copy message metadata files", http.StatusInternalServerError)
+		return
+	}
 
 	// Set access for the user who forked
 	if err := setAccess(newConvDir, []string{username}); err != nil {
@@ -1090,6 +1095,11 @@ func trimConversationAfterMessage(convDir, messageFilename string) error {
 		if messages[i].ReasoningPath != "" {
 			if err := os.Remove(messages[i].ReasoningPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove reasoning %s: %w", messages[i].ReasoningPath, err)
+			}
+		}
+		if messages[i].Role == chat.RoleAssistant {
+			if err := chat.RemoveMessageMetadataFile(convDir, messages[i].Timestamp); err != nil {
+				return err
 			}
 		}
 	}
@@ -1256,6 +1266,7 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 
 	var contentBuffer strings.Builder
 	var reasoningBuffer strings.Builder
+	var streamMetadata llm.StreamMetadata
 
 	for {
 		select {
@@ -1263,6 +1274,8 @@ func generateAssistant(w http.ResponseWriter, r *http.Request, convID string) {
 			if !ok {
 				goto done
 			}
+
+			streamMetadata.Merge(event.Metadata)
 
 			if event.Content != "" {
 				// Escape newlines for SSE format
@@ -1295,6 +1308,7 @@ done:
 	if reasoningBuffer.Len() > 0 || contentBuffer.Len() > 0 {
 		// Capture timestamp once for both files
 		timestampNs := time.Now().UnixNano()
+		var reasoningFile string
 
 		if reasoningBuffer.Len() > 0 {
 			reasoningContent := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
@@ -1304,13 +1318,20 @@ done:
 				flusher.Flush()
 				return
 			}
+			reasoningFile = filepath.ToSlash(filepath.Join("reasoning", fmt.Sprintf("%d.md", timestampNs)))
 		}
 
 		// Write the assistant message content (without reasoning)
 		if contentBuffer.Len() > 0 {
-			_, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, contentBuffer.String(), timestampNs)
+			messageFile, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, contentBuffer.String(), timestampNs)
 			if err != nil {
 				fmt.Fprintf(w, "data: [ERROR] Failed to save message\n\n")
+				flusher.Flush()
+				return
+			}
+			metadata := chat.NewMessageMetadata(timestampNs, messageFile, reasoningFile, buf.String(), contentBuffer.String(), streamMetadata)
+			if err := chat.WriteMessageMetadataFile(convDir, metadata, timestampNs); err != nil {
+				fmt.Fprintf(w, "data: [ERROR] Failed to save message metadata\n\n")
 				flusher.Flush()
 				return
 			}

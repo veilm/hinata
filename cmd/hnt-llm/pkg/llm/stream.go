@@ -102,9 +102,12 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 		}
 
 		payload := ApiRequest{
-			Model:            actualModel,
-			Messages:         messages,
-			Stream:           true,
+			Model:         actualModel,
+			Messages:      messages,
+			Stream:        true,
+			StreamOptions: &StreamOptions{IncludeUsage: true},
+			// OpenRouter ignores stream_options.include_usage because usage is
+			// automatic there, but OpenAI-compatible providers use it.
 			IncludeReasoning: true,
 			Reasoning: &ReasoningParams{
 				Enabled: true,
@@ -181,6 +184,14 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 			return
 		}
 
+		eventChan <- StreamEvent{Metadata: &StreamMetadata{
+			Provider:       providerName,
+			ModelRequested: config.Model,
+			ModelSent:      actualModel,
+			GenerationID:   resp.Header.Get("X-Generation-Id"),
+			Streamed:       true,
+		}}
+
 		reader := bufio.NewReader(resp.Body)
 		var buffer bytes.Buffer
 		isDone := false
@@ -245,24 +256,7 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 					continue
 				}
 
-				if len(chunk.Choices) > 0 {
-					delta := chunk.Choices[0].Delta
-
-					if delta.Content != nil && *delta.Content != "" {
-						if debugLogger != nil {
-							debugLogger.Printf("Sending content: %q", *delta.Content)
-						}
-						eventChan <- StreamEvent{Content: *delta.Content}
-					}
-
-					if config.IncludeReasoning {
-						if delta.Reasoning != nil && *delta.Reasoning != "" {
-							eventChan <- StreamEvent{Reasoning: *delta.Reasoning}
-						} else if delta.ReasoningContent != nil && *delta.ReasoningContent != "" {
-							eventChan <- StreamEvent{Reasoning: *delta.ReasoningContent}
-						}
-					}
-				}
+				emitChunkEvents(eventChan, chunk, config, debugLogger)
 			}
 
 			// Check if we should exit:
@@ -285,23 +279,8 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 
 						if dataStr != "[DONE]" {
 							var chunk ApiResponseChunk
-							if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil && len(chunk.Choices) > 0 {
-								delta := chunk.Choices[0].Delta
-
-								if delta.Content != nil && *delta.Content != "" {
-									if debugLogger != nil {
-										debugLogger.Printf("Sending final buffer content: %q", *delta.Content)
-									}
-									eventChan <- StreamEvent{Content: *delta.Content}
-								}
-
-								if config.IncludeReasoning {
-									if delta.Reasoning != nil && *delta.Reasoning != "" {
-										eventChan <- StreamEvent{Reasoning: *delta.Reasoning}
-									} else if delta.ReasoningContent != nil && *delta.ReasoningContent != "" {
-										eventChan <- StreamEvent{Reasoning: *delta.ReasoningContent}
-									}
-								}
+							if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil {
+								emitChunkEvents(eventChan, chunk, config, debugLogger)
 							} else if debugLogger != nil && err != nil {
 								debugLogger.Printf("JSON unmarshal error for final buffer data: %q, error: %v", dataStr, err)
 							}
@@ -323,6 +302,155 @@ func StreamLLMResponse(ctx context.Context, config Config, promptContent string)
 	}()
 
 	return eventChan, errChan
+}
+
+func emitChunkEvents(eventChan chan<- StreamEvent, chunk ApiResponseChunk, config Config, debugLogger *log.Logger) {
+	if metadata := metadataFromChunk(chunk); metadata != nil {
+		eventChan <- StreamEvent{Metadata: metadata}
+	}
+
+	if len(chunk.Choices) == 0 {
+		return
+	}
+
+	delta := chunk.Choices[0].Delta
+
+	if delta.Content != nil && *delta.Content != "" {
+		if debugLogger != nil {
+			debugLogger.Printf("Sending content: %q", *delta.Content)
+		}
+		eventChan <- StreamEvent{Content: *delta.Content}
+	}
+
+	if config.IncludeReasoning {
+		if delta.Reasoning != nil && *delta.Reasoning != "" {
+			eventChan <- StreamEvent{Reasoning: *delta.Reasoning}
+		} else if delta.ReasoningContent != nil && *delta.ReasoningContent != "" {
+			eventChan <- StreamEvent{Reasoning: *delta.ReasoningContent}
+		}
+	}
+}
+
+func metadataFromChunk(chunk ApiResponseChunk) *StreamMetadata {
+	metadata := &StreamMetadata{
+		ResponseID:        chunk.ID,
+		CreatedUnix:       chunk.Created,
+		ModelReturned:     chunk.Model,
+		SystemFingerprint: chunk.SystemFingerprint,
+		ProviderError:     chunk.Error,
+	}
+
+	if len(chunk.Choices) > 0 {
+		choice := chunk.Choices[0]
+		if choice.FinishReason != nil {
+			metadata.FinishReason = *choice.FinishReason
+		}
+		if choice.NativeFinishReason != nil {
+			metadata.NativeFinishReason = *choice.NativeFinishReason
+		}
+	}
+
+	if len(chunk.Usage) > 0 && string(chunk.Usage) != "null" {
+		metadata.RawUsage = append(json.RawMessage(nil), chunk.Usage...)
+		metadata.Usage = parseUsageMetadata(chunk.Usage)
+	}
+
+	if metadata.ResponseID == "" &&
+		metadata.CreatedUnix == 0 &&
+		metadata.ModelReturned == "" &&
+		metadata.SystemFingerprint == "" &&
+		metadata.FinishReason == "" &&
+		metadata.NativeFinishReason == "" &&
+		metadata.Usage == nil &&
+		metadata.ProviderError == nil {
+		return nil
+	}
+
+	return metadata
+}
+
+func parseUsageMetadata(raw json.RawMessage) *UsageMetadata {
+	var usageMap map[string]interface{}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&usageMap); err != nil {
+		return nil
+	}
+
+	usage := &UsageMetadata{
+		PromptTokens:            intField(usageMap, "prompt_tokens"),
+		CompletionTokens:        intField(usageMap, "completion_tokens"),
+		TotalTokens:             intField(usageMap, "total_tokens"),
+		PromptTokensDetails:     mapField(usageMap, "prompt_tokens_details"),
+		CompletionTokensDetails: mapField(usageMap, "completion_tokens_details"),
+		CostDetails:             mapField(usageMap, "cost_details"),
+	}
+
+	if cost, ok := floatField(usageMap, "cost"); ok {
+		usage.CostExact = &CostMetadata{
+			Value:  cost,
+			Unit:   "credits",
+			Source: "stream_usage",
+		}
+	}
+
+	return usage
+}
+
+func intField(data map[string]interface{}, key string) *int {
+	value, ok := data[key]
+	if !ok || value == nil {
+		return nil
+	}
+
+	switch typed := value.(type) {
+	case json.Number:
+		if i, err := typed.Int64(); err == nil {
+			v := int(i)
+			return &v
+		}
+	case float64:
+		v := int(typed)
+		return &v
+	}
+
+	return nil
+}
+
+func floatField(data map[string]interface{}, key string) (float64, bool) {
+	value, ok := data[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+
+	switch typed := value.(type) {
+	case json.Number:
+		if f, err := typed.Float64(); err == nil {
+			return f, true
+		}
+	case float64:
+		return typed, true
+	case string:
+		var number json.Number = json.Number(typed)
+		if f, err := number.Float64(); err == nil {
+			return f, true
+		}
+	}
+
+	return 0, false
+}
+
+func mapField(data map[string]interface{}, key string) map[string]interface{} {
+	value, ok := data[key]
+	if !ok || value == nil {
+		return nil
+	}
+
+	if typed, ok := value.(map[string]interface{}); ok && len(typed) > 0 {
+		return typed
+	}
+
+	return nil
 }
 
 func structToMap(v interface{}) (map[string]interface{}, error) {

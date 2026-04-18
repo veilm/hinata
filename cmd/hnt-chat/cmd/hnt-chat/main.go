@@ -302,6 +302,7 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 
 	var contentBuffer strings.Builder
 	var reasoningBuffer strings.Builder
+	var streamMetadata llm.StreamMetadata
 	hasThinkTag := false
 
 	for {
@@ -310,6 +311,8 @@ func handleGenCommand(cmd *cobra.Command, args []string) error {
 			if !ok {
 				goto done
 			}
+
+			streamMetadata.Merge(event.Metadata)
 
 			if event.Content != "" {
 				if !outputFilename {
@@ -351,16 +354,22 @@ done:
 		if includeReasoning {
 			// Capture timestamp once for both files
 			timestampNs := time.Now().UnixNano()
+			var reasoningFile string
 
 			if reasoningBuffer.Len() > 0 {
 				reasoningContent := fmt.Sprintf("<think>%s</think>", reasoningBuffer.String())
 				if err := chat.WriteReasoningFile(convDir, reasoningContent, timestampNs); err != nil {
 					return fmt.Errorf("failed to write reasoning file: %w", err)
 				}
+				reasoningFile = filepath.ToSlash(filepath.Join("reasoning", fmt.Sprintf("%d.md", timestampNs)))
 			}
 			path, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, contentBuffer.String(), timestampNs)
 			if err != nil {
 				return fmt.Errorf("failed to write assistant message: %w", err)
+			}
+			metadata := chat.NewMessageMetadata(timestampNs, path, reasoningFile, buf.String(), contentBuffer.String(), streamMetadata)
+			if err := chat.WriteMessageMetadataFile(convDir, metadata, timestampNs); err != nil {
+				return fmt.Errorf("failed to write message metadata: %w", err)
 			}
 			assistantFilePath = path
 		} else {
@@ -370,9 +379,14 @@ done:
 			}
 
 			if fullResponse != "" {
-				path, err := chat.WriteMessageFile(convDir, chat.RoleAssistant, fullResponse)
+				timestampNs := time.Now().UnixNano()
+				path, err := chat.WriteMessageFileWithTimestamp(convDir, chat.RoleAssistant, fullResponse, timestampNs)
 				if err != nil {
 					return fmt.Errorf("failed to write assistant message: %w", err)
+				}
+				metadata := chat.NewMessageMetadata(timestampNs, path, "", buf.String(), fullResponse, streamMetadata)
+				if err := chat.WriteMessageMetadataFile(convDir, metadata, timestampNs); err != nil {
+					return fmt.Errorf("failed to write message metadata: %w", err)
 				}
 				assistantFilePath = path
 			}
@@ -672,6 +686,9 @@ func handleForkCommand(cmd *cobra.Command, args []string) error {
 
 	if err := chat.CopyReasoningForExistingMessages(sourceDir, newConvDir); err != nil {
 		return fmt.Errorf("failed to copy reasoning files: %w", err)
+	}
+	if err := chat.CopyMessageMetadataForExistingMessages(sourceDir, newConvDir); err != nil {
+		return fmt.Errorf("failed to copy message metadata files: %w", err)
 	}
 
 	sourceID := filepath.Base(sourceDir)
