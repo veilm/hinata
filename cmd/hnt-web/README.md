@@ -39,3 +39,8 @@ simple to manage externally
 ![ss 3](https://sucralose.moe/static/hnt-web1-3.png)
 
 ![ss 4](https://sucralose.moe/static/hnt-web1-4.png)
+
+## keybindings
+- `Alt+M`: toggle the conversation menu; opening focuses the title field
+- `Ctrl+Shift+J` / `Ctrl+Shift+K`: jump to the next / previous message
+- `Ctrl+Enter` / `Cmd+Enter`: submit the composer or save the active edit

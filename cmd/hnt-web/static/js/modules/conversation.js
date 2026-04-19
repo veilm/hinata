@@ -86,6 +86,188 @@ function updateReturnToTopLink(messageCount) {
 	}
 }
 
+function isSettingsModalOpen(settingsModal) {
+	return !!settingsModal && !settingsModal.classList.contains("hidden");
+}
+
+function focusModalTitleInput(modalTitleInput) {
+	if (!modalTitleInput || modalTitleInput.disabled) {
+		return;
+	}
+
+	const focusInput = () => {
+		modalTitleInput.focus();
+		modalTitleInput.select();
+	};
+
+	if (typeof requestAnimationFrame === "function") {
+		requestAnimationFrame(focusInput);
+	} else {
+		setTimeout(focusInput, 0);
+	}
+}
+
+function openSettingsModal(
+	settingsModal,
+	modalTitleInput,
+	{ focusTitle = false } = {},
+) {
+	if (!settingsModal) {
+		return;
+	}
+
+	settingsModal.classList.remove("hidden");
+	if (focusTitle) {
+		focusModalTitleInput(modalTitleInput);
+	}
+}
+
+function closeSettingsModal(settingsModal) {
+	if (!settingsModal) {
+		return;
+	}
+
+	const activeElement = document.activeElement;
+	if (
+		activeElement &&
+		settingsModal.contains(activeElement) &&
+		typeof activeElement.blur === "function"
+	) {
+		activeElement.blur();
+	}
+	settingsModal.classList.add("hidden");
+}
+
+function toggleSettingsModalFromKeyboard(settingsModal, modalTitleInput) {
+	if (isSettingsModalOpen(settingsModal)) {
+		closeSettingsModal(settingsModal);
+		return;
+	}
+
+	if (
+		document.activeElement &&
+		document.activeElement !== document.body &&
+		typeof document.activeElement.blur === "function"
+	) {
+		document.activeElement.blur();
+	}
+	openSettingsModal(settingsModal, modalTitleInput, { focusTitle: true });
+}
+
+function hasScrollableDocument() {
+	const scrollingElement =
+		document.scrollingElement || document.documentElement;
+	if (!scrollingElement) {
+		return false;
+	}
+
+	return scrollingElement.scrollHeight - scrollingElement.clientHeight > 4;
+}
+
+function getMessageNavigationIndex(messages, viewportTop) {
+	if (!messages.length) {
+		return -1;
+	}
+
+	const topSlack = 8;
+	let currentIndex = -1;
+
+	for (let i = 0; i < messages.length; i++) {
+		const rect = messages[i].getBoundingClientRect();
+		const messageTop = rect.top + window.scrollY;
+		if (messageTop <= viewportTop + topSlack) {
+			currentIndex = i;
+			continue;
+		}
+		break;
+	}
+
+	if (currentIndex !== -1) {
+		return currentIndex;
+	}
+
+	const firstMessageTop =
+		messages[0].getBoundingClientRect().top + window.scrollY;
+	return firstMessageTop <= viewportTop + window.innerHeight ? 0 : -1;
+}
+
+function navigateConversationMessages(direction) {
+	if (!hasScrollableDocument()) {
+		return;
+	}
+
+	const messages = Array.from(
+		document.querySelectorAll(
+			"#messages-container .message:not(.archived-message)",
+		),
+	);
+	if (!messages.length) {
+		return;
+	}
+
+	const scrollingElement =
+		document.scrollingElement || document.documentElement;
+	const viewportTop = window.scrollY;
+	const currentIndex = getMessageNavigationIndex(messages, viewportTop);
+	const targetIndex = currentIndex + direction;
+
+	if (targetIndex < 0 || targetIndex >= messages.length) {
+		return;
+	}
+
+	const targetMessage = messages[targetIndex];
+	const targetTop = targetMessage.getBoundingClientRect().top + window.scrollY;
+	const maxScrollTop =
+		scrollingElement.scrollHeight - scrollingElement.clientHeight;
+	scrollingElement.scrollTop = Math.max(0, Math.min(targetTop, maxScrollTop));
+}
+
+function setupConversationKeyboardShortcuts(settingsModal, modalTitleInput) {
+	if (document._hinataConversationKeydownHandler) {
+		document.removeEventListener(
+			"keydown",
+			document._hinataConversationKeydownHandler,
+		);
+	}
+
+	const handler = (event) => {
+		if (event.defaultPrevented) {
+			return;
+		}
+
+		const key = event.key.toLowerCase();
+		const isAltMenu =
+			event.altKey &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			!event.shiftKey &&
+			key === "m";
+
+		if (isAltMenu) {
+			event.preventDefault();
+			toggleSettingsModalFromKeyboard(settingsModal, modalTitleInput);
+			return;
+		}
+
+		const isMessageNavigation =
+			event.ctrlKey &&
+			event.shiftKey &&
+			!event.altKey &&
+			!event.metaKey &&
+			(key === "j" || key === "k");
+
+		if (!isMessageNavigation || isSettingsModalOpen(settingsModal)) {
+			return;
+		}
+
+		event.preventDefault();
+		navigateConversationMessages(key === "j" ? 1 : -1);
+	};
+
+	document._hinataConversationKeydownHandler = handler;
+	document.addEventListener("keydown", handler);
+}
+
 async function loadConversationsList() {
 	const container = document.getElementById("conversation-list-container");
 	try {
@@ -1046,7 +1228,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			modalForkBtn.parentNode.replaceChild(newForkButton, modalForkBtn);
 			newForkButton.disabled = false;
 			newForkButton.addEventListener("click", () => {
-				settingsModal.classList.add("hidden"); // Close modal
+				closeSettingsModal(settingsModal);
 				handleForkConversation(conversationId);
 			});
 		}
@@ -1056,7 +1238,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			modalShareBtn.parentNode.replaceChild(newShareButton, modalShareBtn);
 			newShareButton.disabled = false;
 			newShareButton.addEventListener("click", () => {
-				settingsModal.classList.add("hidden"); // Close settings modal
+				closeSettingsModal(settingsModal);
 				showShareModal(conversationId);
 			});
 		}
@@ -1067,7 +1249,7 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 			modalPackBtn.parentNode.replaceChild(newPackButton, modalPackBtn);
 			newPackButton.disabled = false;
 			newPackButton.addEventListener("click", () => {
-				settingsModal.classList.add("hidden"); // Close settings modal
+				closeSettingsModal(settingsModal);
 				packConversationToClipboard();
 			});
 		}
@@ -1075,29 +1257,23 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		// Setup settings modal toggle
 		if (settingsToggleBtn) {
 			settingsToggleBtn.addEventListener("click", () => {
-				settingsModal.classList.remove("hidden");
-				// Don't focus on title input when opened via settings button
+				openSettingsModal(settingsModal, modalTitleInput);
 			});
 		}
 
 		// Make h1 title clickable to open modal
 		if (mainTitleDisplayElement) {
 			mainTitleDisplayElement.addEventListener("click", () => {
-				settingsModal.classList.remove("hidden");
-				// Focus on title input when opened via h1 click
-				if (modalTitleInput) {
-					setTimeout(() => {
-						modalTitleInput.focus();
-						modalTitleInput.select(); // Select all text for easy editing
-					}, 100);
-				}
+				openSettingsModal(settingsModal, modalTitleInput, {
+					focusTitle: true,
+				});
 			});
 		}
 
 		// Setup modal close button
 		if (settingsCloseBtn) {
 			settingsCloseBtn.addEventListener("click", () => {
-				settingsModal.classList.add("hidden");
+				closeSettingsModal(settingsModal);
 			});
 		}
 
@@ -1105,10 +1281,12 @@ async function loadConversationDetails(conversationId, shouldScrollToBottom = tr
 		if (settingsModal) {
 			settingsModal.addEventListener("click", (event) => {
 				if (event.target === settingsModal) {
-					settingsModal.classList.add("hidden");
+					closeSettingsModal(settingsModal);
 				}
 			});
 		}
+
+		setupConversationKeyboardShortcuts(settingsModal, modalTitleInput);
 
 		// Auto-scroll to latest message on page load (if requested)
 		if (shouldScrollToBottom) {
