@@ -77,7 +77,7 @@ Additional utilities extend functionality through standard CLI composition.
 
 ## Support
 
-[@sucralose__](https://x.com/sucralose__) · [Issues](https://github.com/veilm/hinata/issues)
+[@mislocating](https://x.com/mislocating) · [Issues](https://github.com/veilm/hinata/issues)
 
 ## License
 
