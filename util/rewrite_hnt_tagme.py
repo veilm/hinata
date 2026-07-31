@@ -12,7 +12,8 @@ import time
 from dataclasses import dataclass
 
 
-LLM_MODEL_STRING = "openrouter/google/gemini-3-flash-preview"
+LLM_MODEL_STRING = "openrouter/openai/gpt-5.6-luna"
+LLM_REQUEST_PARAMS = '{"reasoning":{"effort":"low"}}'
 PROMPT_TEMPLATE_NAME = "commit_message_prompt.md"
 DEFAULT_LLM_TIMEOUT = 120
 TEXT_ENCODING = "utf-8"
@@ -252,6 +253,8 @@ def run_hnt_chat(prompt_text, timeout_seconds):
                 "--include-reasoning",
                 "--model",
                 LLM_MODEL_STRING,
+                "--request-params",
+                LLM_REQUEST_PARAMS,
                 "-c",
                 chat_id,
             ],
