@@ -42,6 +42,27 @@ class CommitObject:
         return any(key == name_bytes for key, _ in self.headers)
 
 
+class InlineProgress:
+    def __init__(self, stream):
+        self.stream = stream
+        self.previous_width = 0
+
+    def update(self, message):
+        padding = " " * max(0, self.previous_width - len(message))
+        print(
+            "\r{}{}".format(message, padding),
+            end="",
+            file=self.stream,
+            flush=True,
+        )
+        self.previous_width = len(message)
+
+    def finish(self, message):
+        self.update(message)
+        print(file=self.stream, flush=True)
+        self.previous_width = 0
+
+
 def format_command(args):
     return " ".join(shlex.quote(str(arg)) for arg in args)
 
@@ -816,20 +837,43 @@ def rewrite_history(
     try:
         template_text = load_prompt_template(prompt_template_path)
         replacements = {}
-        for sha in candidates:
-            diff_text = get_commit_diff(repo_root, objects[sha])
-            message, chat_dir = generate_message_from_diff(
-                diff_text,
-                max_len,
-                timeout_seconds,
-                template_text,
+        progress = InlineProgress(sys.stderr)
+        try:
+            for index, sha in enumerate(candidates, start=1):
+                progress.update(
+                    "Generating summary {}/{} ({})".format(
+                        index,
+                        len(candidates),
+                        sha[:12],
+                    )
+                )
+                diff_text = get_commit_diff(repo_root, objects[sha])
+                message, chat_dir = generate_message_from_diff(
+                    diff_text,
+                    max_len,
+                    timeout_seconds,
+                    template_text,
+                )
+                replacements[sha] = message
+                manifest["messages"][sha] = {
+                    "chat_directory": chat_dir,
+                    "message": message,
+                }
+                update_manifest(manifest_path, manifest)
+        except BaseException:
+            progress.finish(
+                "Summary generation stopped after {}/{}".format(
+                    len(replacements),
+                    len(candidates),
+                )
             )
-            replacements[sha] = message
-            manifest["messages"][sha] = {
-                "chat_directory": chat_dir,
-                "message": message,
-            }
-            update_manifest(manifest_path, manifest)
+            raise
+        progress.finish(
+            "Generated summaries for {}/{} commits".format(
+                len(replacements),
+                len(candidates),
+            )
+        )
 
         manifest["status"] = "planned"
         update_manifest(manifest_path, manifest)
