@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-Unix-style, composable LLM utilities for your terminal
+Simple interfaces for interacting with LLMs
 </p>
 
 ---
@@ -18,18 +18,34 @@ Requirements: Git, Go, Linux/macOS
 
 ## What
 
-hinata is a small ecosystem of CLI programs built like classic Unix tools. Each binary is a focused building block you can mix, match, and script together.
+Hinata gives you three ways to interact with LLMs:
 
-**Core tools:**
-- [`hnt-llm`](cmd/hnt-llm/README.md) - Direct LLM API access for piping prompts/responses
-- [`hnt-chat`](cmd/hnt-chat/README.md) - Plaintext conversation management and memory
-- [`hnt-web`](cmd/hnt-web/README.md) - Zero-dependency web UI that speaks to `hnt-chat` for storage/backends
+- [`hnt-llm`](cmd/hnt-llm/README.md) sends a prompt to an LLM and streams the response to stdout.
+- [`hnt-chat`](cmd/hnt-chat/README.md) keeps conversations as plaintext files and can generate the next response.
+- [`hnt-web`](cmd/hnt-web/README.md) provides a browser interface backed by `hnt-chat`.
+
+Use the direct stream interface in scripts, work with conversations from the command line, or open the same conversations in a browser.
 
 ## Usage
 
-Direct LLM interaction:
+Send a prompt directly:
+
 ```sh
 echo "explain quantum computing in one sentence" | hnt-llm
+```
+
+Create a file-backed conversation and generate a response:
+
+```sh
+conversation=$(hnt-chat new)
+printf "Write a haiku about CPUs.\n" | hnt-chat add user -c "$conversation"
+hnt-chat gen -c "$conversation" --write
+```
+
+Open the web interface:
+
+```sh
+hnt-web
 ```
 
 ## Architecture
@@ -39,21 +55,6 @@ graph LR
 	hnt-chat --> hnt-llm
 	hnt-web --> hnt-chat
 ```
-
-Additional utilities extend functionality through standard CLI composition.
-
-- `browse`: non-headless (=> high-trust) Chromium browser automation
-- `llm-pack`: source bundling files
-- `shell-exec`: ultra lightweight, headless shell input/output
-- `tui-select`: minimal fzf clone for interactively selecting a line from stdin
-- for LLM memory, see [Cathedral](https://github.com/veilm/cathedral)
-
-## Philosophy
-
-- Tools, not frameworks
-- Text streams, not APIs
-- Composable by humans and LLMs alike
-- Fast startup, minimal dependencies
 
 ## Support
 
