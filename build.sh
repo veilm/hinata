@@ -44,7 +44,7 @@ printf "${GREEN}${BOLD}[✓]${NC} Found ${BOLD}%s${NC}\n" "$GO_VERSION"
 # print_header "Building Hinata Binaries"
 
 # List of all Go binaries to build
-bins="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-input shell-exec tui-select hnt-web"
+bins="hnt-llm hnt-chat llm-pack hnt-input shell-exec tui-select hnt-web"
 
 # Count total binaries
 total=$(echo $bins | wc -w | tr -d ' ')

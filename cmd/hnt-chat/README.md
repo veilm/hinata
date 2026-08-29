@@ -4,7 +4,7 @@ Plaintext conversation manager for the Hinata toolchain. Each chat lives in its 
 
 - Stores data at `$XDG_DATA_HOME/hinata/chat/conversations` (falls back to `~/.local/share`).
 - 100% CLI driven: add messages, list conversations, pin/fork threads, or let an LLM append the next reply.
-- Plays nicely with the other Hinata binaries (`hnt-llm`, `hnt-edit`, `hnt-web`) because everything stays on disk.
+- Plays nicely with the other Hinata binaries (`hnt-llm`, `hnt-web`) because everything stays on disk.
 
 ## Install
 
@@ -37,7 +37,7 @@ The `gen` command inherits the model from `--model`, `HINATA_CHAT_MODEL`, or `HI
 | --- | --- |
 | `hnt-chat new` | Create a fresh conversation directory. Prints the absolute path. |
 | `hnt-chat add <role>` | Append a `system`, `user`, or `assistant` message from stdin. Use `--separate-reasoning` to split `<think>` blocks into `reasoning/`. |
-| `hnt-chat pack` | Emit merged `<hnt-role>...</hnt-role>` blocks for piping into `hnt-llm` or `hnt-edit`. Add `--merge` to concatenate consecutive messages from the same role. |
+| `hnt-chat pack` | Emit merged `<hnt-role>...</hnt-role>` blocks for piping into `hnt-llm`. Add `--merge` to concatenate consecutive messages from the same role. |
 | `hnt-chat gen` | Run an LLM call against the packed conversation. `--write` saves the assistant reply, `--output-filename` prints the saved path, `--include-reasoning` captures thinking traces, and `--request-params` merges arbitrary JSON into the LLM payload. |
 | `hnt-chat list` | Show every conversation with pin/fork status. |
 | `hnt-chat pin` / `hnt-chat unpin` | Toggle `meta/pinned.flag` so `list` surfaces important threads. |

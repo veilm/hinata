@@ -23,15 +23,9 @@ hinata is a small ecosystem of CLI programs built like classic Unix tools. Each 
 **Core tools:**
 - [`hnt-llm`](cmd/hnt-llm/README.md) - Direct LLM API access for piping prompts/responses
 - [`hnt-chat`](cmd/hnt-chat/README.md) - Plaintext conversation management and memory
-- [`hnt-edit`](cmd/hnt-edit/README.md) - Targeted file editing with TARGET/REPLACE blocks
 - [`hnt-web`](cmd/hnt-web/README.md) - Zero-dependency web UI that speaks to `hnt-chat` for storage/backends
 
 ## Usage
-
-Edit multiple files at once:
-```sh
-hnt-edit -m "enable debug mode" src/*.h
-```
 
 Direct LLM interaction:
 ```sh
@@ -43,7 +37,6 @@ echo "explain quantum computing in one sentence" | hnt-llm
 ```mermaid
 graph LR
 	hnt-chat --> hnt-llm
-	hnt-edit --> hnt-chat
 	hnt-web --> hnt-chat
 ```
 
@@ -53,7 +46,6 @@ Additional utilities extend functionality through standard CLI composition.
 - `llm-pack`: source bundling files
 - `shell-exec`: ultra lightweight, headless shell input/output
 - `tui-select`: minimal fzf clone for interactively selecting a line from stdin
-- `hnt-apply`: parse TARGET/REPLACE blocks (used internally by `hnt-edit`)
 - for LLM memory, see [Cathedral](https://github.com/veilm/cathedral)
 
 ## Philosophy

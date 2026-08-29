@@ -63,7 +63,7 @@ print_header() {
 # Main installation starts
 printf "${BOLD}${CYAN}"
 printf "╔═══════════════════════════════════════╗\n"
-printf "║${NC}    ❄️ hinata installer ${CYAN}| v1788017947   ║\n"
+printf "║${NC}    ❄️ hinata installer ${CYAN}| v1788028365   ║\n"
 printf "╚═══════════════════════════════════════╝\n"
 printf "${NC}\n\n"
 
@@ -86,7 +86,7 @@ INSTALL_DIR="/usr/local/bin/"
 mkdir -p bin
 
 # List of binaries to install (in order similar to Rust version)
-bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-input shell-exec tui-select hnt-web"
+bins="llm-pack hnt-llm hnt-chat hnt-input shell-exec tui-select hnt-web"
 
 print_header "Installing Binaries"
 printf "${BLUE}${BOLD}[hinata]${NC} ${CYAN}Target directory: ${BOLD}%s${NC}${CYAN}${NC}\n" "$INSTALL_DIR"
