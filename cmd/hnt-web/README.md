@@ -12,7 +12,7 @@
 ## install
 ```
 # Go is the only dependency
-curl hnt-agent.org/install | sh
+curl -fsSL https://raw.githubusercontent.com/veilm/hinata/main/install.sh | sh
 
 # start the server (runs in the foreground)
 hnt-web

@@ -165,8 +165,8 @@ var Providers = []Provider{
 		ApiURL: "https://openrouter.ai/api/v1/chat/completions",
 		EnvVar: "OPENROUTER_API_KEY",
 		ExtraHeaders: map[string]string{
-			"HTTP-Referer": "https://hnt-agent.org/",
-			"X-Title":      "hinata",
+			"HTTP-Referer":       "https://github.com/veilm/hinata",
+			"X-OpenRouter-Title": "hinata",
 		},
 	},
 	{

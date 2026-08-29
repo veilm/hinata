@@ -14,7 +14,7 @@ import websockets
 
 CDP_PORT = 58205
 DEFAULT_URL = "about:blank"
-CDP_DIR = "/tmp/hnt-agent-cdp"
+CDP_DIR = "/tmp/hinata-cdp"
 CONNECTED_FILE = os.path.join(CDP_DIR, "connected.json")
 # USER_DATA_DIR = os.path.join(CDP_DIR, "user-data")
 
@@ -167,7 +167,7 @@ def get_headless_browse_js_path():
     xdg_data_home = os.environ.get("XDG_DATA_HOME", default_xdg_data_home)
 
     headless_browse_js = os.path.join(
-        xdg_data_home, "hinata/agent/web/headless-browse.js"
+        xdg_data_home, "hinata/browse/web/headless-browse.js"
     )
 
     if not os.path.isfile(headless_browse_js):

@@ -5,7 +5,7 @@ cd ..
 echo "hinata: updating all Go dependencies to latest versions..."
 
 # List of all Go modules (excluding research)
-modules="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit hnt-agent shell-exec tui-select shared"
+modules="hnt-llm hnt-chat hnt-apply llm-pack hnt-edit shell-exec tui-select shared"
 
 for module in $modules; do
     echo "hinata: updating $module dependencies..."

@@ -4,12 +4,12 @@ Plaintext conversation manager for the Hinata toolchain. Each chat lives in its 
 
 - Stores data at `$XDG_DATA_HOME/hinata/chat/conversations` (falls back to `~/.local/share`).
 - 100% CLI driven: add messages, list conversations, pin/fork threads, or let an LLM append the next reply.
-- Plays nicely with the other Hinata binaries (`hnt-llm`, `hnt-edit`, `hnt-web`, `hnt-agent`) because everything stays on disk.
+- Plays nicely with the other Hinata binaries (`hnt-llm`, `hnt-edit`, `hnt-web`) because everything stays on disk.
 
 ## Install
 
 ```sh
-curl hnt-agent.org/install | sh
+curl -fsSL https://raw.githubusercontent.com/veilm/hinata/main/install.sh | sh
 ```
 
 ## Quick start

@@ -17,8 +17,8 @@ func main() {
 
 	var rootCmd = &cobra.Command{
 		Use:   "hnt-edit [source files...]",
-		Short: "Edit files using hinata LLM agent",
-		Long: `Edit files using hinata LLM agent.
+		Short: "Edit files using Hinata's LLM editing workflow",
+		Long: `Edit files using Hinata's LLM editing workflow.
 
 Example: hnt-edit -m 'Refactor foo function' src/main.py src/utils.py`,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -1,4 +1,4 @@
-Hinata / agent / browse — Overview
+Hinata / browse — Overview
 ==================================
 
 This sub-package is three small, well-separated parts that cooperate to let a
@@ -37,9 +37,9 @@ File/Path Cheatsheet
 --------------------
 Path                                   | Purpose
 -------------------------------------- | -----------------------------------------
-`$(XDG_DATA_HOME)/hinata/agent/web/`    | Runtime location of `headless-browse.js`
+`$(XDG_DATA_HOME)/hinata/browse/web/`   | Runtime location of `headless-browse.js`
 `/usr/local/bin/browse`                 | Executable wrapper for `main.py`
-`/tmp/hnt-agent-cdp/connected.json`     | Cached CDP target info (auto-generated)
+`/tmp/hinata-cdp/connected.json`        | Cached CDP target info (auto-generated)
 `/tmp/browse/{formattedTree.txt,prev}`  | Latest & previous tree dumps
 
 That’s all you need to orient yourself—dive into the individual quick-reference

@@ -26,7 +26,7 @@ def check_dependencies():
     xdg_data_home = Path(
         os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
     )
-    headless_browse_js = xdg_data_home / "hinata/agent/web/headless-browse.js"
+    headless_browse_js = xdg_data_home / "hinata/browse/web/headless-browse.js"
 
     if not headless_browse_js.is_file():
         panic(f"headless-browse.js not found at {headless_browse_js}")

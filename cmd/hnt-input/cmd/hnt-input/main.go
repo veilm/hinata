@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/veilm/hinata/cmd/hnt-agent/pkg/agent"
 	"github.com/veilm/hinata/pkg/prompt"
 	"github.com/veilm/hinata/pkg/terminal"
 )
@@ -53,22 +52,7 @@ func run(cmd *cobra.Command, args []string) error {
 	if useEditor {
 		userInput, err = prompt.PromptWithEditor()
 	} else {
-		// Get theme to determine colors
-		currentTheme := agent.GetTheme(theme)
-
-		// Use RGB colors if available (snow, dust, etc.), otherwise fall back to ANSI
-		if currentTheme.DefaultTextRGB != nil {
-			colors := prompt.ColorConfig{
-				HeaderRGB: currentTheme.DefaultTextRGB,
-				HelpRGB:   currentTheme.HelpTextRGB,
-				PromptRGB: currentTheme.HinataLineRGB,
-				TextRGB:   currentTheme.DefaultTextRGB,
-			}
-			userInput, err = prompt.PromptForInputWithColors(colors, promptHeight)
-		} else {
-			// Use default colors for ansi theme
-			userInput, err = prompt.PromptForInputWithColors(prompt.ColorConfig{}, promptHeight)
-		}
+		userInput, err = prompt.PromptForInputWithColors(inputColors(theme), promptHeight)
 	}
 
 	if err != nil {
@@ -104,4 +88,26 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func inputColors(name string) prompt.ColorConfig {
+	if name == "ansi" {
+		return prompt.ColorConfig{}
+	}
+
+	text := [3]int{255, 255, 255}
+	help := [3]int{160, 200, 255}
+	border := [3]int{110, 200, 255}
+	if name == "dust" {
+		text = [3]int{220, 220, 220}
+		help = [3]int{170, 170, 170}
+		border = [3]int{190, 190, 190}
+	}
+
+	return prompt.ColorConfig{
+		HeaderRGB: &text,
+		HelpRGB:   &help,
+		PromptRGB: &border,
+		TextRGB:   &text,
+	}
 }

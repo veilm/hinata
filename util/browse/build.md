@@ -4,7 +4,7 @@ Purpose
 Install two runtime artefacts:
 
 1. `headless-browse.js` →  
-   `${XDG_DATA_HOME:-$HOME/.local/share}/hinata/agent/web`
+   `${XDG_DATA_HOME:-$HOME/.local/share}/hinata/browse/web`
 2. `main.py` (as executable **browse**) → `/usr/local/bin/browse`
 
 How it works  

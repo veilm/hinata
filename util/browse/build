@@ -2,7 +2,7 @@
 
 cd "$(dirname "$0")"
 
-dir="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/agent/web"
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/hinata/browse/web"
 mkdir -p "$dir"
 cp ./headless-browse.js "$dir"
 echo "browse/build: installed headless-browse.js in $dir"

@@ -13,7 +13,7 @@ Primary use-case: programmatically open/read pages and run JavaScript from the c
    • Launches Chromium with `--remote-debugging-port`.  
    • Immediately calls `connect` to store target metadata.
 3. **Session persistence:**  
-   • Connection information is cached in `/tmp/hnt-agent-cdp/connected.json`.  
+   • Connection information is cached in `/tmp/hinata-cdp/connected.json`.
    • Subsequent commands (`eval`, `open`, `read*`) reuse this file to attach to the same tab.
 4. **JavaScript execution (`eval_js`):**  
    • Opens websocket to the tab’s `webSocketDebuggerUrl`.  

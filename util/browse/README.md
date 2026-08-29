@@ -16,7 +16,7 @@
 ### Installing the tool
 
 A `build` script is provided for installation. It will:
-1.  Copy the necessary `headless-browse.js` script to `~/.local/share/hinata/agent/web/`.
+1.  Copy the necessary `headless-browse.js` script to `~/.local/share/hinata/browse/web/`.
 2.  Make `main.py` executable and copy it to `/usr/local/bin/browse`, which may require `sudo`.
 
 To install, run:

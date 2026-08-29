@@ -1,6 +1,33 @@
-#!/bin/sh -e
+#!/bin/sh
 
-cd "$(dirname "$0")"
+set -e
+
+script_dir=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd || true)
+if [ ! -f "$script_dir/go.mod" ] || ! grep -q '^module github.com/veilm/hinata$' "$script_dir/go.mod"
+then
+    if ! command -v git > /dev/null 2>&1
+    then
+        printf 'hinata: git is required to install from GitHub\n' >&2
+        exit 1
+    fi
+
+    hinata_bootstrap_dir=$(mktemp -d "${TMPDIR:-/tmp}/hinata-install.XXXXXX")
+    cleanup_bootstrap() {
+        if [ -n "$hinata_bootstrap_dir" ] && [ -d "$hinata_bootstrap_dir" ]
+        then
+            rm -rf -- "$hinata_bootstrap_dir"
+        fi
+    }
+    trap cleanup_bootstrap 0
+    trap 'exit 1' HUP INT TERM
+
+    printf 'hinata: cloning veilm/hinata...\n'
+    git clone --depth 1 https://github.com/veilm/hinata "$hinata_bootstrap_dir/repo"
+    "$hinata_bootstrap_dir/repo/install.sh"
+    exit
+fi
+
+cd "$script_dir"
 
 # Color definitions
 RED='\033[0;31m'
@@ -36,7 +63,7 @@ print_header() {
 # Main installation starts
 printf "${BOLD}${CYAN}"
 printf "╔═══════════════════════════════════════╗\n"
-printf "║${NC}    ❄️ hinata installer ${CYAN}| v20250804    ║\n"
+printf "║${NC}    ❄️ hinata installer ${CYAN}| v1788017947   ║\n"
 printf "╚═══════════════════════════════════════╝\n"
 printf "${NC}\n\n"
 
@@ -46,18 +73,7 @@ prompts_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata/prompts
 mkdir -p "$prompts_dir"
 cp -r prompts/* "$prompts_dir"
 printf "${GREEN}${BOLD}[✓]${NC} Created directory: ${BOLD}%s${NC}\n" "$prompts_dir"
-printf "${GREEN}${BOLD}[✓]${NC} Installed agent system prompts\n"
-
-# Install spinner config
-# print_header "Installing Spinner Config"
-config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/hinata
-mkdir -p "$config_dir"
-if [ -d "cmd/hnt-agent/spinners" ]; then
-    cp -r cmd/hnt-agent/spinners "$config_dir/"
-    printf "${GREEN}${BOLD}[✓]${NC} Installed spinner config to ${BOLD}%s/spinners/${NC}\n" "$config_dir"
-else
-    printf "${YELLOW}${BOLD}[!]${NC} ${YELLOW}Spinners directory not found in ./cmd/hnt-agent/${NC}\n"
-fi
+printf "${GREEN}${BOLD}[✓]${NC} Installed system prompts\n"
 
 # Build binaries
 print_header "Building Binaries"
@@ -70,7 +86,7 @@ INSTALL_DIR="/usr/local/bin/"
 mkdir -p bin
 
 # List of binaries to install (in order similar to Rust version)
-bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-agent hnt-input shell-exec tui-select hnt-web"
+bins="hnt-apply llm-pack hnt-edit hnt-llm hnt-chat hnt-input shell-exec tui-select hnt-web"
 
 print_header "Installing Binaries"
 printf "${BLUE}${BOLD}[hinata]${NC} ${CYAN}Target directory: ${BOLD}%s${NC}${CYAN}${NC}\n" "$INSTALL_DIR"
