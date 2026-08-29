@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-Simple interfaces for interacting with LLMs
+simple Unix-style interfaces for interacting with LLMs
 </p>
 
 ---
@@ -18,11 +18,11 @@ Requirements: Git, Go, Linux/macOS
 
 ## What
 
-Hinata gives you three ways to interact with LLMs:
+core tools:
 
-- [`hnt-llm`](cmd/hnt-llm/README.md) sends a prompt to an LLM and streams the response to stdout.
-- [`hnt-chat`](cmd/hnt-chat/README.md) keeps conversations as plaintext files and can generate the next response.
-- [`hnt-web`](cmd/hnt-web/README.md) provides a browser interface backed by `hnt-chat`.
+- [`hnt-llm`](cmd/hnt-llm/README.md) sends a prompt to an LLM and streams the response to stdout (pure LLM i/o)
+- [`hnt-chat`](cmd/hnt-chat/README.md) manages conversations as an abstracted layer, as plaintext files
+- [`hnt-web`](cmd/hnt-web/README.md) provides a web UI wrapping `hnt-chat`
 
 Use the direct stream interface in scripts, work with conversations from the command line, or open the same conversations in a browser.
 
@@ -55,6 +55,14 @@ graph LR
 	hnt-chat --> hnt-llm
 	hnt-web --> hnt-chat
 ```
+
+## Miscellaneous utilities
+
+- `browse`: non-headless Chromium browser automation
+- `llm-pack`: source file bundling
+- `shell-exec`: lightweight, headless shell input/output
+- `tui-select`: minimal fzf-style line selection
+- for LLM memory, see [Cathedral](https://github.com/veilm/cathedral)
 
 ## Support
 
